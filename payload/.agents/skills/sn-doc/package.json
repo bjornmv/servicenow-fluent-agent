@@ -1,0 +1,14 @@
+{
+  "name": "sn-doc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node-native doc renderer for sn-doc skill. Installs md-to-pdf + @adobe/helix-md2docx as peer deps (install globally in PowerShell — npm.cmd install -g md-to-pdf \"@adobe/helix-md2docx\").",
+  "bin": {
+    "sn-doc": "./render.js"
+  },
+  "peerDependencies": {
+    "md-to-pdf": ">=5.0.0",
+    "@adobe/helix-md2docx": ">=2.0.0"
+  }
+}

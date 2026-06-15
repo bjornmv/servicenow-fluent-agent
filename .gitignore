@@ -1,0 +1,8 @@
+node_modules/
+npm-debug.log*
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+payload/**/__pycache__/
+payload/**/*.pyc
