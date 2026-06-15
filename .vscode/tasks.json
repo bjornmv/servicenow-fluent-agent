@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install/Update ServiceNow Fluent Agent",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/bin/sn-fluent-agent.cjs",
+        "install"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    },
+    {
+      "label": "Verify ServiceNow Fluent Agent",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/bin/sn-fluent-agent.cjs",
+        "verify"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    },
+    {
+      "label": "Dry Run ServiceNow Fluent Agent Install",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/bin/sn-fluent-agent.cjs",
+        "install",
+        "--dry-run"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    }
+  ]
+}

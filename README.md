@@ -4,19 +4,44 @@ Team distribution package for the **ServiceNow Fluent** VS Code custom agent, it
 
 The package is designed for locked-down Windows machines where Node, npm, Git, and VS Code are available, but PowerShell/cmd scripts may be restricted. The installer is a dependency-free Node program.
 
-## Install
+## Install with VS Code
+
+VS Code can handle the Git clone.
+
+1. Open Command Palette.
+2. Run **Git: Clone**.
+3. Paste:
+
+   ```text
+   https://github.com/bjornmv/servicenow-fluent-agent.git
+   ```
+
+4. Choose a normal local folder, for example `C:\Users\<you>\source`.
+5. Open the cloned folder in VS Code.
+6. Run **Terminal: Run Task** → **Install/Update ServiceNow Fluent Agent**.
+
+Then restart VS Code, or reload the VS Code window.
+
+## Install with terminal
 
 Clone the repo somewhere normal, not directly into your user-profile agent folders:
 
 ```text
-git clone https://github.com/YOUR-ORG/servicenow-fluent-agent.git
+git clone https://github.com/bjornmv/servicenow-fluent-agent.git
 cd servicenow-fluent-agent
 node bin/sn-fluent-agent.cjs install
 ```
 
 Then restart VS Code, or reload the VS Code window.
 
-## Update
+## Update with VS Code
+
+1. Open this repo folder in VS Code.
+2. Run **Git: Pull**.
+3. Run **Terminal: Run Task** → **Install/Update ServiceNow Fluent Agent**.
+4. Restart/reload VS Code.
+
+## Update with terminal
 
 ```text
 cd servicenow-fluent-agent
@@ -27,6 +52,10 @@ node bin/sn-fluent-agent.cjs install
 Restart/reload VS Code after updates.
 
 ## Verify
+
+With VS Code: run **Terminal: Run Task** → **Verify ServiceNow Fluent Agent**.
+
+With terminal:
 
 ```text
 node bin/sn-fluent-agent.cjs verify
