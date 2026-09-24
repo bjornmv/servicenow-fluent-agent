@@ -31,9 +31,9 @@ $env:SN_AGENT_HOME = "C:\Personal\SNagent"
 ```
 
 ## 2. Node backend — required
-Already have Node (the agent does). Install the two renderer packages globally:
+With Node available, obtain explicit approval before installing the two renderer packages globally. Resolve npm's permitted JavaScript CLI using the [command policy](../../reference/sdk-commands.md); replace the path placeholder below. Do not use a batch shim or bypass a policy denial:
 ```powershell
-npm.cmd install -g md-to-pdf "@adobe/helix-md2docx"
+node "<resolved-npm-cli.js>" install -g md-to-pdf "@adobe/helix-md2docx"
 ```
 `md-to-pdf` pulls a puppeteer Chromium download (~170 MB) on install. **On locked-down systems** (AppLocker / EDR / WDAC) the puppeteer-bundled Chromium often fails to launch from `%USERPROFILE%\.cache\puppeteer\` — the skill auto-detects installed **Chrome** or **Edge** and uses that instead.
 
@@ -125,8 +125,8 @@ python -m playwright install chromium
 
 ## Troubleshooting
 - `node` not on PATH → install Node from <https://nodejs.org> (LTS).
-- `[MISSING] md-to-pdf` after global install → re-open the terminal so `NODE_PATH` / global modules resolve. Or set `$env:NODE_PATH = (npm.cmd root -g)`.
-- `md-to-pdf` Chromium download fails behind a corporate proxy → set `HTTPS_PROXY` and re-run `npm.cmd install -g md-to-pdf`. If the download itself is blocked, install Chrome/Edge instead — sn-doc will use them automatically.
+- `[MISSING] md-to-pdf` after global install → re-open the terminal so `NODE_PATH` / global modules resolve. If needed, get the global module root with `node "<resolved-npm-cli.js>" root -g` and use that path for the current shell's `NODE_PATH`.
+- `md-to-pdf` Chromium download fails behind a corporate proxy → use the approved proxy configuration and, with installation approval, re-run `node "<resolved-npm-cli.js>" install -g md-to-pdf`. If the download itself is blocked, install Chrome/Edge instead — sn-doc will use them automatically.
 - PDF render fails with `spawn UNKNOWN` → AV/AppLocker blocked the puppeteer-bundled Chromium under `%USERPROFILE%\.cache\puppeteer\`. Install Chrome or Edge, or set `$env:SN_DOC_BROWSER` to a chrome.exe / msedge.exe path. Preflight will report which browser is used.
 - `[MISSING] @adobe/helix-md2docx` → package name has the `@adobe/` scope; quote it in PowerShell: `"@adobe/helix-md2docx"`.
 - `Cannot import SNagent libs` → `SN_AGENT_HOME` is wrong. Confirm `C:\Personal\SNagent\tools\_doc_lib\parse.py` exists.

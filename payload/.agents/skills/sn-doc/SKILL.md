@@ -36,7 +36,7 @@ Output reports both backends with `[OK ]` / `[BAD]` / `[MISSING]` per dep and pr
 - Any framed archetype (`runbook`, `compliance_report`, `release_notes`, `architecture`, `customer_deliverable`, `letter`, `knowledge_article`) → Python backend + WeasyPrint runtime.
 
 Common outcomes:
-- Node packages missing → `npm.cmd install -g md-to-pdf "@adobe/helix-md2docx"` (one-time).
+- Node packages missing → after explicit approval, resolve npm's permitted JavaScript CLI per the [command policy](../../reference/sdk-commands.md), then `node "<resolved-npm-cli.js>" install -g md-to-pdf "@adobe/helix-md2docx"` (one-time; replace the path placeholder).
 - No installed browser found → install Chrome or Edge (the puppeteer-bundled Chromium downloads to a user-writable path and is blocked by AppLocker/AV on locked-down boxes). Override with `$env:SN_DOC_BROWSER = "C:\path\to\msedge.exe"`.
 - Python not installed → only matters if the user wants framed archetypes. Install via `winget install Python.Python.3.12` + `python -m pip install -r "$env:USERPROFILE\.agents\skills\sn-doc\requirements.txt"`.
 - WeasyPrint runtime (Pango/GTK) on Windows → see [install.md](install.md).
@@ -87,7 +87,7 @@ SNagent's `sn_doc_screenshot` remains available through the Python backend for w
 - Never invent metadata — ask the user for `title`, `version`, `author`, `audience` if the archetype requires them.
 - Outputs go under `docs/dist/` inside the project, NOT into `/tmp` or SNagent's sandbox.
 - The renderer refuses to overwrite existing outputs unless `--force` is passed. Confirm with the user before adding `--force`.
-- Don't `npm.cmd install -g` or `python -m pip install` on behalf of the user without explicit ask — show the command and let them run it.
+- Don't install global Node packages or run `python -m pip install` on behalf of the user without explicit ask — show the permitted command and let them run it.
 
 ## Files in this skill
 - [render.js](render.js) — Node CLI (default backend + dispatcher)

@@ -1,0 +1,117 @@
+[
+  {
+    "name": "GlideRecord addQuery server API",
+    "query": "GlideRecord.addQuery",
+    "keywords": "GlideRecord addQuery",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "api-reference/server-api-reference/c_GlideRecordAPI.md", "heading_contains": "addQuery" }
+    ]
+  },
+  {
+    "name": "Scoped GlideRecord addEncodedQuery enforceFieldACL",
+    "query": "Scoped GlideRecord addEncodedQuery enforceFieldACL",
+    "keywords": "Scoped GlideRecord addEncodedQuery enforceFieldACL",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "api-reference/server-api-reference/c_GlideRecordScopedAPI.md", "heading_contains": "addEncodedQuery" }
+    ]
+  },
+  {
+    "name": "GlideSystem addInfoMessage",
+    "query": "GlideSystem.addInfoMessage",
+    "keywords": "GlideSystem addInfoMessage",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "api-reference/server-api-reference/c_GlideSystemAPI.md", "heading_contains": "addInfoMessage" }
+    ]
+  },
+  {
+    "name": "Service Portal spUtil client API",
+    "query": "Service Portal widget client script spUtil",
+    "keywords": "spUtil Service Portal widget client script",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "api-reference/spUtilAPI.md" }
+    ]
+  },
+  {
+    "name": "Fluent BusinessRule object",
+    "query": "Fluent BusinessRule object sys_script",
+    "keywords": "BusinessRule object sys_script servicenow sdk",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "application-development/servicenow-sdk/business-rule-api-now-ts.md" }
+    ]
+  },
+  {
+    "name": "Fluent Table API",
+    "query": "Fluent Table API columns now.ts",
+    "keywords": "Table API columns now ts servicenow sdk",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "application-development/servicenow-sdk/table-api-now-ts.md" }
+    ]
+  },
+  {
+    "name": "CMDB Identification and Reconciliation API",
+    "query": "CMDB Identification and Reconciliation API identifyreconcile",
+    "keywords": "CMDB Identification Reconciliation API identifyreconcile IRE",
+    "max_rank": 5,
+    "expect": [
+      { "source_rel": "api-reference/rest-apis/c_IdentifyReconcileAPI.md" },
+      { "source_rel": "servicenow-platform/configuration-management-database-cmdb/c_CompsandProcessIDandReconcil.md" }
+    ]
+  },
+  {
+    "name": "Business rule timing before after async",
+    "query": "business rule before after async when should run",
+    "keywords": "business rule before after async when run",
+    "max_rank": 5,
+    "expect": [
+      { "source_rel": "api-reference/c_BusinessRules.md" },
+      { "source_rel": "api-reference/business-rules-classic/c_BusinessRules.md" }
+    ]
+  },
+  {
+    "name": "Discovery probes and patterns MID Server",
+    "query": "Discovery probes patterns MID Server",
+    "keywords": "Discovery probes patterns MID Server",
+    "max_rank": 8,
+    "expect": [
+      { "source_rel": "it-operations-management/discovery/discovery-command-probe-pattern.md" },
+      { "source_rel": "it-operations-management/discovery/c-UsingPatternsForHorizontalDiscovery.md", "heading_contains": "probes and patterns" },
+      { "source_rel": "it-operations-management/discovery/r_ListOfDiscoveryProbes.md" }
+    ]
+  },
+  {
+    "name": "ACL access control evaluation order",
+    "query": "ACL access control evaluation order",
+    "keywords": "access control ACL evaluation order",
+    "max_rank": 8,
+    "expect": [
+      { "source_rel": "application-development/secure-data.md" },
+      { "source_rel": "application-development/ACL-access-checks.md" },
+      { "source_rel": "platform-security/access-control/access-analyzer-logs.md" }
+    ]
+  },
+  {
+    "name": "Flow Designer action inputs",
+    "query": "Flow Designer action inputs outputs custom action",
+    "keywords": "Workflow Studio action inputs outputs custom action Flow Designer",
+    "max_rank": 8,
+    "expect": [
+      { "source_rel": "build-workflows/workflow-studio/action-inputs-outputs.md" },
+      { "source_rel": "build-workflows/workflow-studio/create-custom-action-object.md" }
+    ]
+  },
+  {
+    "name": "ScriptableFlowAPI action inputs",
+    "query": "ScriptableFlowAPI action inputs map executeAction",
+    "keywords": "ScriptableFlowAPI action inputs executeAction",
+    "max_rank": 5,
+    "expect": [
+      { "source_rel": "api-reference/server-api-reference/ScriptableFlowAPI.md" }
+    ]
+  }
+]

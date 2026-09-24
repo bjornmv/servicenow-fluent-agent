@@ -1,0 +1,19 @@
+{
+  "name": "sn-doc-md",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown-native ServiceNow documentation index/search CLI for ServiceNowDocs GitHub corpus.",
+  "type": "commonjs",
+  "bin": {
+    "sn-doc-md": "bin/sn-doc-md.js"
+  },
+  "scripts": {
+    "build:index": "node bin/sn-doc-md.js build --docs ../ServiceNowDocs --out ./.sn-doc-index/australia --family australia --force",
+    "test:quality": "node test/run-tests.js --index ./.sn-doc-index/australia",
+    "search": "node bin/sn-doc-md.js search --index ./.sn-doc-index/australia"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}

@@ -12,6 +12,8 @@
  *   node "$SnRest" --raw                             # access token only — exposes bearer; debug use
  *   node "$SnRest" --dump                            # raw keystore JSON — exposes secrets; debug use
  *   node "$SnRest" --alias dev --instance https://devXXXXXX.service-now.com "/api/now/table/sys_app?sysparm_fields=name,scope,sys_id&sysparm_limit=20"
+ *   node "$SnRest" --pretty "/api/now/table/sys_app?sysparm_fields=name,scope,sys_id&sysparm_limit=20"   # human-readable JSON
+ *   node "$SnRest" --agent "/api/now/table/sys_app?sysparm_fields=name,scope,sys_id&sysparm_limit=20"    # compact {ok,count,hasMore,nextOffset,records}
  *   node "$SnRest" --alias dev --instance https://devXXXXXX.service-now.com --method POST --body '{"short_description":"hi"}' /api/now/table/incident
  *   node "$SnRest" --alias dev --instance https://devXXXXXX.service-now.com --method POST --body-file payload.json /api/now/table/incident
  *
@@ -35,7 +37,7 @@ function npmCmd() {
 // when `--alias` appeared as another flag's value.
 const argv = process.argv.slice(2);
 const VALUE_FLAGS = new Set(['--alias', '--method', '--body', '--body-file', '--instance']);
-const BOOL_FLAGS = new Set(['--raw', '--dump']);
+const BOOL_FLAGS = new Set(['--raw', '--dump', '--pretty', '--agent']);
 
 let alias = '';
 let aliasExplicit = false;
@@ -45,6 +47,8 @@ let bodyFile;
 let instance;
 let raw = false;
 let dump = false;
+let pretty = false;
+let agentOutput = false;
 let restPath;
 
 for (let i = 0; i < argv.length; i++) {
@@ -60,8 +64,10 @@ for (let i = 0; i < argv.length; i++) {
     }
     i++; // consume value
   } else if (BOOL_FLAGS.has(a)) {
-    if (a === '--raw')  raw = true;
-    if (a === '--dump') dump = true;
+    if (a === '--raw')    raw = true;
+    if (a === '--dump')   dump = true;
+    if (a === '--pretty') pretty = true;
+    if (a === '--agent')  agentOutput = true;
   } else if (a.startsWith('--')) {
     // Unknown flag — ignore for forward-compat (matches old lenient behavior).
   } else if (restPath === undefined) {
@@ -87,6 +93,11 @@ if (bodyFile) {
 }
 
 // ---- load @napi-rs/keyring (skill-local, project cwd, then global) ----
+function tryLoadEntry(tries) {
+  for (const t of tries) { try { return require(t).Entry; } catch {} }
+  return undefined;
+}
+
 function loadEntry() {
   // bare require resolves relative to THIS script's directory (skill folder), not the cwd
   const tries = ['@napi-rs/keyring'];
@@ -106,16 +117,22 @@ function loadEntry() {
       path.join(root, '@servicenow', 'sdk-cli', 'node_modules', '@napi-rs', 'keyring'),
     );
   }
+
+  const found = tryLoadEntry(tries);
+  if (found) return found;
+
   try {
-    // shell:true required to spawn .cmd on Node >= 20.12 (CVE-2024-27980 hardening)
-    const root = cp.execFileSync(npmCmd(), ['root', '-g'], { encoding: 'utf8', shell: true }).trim();
-    tries.push(
+    // Last-resort discovery only. Avoid this on the happy path because Node 25
+    // warns for .cmd + shell args and the extra subprocess adds latency/noise.
+    const root = cp.execFileSync(npmCmd(), ['root', '-g'], { encoding: 'utf8', shell: process.platform === 'win32' }).trim();
+    const fallbackTries = [
       path.join(root, '@napi-rs', 'keyring'),
       path.join(root, '@servicenow', 'sdk', 'node_modules', '@napi-rs', 'keyring'),
       path.join(root, '@servicenow', 'sdk-cli', 'node_modules', '@napi-rs', 'keyring'),
-    );
+    ];
+    const fallback = tryLoadEntry(fallbackTries);
+    if (fallback) return fallback;
   } catch {}
-  for (const t of tries) { try { return require(t).Entry; } catch {} }
   throw new Error('Cannot load @napi-rs/keyring. Run from your now-sdk project dir (has node_modules), or where now-sdk is installed globally, or install it next to this skill: npm.cmd install @napi-rs/keyring (in the sn-rest skill folder).');
 }
 
@@ -182,8 +199,21 @@ function fields(c) {
   };
 }
 
+function requestUrl(inst) {
+  const base = inst.replace(/\/$/, '') + '/';
+  const url = new URL(restPath, base);
+
+  // Match now-sdk query's context-friendly default for Table API reads.
+  // Callers can still override explicitly with sysparm_exclude_reference_link=false.
+  if (method === 'GET' && url.pathname.startsWith('/api/now/table/') && !url.searchParams.has('sysparm_exclude_reference_link')) {
+    url.searchParams.set('sysparm_exclude_reference_link', 'true');
+  }
+
+  return url.toString();
+}
+
 async function rest(inst, token) {
-  const url = inst.replace(/\/$/, '') + restPath;
+  const url = requestUrl(inst);
   const headers = { Authorization: 'Bearer ' + token, Accept: 'application/json' };
   const init = { method, headers };
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = body; }
@@ -209,6 +239,41 @@ function persistRefresh(store, key, tok) {
   if (tok.expires_in)    bag.expires_at = Math.floor(Date.now() / 1000) + Number(tok.expires_in);
   try { writeStore(store); }
   catch (e) { console.error('[sn-rest] warn: refreshed token but failed to persist to keychain:', e.message || e); }
+}
+
+function parseNextOffset(linkHeader) {
+  if (!linkHeader) return null;
+  const nextMatch = linkHeader.match(/<[^>]*sysparm_offset=(\d+)[^>]*>;\s*rel="next"/);
+  if (!nextMatch) return null;
+  const offset = parseInt(nextMatch[1], 10);
+  return Number.isNaN(offset) ? null : offset;
+}
+
+function agentEnvelope(parsed, response) {
+  let nextOffset = parseNextOffset(response.headers.get('Link'));
+  if (parsed && Array.isArray(parsed.result)) {
+    // Some instances suppress the Link header when sysparm_no_count=true.
+    // In that case, infer a safe next offset when the page is full. The next
+    // request may return zero rows if the result size equals the page size, but
+    // this is better for agents than incorrectly reporting hasMore=false.
+    try {
+      const url = new URL(response.url);
+      const noCount = url.searchParams.get('sysparm_no_count') === 'true';
+      const limit = Number(url.searchParams.get('sysparm_limit') || 0);
+      const offset = Number(url.searchParams.get('sysparm_offset') || 0);
+      if (nextOffset === null && noCount && limit > 0 && parsed.result.length >= limit) {
+        nextOffset = offset + limit;
+      }
+    } catch {}
+    return {
+      ok: true,
+      count: parsed.result.length,
+      hasMore: nextOffset !== null,
+      nextOffset,
+      records: parsed.result,
+    };
+  }
+  return { ok: true, result: parsed };
 }
 
 (async () => {
@@ -262,6 +327,21 @@ function persistRefresh(store, key, tok) {
     res = await rest(instance, bearer);
   }
   const text = await res.text();
-  if (!res.ok) { console.error('HTTP ' + res.status); console.error(text); process.exit(1); }
-  try { console.log(JSON.stringify(JSON.parse(text), null, 2)); } catch { console.log(text); }
+  if (!res.ok) {
+    if (agentOutput) {
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = text; }
+      const error = { ok: false, error: { status: res.status, statusText: res.statusText, body: parsed } };
+      console.log(pretty ? JSON.stringify(error, null, 2) : JSON.stringify(error));
+    } else {
+      console.error('HTTP ' + res.status);
+      console.error(text);
+    }
+    process.exit(1);
+  }
+  try {
+    const parsed = JSON.parse(text);
+    const output = agentOutput ? agentEnvelope(parsed, res) : parsed;
+    console.log(pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output));
+  } catch { console.log(text); }
 })().catch(e => { console.error(e.message || e); process.exit(1); });

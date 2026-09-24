@@ -1,65 +1,71 @@
 ---
 applyTo: "**/*.now.ts"
-description: Fluent .now.ts hard syntax rules (custom AST parser, not full TypeScript)
+description: Fluent .now.ts syntax rules, including documented callback-based SDK DSL exceptions
 ---
-# Fluent .now.ts — hard rules
+# Fluent .now.ts — hard rules and SDK DSL exceptions
 
-`.now.ts` files are parsed by a custom Fluent AST parser, NOT full TypeScript. Violations fail the build (~10s) + waste a ~15s install. Enforce every rule below for hand-authored Fluent and generated non-automation records.
+`.now.ts` files are parsed by the Fluent compiler, not as unrestricted TypeScript. Apply the ordinary-record rules below to declarative record expressions and record script fields. Do not mechanically apply them to callback/helper positions that the exact SDK API documents as part of a Fluent DSL.
 
-Exception: transformed/generated automation files under `src/fluent/generated/automation/flow/` that contain `Flow(...)`, `Subflow(...)`, or `Action(...)` use the SDK automation DSL. Do not apply the hard cleanup rules in this file to those files; classify them with the **Flow and Action Guardrail** (canonical in the ServiceNow Fluent agent and the now-sdk baseline instructions; applied operationally by the **sn-transform** and **sn-build-install** skills). The "NEVER" rules below are absolute within the scoped records above.
+BEFORE authoring or editing a record type, run `now-sdk explain <recordtype>-api --format raw` using the host routing below. Run the matching `-guide` for net-new records or complex composition. Treat the installed SDK 4.11+ explain output as authoritative; use `.d.ts` files only as a supplement.
 
-BEFORE authoring or editing a record type: run `node "$NowSdk" explain <recordtype>-api --format raw` (define `$NowSdk` once per shell line — see the resolver block below). Skim `node_modules/@servicenow/sdk-core/dist/<area>/<Type>.d.ts` only as a supplement when the explain output is sparse. Run the matching `-guide` only for net-new records or complex composition.
+## Documented SDK DSL exceptions — classify first
 
-## SDK command resolver — define once per line
+A callback is not automatically a record script. Preserve callbacks and constructor/helper assignments when the exact API or guide requires them:
 
-```powershell
-$NowSdk = if (Test-Path 'node_modules\@servicenow\sdk\bin\index.js') { 'node_modules\@servicenow\sdk\bin\index.js' } else { Join-Path $env:APPDATA 'npm\node_modules\@servicenow\sdk\bin\index.js' }; node "$NowSdk" <cmd>
-```
+- ATF `Test({...}, (atf) => { ... })` test-step callbacks.
+- Hand-authored `Flow(...)`, `Subflow(...)`, and `Action(...)` automation callbacks.
+- `PlaybookDefinition(...)`, `wfa.playbook.*`, permissions, trigger-mapper, lanes, and activities callbacks.
+- Other SDK DSL positions explicitly shown by the installed `explain` API/guide.
 
-## The 12 rules
+These callbacks and SDK constructor/helper calls stay in `.now.ts`; do not move them to `Now.include` merely because they are functions or call expressions. Use only syntax and helpers shown by the exact API/guide—this exception is not permission to add arbitrary runtime JavaScript.
 
-1. **NEVER** put an inline function body in a record script. **MUST** externalize via `Now.include`.
-   - NO: `script: function () { current.update(); }`
-   - YES: `script: Now.include('../../scripts/before_insert.js')` from `src/fluent/<folder>/foo.now.ts`; include paths are relative to the `.now.ts` file. Depth-3 hand-authored category records (e.g. `src/fluent/server-development/business-rule/foo.now.ts`) need `../../../scripts/<file>.js`. Generated transform records may live under `src/fluent/generated/**` and can use adjacent `./...` include paths; preserve those unless you move the script file.
+`GraphQLApi(...)` has a different rule: resolver and type-resolver `script` values must be named functions imported from a server module (preferred) or `Now.include(...)`. Inline function expressions are a build error. `TestSuite(...)` and `GraphQLApi(...)` are function calls, never `new TestSuite(...)` or `new GraphQLApi(...)`.
 
-2. **NEVER** use `||`, `&&`, `?:`, or object spread (`...`) ANYWHERE in a `.now.ts` file — the ban is FILE-WIDE (TS57 `BarBarToken` / TS227 `ConditionalExpression` / TS305 `SpreadAssignment`), including `const` initializers: `const active = flagA || flagB` fails with the SAME error as the inline form. Resolve the value before it reaches the file — hardcode the resolved literal, or move the decision into an external script via `Now.include`.
-   - NO: `active: flagA || flagB`
-   - NO: `const active = flagA || flagB;` then `active: active` — fails identically (file-wide ban)
-   - YES: `active: true` — resolve the condition at authoring time
+Transformed/generated `Flow(...)`, `Subflow(...)`, and `Action(...)` under `src/fluent/generated/automation/flow/` are governed by the **Flow and Action Guardrail** in the ServiceNow Fluent agent and now-sdk baseline. Do not edit-build-install those generated records as though they were hand-authored DSL.
 
-3. **NEVER** concatenate strings with `+` anywhere in a `.now.ts` file — including `const` initializers (`const tableName = prefix + '_table'` fails TS226 `Unsupported variable initializer`). **MUST** use a template literal — the ONLY in-file string composition that compiles.
-   - NO: `name: prefix + '_table'` and `const tableName = prefix + '_table';`
-   - YES: `const tableName = \`${prefix}_table\`;` then `name: tableName`
+## SDK commands
 
-4. **NEVER** use `if` / `for` / `while` / `switch` anywhere in a `.now.ts` file. Control flow lives in external `.js`/`.ts` referenced via `Now.include`.
+Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.
 
-5. **NEVER** use `var`. **MUST** use `const`.
+## The 12 ordinary-record rules
 
-6. **NEVER** use `new SomeClass()` anywhere in a `.now.ts` file. Use a supported Fluent helper/type shape instead, or move executable runtime logic to `src/scripts/**` / `src/ui/**` and reference it with `Now.include`.
+1. **NEVER** put an inline function body in an ordinary record `script` property. Externalize executable record logic with the API-supported form.
+   - Most record scripts: `script: Now.include('../../scripts/before_insert.js')` from `src/fluent/<folder>/foo.now.ts`.
+   - GraphQL resolver scripts: import a named function from `src/server` (preferred), or use `Now.include`.
+   - Documented ATF/automation/Playbook DSL callbacks are construction syntax and are exempt as described above.
+
+2. For ordinary declarative records, **NEVER** use `||`, `&&`, `?:`, or object spread (`...`) anywhere in the file. The parser reports errors such as TS57 `BarBarToken`, TS227 `ConditionalExpression`, or TS305 `SpreadAssignment`, including when the expression is moved to a scalar `const`. Resolve it to a literal at authoring time or move runtime logic into an external script. In a documented SDK DSL file, use an operator only where the exact API/guide shows that syntax is supported.
+
+3. For ordinary declarative records, **NEVER** concatenate strings with `+`, including in scalar `const` initializers. Use a template literal.
+   - NO: `const tableName = prefix + '_table'`
+   - YES: `` const tableName = `${prefix}_table`; ``
+
+4. **NEVER** add arbitrary `if` / `for` / `while` / `switch` runtime logic to an ordinary record file. Put runtime logic in an external module. Documented ATF/automation/Playbook callback bodies use only their supported DSL grammar.
+
+5. **NEVER** use `var`. Use `const` (or a documented SDK example's exact binding form).
+
+6. **NEVER** use `new SomeClass()` in `.now.ts` unless the installed SDK API explicitly requires it. Current `TestSuite(...)`, `GraphQLApi(...)`, records, and automation helpers are direct function calls.
 
 7. Boolean and numeric fields **MUST** be primitives, never quoted (TS2322).
    - NO: `active: 'true'`, `max_length: '100'`
    - YES: `active: true`, `max_length: 100`
 
-8. Choice configs **MUST** use `{ label: '...' }`, never `{ text: '...' }` (ChoiceColumn + variable choices).
-   - NO: `{ value: 'open', text: 'Open' }`
-   - YES: `{ value: 'open', label: 'Open' }`
+8. Choice configs **MUST** use `{ label: '...' }`, never `{ text: '...' }` (ChoiceColumn and variable choices).
 
-9. `Table({...})` **MUST** have a named export matching the table name (TS2305 / TS2459 otherwise).
+9. `Table({...})` **MUST** have a named export matching the table name.
    - YES: `const x_acme_foo = Table({ ... }); export { x_acme_foo };`
 
-10. `SPPage` **MUST** use `pageId`, never `$id` ($id is for containers/rows/columns inside the page).
-    - NO: `SPPage({ $id: 'my_page', ... })`
-    - YES: `SPPage({ pageId: 'my_page', ... })`
+10. `SPPage` **MUST** use `pageId`, never `$id`; `$id` is for containers, rows, and columns inside the page.
 
-11. **NEVER** declare a `const` you do not reference — unused variables fail the build (TS6133).
+11. **NEVER** leave an unused binding. Unused variables fail the build (TS6133). SDK constructor/DSL assignments are valid when they are exported, returned, referenced, or otherwise consumed as the API requires.
 
-12. Most non-Table records (`BusinessRule`, `ClientScript`, `Acl`, `CatalogItem`, `Record`, …) **REQUIRE** `$id: Now.ID['<stable_key>']` — the record's stable identity key (see `explain keys-file`). Missing `$id` fails the build (TS2345 / "Failed to determine ID"). `Table` uses the named export instead (rule 9); `SPPage` uses `pageId` (rule 10).
-    - YES: `BusinessRule({ $id: Now.ID['br_set_priority'], name: 'set_priority', table: 'incident', ... })`
+12. Most non-Table records (`BusinessRule`, `ClientScript`, `Acl`, `CatalogItem`, `Record`, `TestSuite`, `GraphQLApi`, …) require `$id: Now.ID['<stable_key>']`. `Table` uses the named export; `SPPage` uses `pageId`. Confirm exceptions with `explain keys-file` and the record API.
 
 ## Per-record recipe
 
-1. Run `node "$NowSdk" explain <recordtype>-api --format raw`; add the matching `-guide` only for net-new records or complex composition. Skim the `.d.ts` only as supplemental detail.
-2. Externalize all hand-authored scripts via `Now.include('<relative path to src/scripts>/<file>.js')`. Include paths are relative to the `.now.ts` file. Path depth by layout: directly under `src/fluent/` = `../scripts/<file>.js`; under `src/fluent/<folder>/` = `../../scripts/<file>.js`; under `src/fluent/<area>/<kind>/` (depth-3 hand-authored category layout) = `../../../scripts/<file>.js`. For transform-generated files under `src/fluent/generated/**`, preserve adjacent `./...` include paths unless you intentionally move the script.
-3. `const`s above the record literal may hold ONLY plain literals or template literals — any operator (`||`, `&&`, `?:`, `+`), spread, or call expression in a `const` initializer fails the build file-wide. Compose strings with template literals; resolve conditions to literals at authoring time; put real logic in external scripts via `Now.include`.
-4. `node "$NowSdk" build` to verify the change compiles. To install/verify on the instance, run the **sn-build-install** skill — it owns the pre-install flow/action scan and the content-marker verification.
+1. Run `now-sdk explain <recordtype>-api --format raw`; add the matching guide for net-new or complex composition.
+2. Classify the file as an ordinary declarative record, a documented SDK callback DSL, GraphQL, or transformed/Fluent-locked automation.
+3. For ordinary record script properties, externalize executable logic. Include paths are relative to the `.now.ts` file: directly under `src/fluent/` = `../scripts/<file>.js`; under `src/fluent/<folder>/` = `../../scripts/<file>.js`; under `src/fluent/<area>/<kind>/` = `../../../scripts/<file>.js`. Preserve adjacent transform-generated paths unless intentionally moving the file. For GraphQL, prefer a named import from `src/server`.
+4. Scalar helper `const`s used as ordinary property values may hold plain literals or template literals. This restriction does not prohibit API-documented assignments such as `const table = Table(...)`, `const test = Test(...)`, `const gate = Acl(...)`, or Playbook lane/activity helpers.
+5. Run `now-sdk build`. Use normal v4 additive choice handling by default; `--legacyChoices` restores v3 destructive choice-set behavior and requires explicit confirmation.
+6. To install and verify, run **sn-build-install**; it owns the pre-install automation scan and content-marker verification.
