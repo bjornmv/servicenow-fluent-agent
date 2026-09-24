@@ -1,6 +1,6 @@
 {
   "name": "servicenow-fluent-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Team distribution package for the ServiceNow Fluent VS Code agent, instructions, and skills.",
   "type": "commonjs",
@@ -10,7 +10,8 @@
   "scripts": {
     "install-agent": "node bin/sn-fluent-agent.cjs install",
     "verify-agent": "node bin/sn-fluent-agent.cjs verify",
-    "refresh-payload": "node tools/refresh-payload.cjs"
+    "refresh-payload": "node tools/refresh-payload.cjs",
+    "test:update-advisor": "node --test tools/test/update-advisor.test.cjs"
   },
   "engines": {
     "node": ">=18"

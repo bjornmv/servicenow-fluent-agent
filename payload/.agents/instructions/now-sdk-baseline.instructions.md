@@ -10,6 +10,16 @@ Fallback rules for non-agent chats that touch now-sdk project files. The **Servi
 
 Tone: terse, imperative, high signal. Print commands before running. Make one coherent change per turn.
 
+## Quiet Update Advisory
+
+On the first eligible substantive task in a session, use **sn-update-advisor** once. Skip it for a direct, time-sensitive command request. Run the installed advisor with the active project root when known:
+
+```powershell
+$Advisor = Join-Path $env:USERPROFILE '.agents\tools\sn-update-advisor.cjs'; node "$Advisor" check --project "<project-root>"
+```
+
+Do not pass `--docs` unless the task already uses ServiceNowDocs. The command makes no network request until its local 48-hour gate is due. Empty output means no action: do not mention updates, timing, errors, or state. When it emits an update JSON payload, ask exactly one question with only **Update**, **Remind me in 7 days**, and **Skip this release**. Record the selected result with `node "$Advisor" decision <update|remind|skip> --component "<returned-component>"`. Treat **Update** as approval only for the exact component versions/revisions displayed, then follow the component workflow in **sn-update-advisor**. Do not run the advisor again in that session.
+
 ## SDK and REST Commands
 
 Use the canonical [SDK command policy](../reference/sdk-commands.md); do not duplicate resolver scripts in skills.

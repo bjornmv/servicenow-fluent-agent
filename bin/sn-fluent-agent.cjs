@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
 
 const PACKAGE_NAME = 'servicenow-fluent-agent';
 const RECEIPT_NAME = '.servicenow-fluent-agent-install.json';
@@ -21,6 +22,21 @@ const flags = new Set(argv.filter((arg) => arg.startsWith('--')));
 const dryRun = flags.has('--dry-run');
 const force = flags.has('--force');
 const noVscodeSettings = flags.has('--no-vscode-settings');
+
+function flagValues(flag) {
+  const values = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== flag) continue;
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
+    values.push(value);
+  }
+  return values;
+}
+
+function flagValue(flag) {
+  return flagValues(flag)[0];
+}
 
 function fail(message) {
   console.error(`ERROR: ${message}`);
@@ -565,6 +581,27 @@ function status() {
   if (receipt.installedAt) console.log(`installed at: ${receipt.installedAt}`);
 }
 
+async function checkForUpdates() {
+  const updates = await checkUpdates({
+    repoRoot,
+    projectPath: flagValue('--project'),
+    docsPath: flagValue('--docs'),
+    docsBranch: flagValue('--docs-branch'),
+    force,
+  });
+  if (updates.length) console.log(JSON.stringify({ updates }));
+}
+
+function recordUpdateDecision() {
+  const positionals = argv.filter((arg) => !arg.startsWith('--'));
+  const decision = positionals[1];
+  const componentKeys = flagValues('--component');
+  if (!decision) throw new Error('Specify update, remind, or skip after update-decision.');
+  if (!componentKeys.length) throw new Error('Specify at least one --component returned by check-updates.');
+  const updated = recordDecision({ decision, componentKeys });
+  console.log(`Recorded ${decision} for ${updated} update component(s).`);
+}
+
 function printInstallSummary(summary, receiptCount) {
   console.log('ServiceNow Fluent Agent install');
   console.log(`version: ${summary.version}`);
@@ -604,12 +641,16 @@ function help() {
   node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
+  node bin/sn-fluent-agent.cjs check-updates [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
+  node bin/sn-fluent-agent.cjs update-decision <update|remind|skip> --component <key> [...]
   node bin/sn-fluent-agent.cjs uninstall [--dry-run] [--force]
 
 Commands:
   install    Copy payload files into this user's profile and configure VS Code settings.
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
+  check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.
+  update-decision  Record Update, Remind me in 7 days, or Skip this release for selected update components.
   uninstall  Remove managed files that are unchanged from the install receipt.
 
 Options:
@@ -619,13 +660,15 @@ Options:
 `);
 }
 
-try {
+async function main() {
   if (command === 'install' || command === 'update') install();
   else if (command === 'verify') verify();
   else if (command === 'status') status();
+  else if (command === 'check-updates') await checkForUpdates();
+  else if (command === 'update-decision') recordUpdateDecision();
   else if (command === 'uninstall') uninstall();
   else if (command === 'help' || command === '--help' || command === '-h') help();
   else fail(`Unknown command: ${command}`);
-} catch (error) {
-  fail(error && error.stack ? error.stack : String(error));
 }
+
+main().catch((error) => fail(error && error.stack ? error.stack : String(error)));

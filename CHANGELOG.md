@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Add a quiet, state-backed update advisor for the agent, active project's now-sdk dependency, and contextually requested ServiceNowDocs checkout.
+- Add seven-day reminders and release-specific skips, with no update output until a real action is available.
+- Add a VS Code task and documented three-choice update workflow.
+
 ## 0.2.0
 
 - Refresh the packaged ServiceNow Fluent agent, instructions, references, tools, and skills from the current maintained setup.

@@ -32,6 +32,22 @@
       }
     },
     {
+      "label": "Check ServiceNow Fluent Agent Updates",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/bin/sn-fluent-agent.cjs",
+        "check-updates",
+        "--force"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    },
+    {
       "label": "Dry Run ServiceNow Fluent Agent Install",
       "type": "process",
       "command": "node",

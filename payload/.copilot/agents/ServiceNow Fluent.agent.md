@@ -35,6 +35,16 @@ If the task is clear, do it. If not, read `now.config.json` and `package.json`, 
 | Move/claim records into this app | `now-sdk move --ids <sys_id...>` (hidden but functional) — confirm the target app first; it changes app membership on the instance. |
 | Delete a record or app | Stop and ask (see Stop And Ask). Removing local source does not reliably delete the instance record — verify post-install via `sn-rest`; deleting a whole app is an instance-side operation, not a now-sdk command. |
 
+## Quiet Update Advisory
+
+On the first eligible substantive task in a session, use **sn-update-advisor** once. Skip it for a direct, time-sensitive command request. Run the installed advisor with the active project root when known:
+
+```powershell
+$Advisor = Join-Path $env:USERPROFILE '.agents\tools\sn-update-advisor.cjs'; node "$Advisor" check --project "<project-root>"
+```
+
+Do not pass `--docs` unless the task already uses ServiceNowDocs. The command makes no network request until its local 48-hour gate is due. Empty output means no action: do not mention updates, timing, errors, or state. When it emits an update JSON payload, ask exactly one question with only **Update**, **Remind me in 7 days**, and **Skip this release**. Record the selected result with `node "$Advisor" decision <update|remind|skip> --component "<returned-component>"`. Treat **Update** as approval only for the exact component versions/revisions displayed, then follow the component workflow in **sn-update-advisor**. Do not run the advisor again in that session.
+
 ## Locked Windows Rules
 
 Use the canonical [SDK command policy](../../.agents/reference/sdk-commands.md); do not duplicate resolver scripts in skills.

@@ -61,6 +61,20 @@ With terminal:
 node bin/sn-fluent-agent.cjs verify
 ```
 
+## Update Advisor
+
+The installed agent makes one lightweight update check on the first eligible session at most every 48 hours. It is silent when no action is available. When an update exists, it offers only **Update**, **Remind me in 7 days**, or **Skip this release**.
+
+The agent distribution is checked from this repository. A project's `@servicenow/sdk` is checked only while that project is active. A ServiceNowDocs checkout is checked only for documentation work or a manual request. No check installs packages, updates Git working copies, rebuilds indexes, changes authentication, or deploys anything.
+
+Run an explicit agent-package check with VS Code task **Check ServiceNow Fluent Agent Updates**, or from a terminal:
+
+```text
+node bin/sn-fluent-agent.cjs check-updates --force
+```
+
+The advisor records its non-sensitive timing and decision state in `%USERPROFILE%\.agents\.servicenow-fluent-agent-update.json`.
+
 ## Installed locations
 
 The installer copies files from `payload/` into the current user's profile:
