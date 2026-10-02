@@ -1,9 +1,13 @@
+---
+permalink: /setup/
+---
+
 # Agent-Assisted Installation
 
 Give a new agent this short prompt:
 
 ```text
-Read https://github.com/bjornmv/servicenow-fluent-agent/raw/main/setup.md and perform the full ServiceNow Fluent agent setup.
+Read https://bjornmv.github.io/servicenow-fluent-agent/setup and perform the full ServiceNow Fluent agent setup.
 ```
 
 If the agent cannot access the URL, clone the repository first and ask it to read this file from the local checkout.
