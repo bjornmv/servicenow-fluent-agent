@@ -122,9 +122,11 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs']) {
+  for (const entry of ['git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));
+  assert.match(workflow, /run: node --test tools\/test\/setup-pages\.test\.cjs tools\/test\/mingit-ssh-probe\.test\.cjs/);
+  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/mingit-ssh-probe\.test\.cjs/);
   assert.match(workflow, /source: \.\/_pages/);
 });

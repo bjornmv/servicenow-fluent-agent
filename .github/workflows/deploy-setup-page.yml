@@ -9,6 +9,7 @@ on:
       - payload/.agents/skills/win-git-bootstrap/**
       - tools/stage-setup-pages.cjs
       - tools/test/setup-pages.test.cjs
+      - tools/test/mingit-ssh-probe.test.cjs
       - .github/workflows/deploy-setup-page.yml
   workflow_dispatch:
 
@@ -31,7 +32,7 @@ jobs:
         with:
           node-version: '22'
       - name: Validate setup documents and worker checksum
-        run: node --test tools/test/setup-pages.test.cjs
+        run: node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs
       - name: Stage setup pages and bootstrap download
         run: node tools/stage-setup-pages.cjs
       - uses: actions/jekyll-build-pages@v1

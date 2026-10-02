@@ -29,7 +29,7 @@ Run this **download-and-verify block only**, in non-elevated Windows PowerShell:
 ```powershell
 $ErrorActionPreference = 'Stop'
 $BootstrapUrl = 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Ensure-MinGit254.ps1'
-$ExpectedBootstrapSha256 = '84C1A342818F4BC57ACFA9DCE6A6147F371C92EB219B9C0E2D368BB1AC48213F'
+$ExpectedBootstrapSha256 = 'E2A24CA68E668638C46A43DCABFD90E12B30289B2B480F2EB1E15B15E78AC89C'
 $RunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $BootstrapDirectory = Join-Path $env:LOCALAPPDATA "Git254Bootstrap\bootstrap\$RunId"
 New-Item -ItemType Directory -Path $BootstrapDirectory -Force -ErrorAction Stop | Out-Null
@@ -58,6 +58,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 ```
 
+Use the command as shown; do not add a `2>&1` capturing wrapper around child PowerShell with `$ErrorActionPreference = 'Stop'`. Windows PowerShell 5.1 can misinterpret native stderr as a terminating error before `$LASTEXITCODE` is checked. The worker captures the normal Windows OpenSSH version banner in per-run `ssh-*.stdout.log` / `ssh-*.stderr.log` files and checks the probe's exit code. Do not interpret the banner alone as an SSH failure, or suppress actual launch/exit-code failures.
+
 In an agent harness, use the approved direct-process tool with an absolute executable and argument array. Environment variables in tool arguments must be resolved to real paths; do not use a CMD/batch launcher. Do not start a detached job and assume success.
 
 The worker installs only the pinned MinGit **2.54.0.windows.1** ZIP, with Unix `find.exe` and `sort.exe` omitted **before extraction**. It keeps Windows OpenSSH, Schannel/certificate verification and deployment-path security checks. Never pass `-ReplaceFullGit` during setup; staging-only modes are not installation success.
@@ -85,4 +87,4 @@ Only then return to **step 2 of `setup.md`**. Report the version, verified path,
 
 The reduced MinGit staging copy passed native init/add/commit/branch/merge/local push/clone/fetch/status and public HTTPS tests. The excluded Unix utilities were never written, and no new Defender ASR or executable/code-integrity blocks were found in that test window. PowerShell constrained-language script-policy records can still occur.
 
-Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. Final fresh-install promotion/PATH registration was not tested by removing the working Git again. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.
+Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. A fresh-install attempt stopped before deployment because the PowerShell caller misinterpreted the SSH version banner on stderr. The corrected probe passed isolated Windows PowerShell 5.1 regression tests; successful final fresh-install promotion/PATH registration still awaits a user retest. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.

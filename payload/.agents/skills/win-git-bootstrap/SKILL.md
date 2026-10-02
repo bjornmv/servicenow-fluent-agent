@@ -33,6 +33,8 @@ powershell.exe -NoLogo -NoProfile -NonInteractive -File "$env:USERPROFILE\.agent
 
 In Pi, use `win_process` with the absolute Windows PowerShell executable, the arguments above as an array, and a suitable timeout (up to 900000 ms). Resolve environment-variable paths before putting them into tool arguments; `win_process` does not expand shell expressions. This runs synchronously without an installer UI. Do not pass `-ExecutionPolicy Bypass`, use CMD/batch launchers, or start a background job and assume it succeeded.
 
+Use the invocation shown above rather than adding a `2>&1` capture around child PowerShell with `$ErrorActionPreference = 'Stop'`: Windows PowerShell 5.1 can treat native stderr as a terminating `NativeCommandError` before the caller reads `$LASTEXITCODE`. The worker redirects the expected `ssh -V` banner to per-run `ssh-*.stdout.log` / `ssh-*.stderr.log` files, checks the exit code, and records success in the main log. A banner on stderr alone is not an SSH failure. Launch errors and missing/nonzero exit codes still stop deployment; do not suppress real failures or change security policy.
+
 This skill is also usable directly from the Agent distribution payload before it is copied to the profile. Resolve the adjacent script, keeping `-InstallIfMissing`.
 
 ## Pinned package and extraction requirements

@@ -31,9 +31,17 @@ Tests used isolated temporary repositories, empty user configuration, disabled h
 
 The checked event window through 21:13:06 had no new Defender ASR, executable AppLocker or Code Integrity blocks. PowerShell constrained-language script-policy records remained; no blanket promise of notification-free execution or IT approval follows from this test.
 
+## Fresh-install attempt and SSH regression fix
+
+After the user authorized uninstalling Git for a fresh setup test, the VS Code session at 22:37 on 2026-10-02 stopped before download/extraction. The script hash and absent-only checks passed. Its caller combined `$ErrorActionPreference = 'Stop'` with `2>&1` around child Windows PowerShell 5.1; the inherited, normal `ssh -V` stderr banner became a terminating `NativeCommandError`. A direct Windows OpenSSH version probe returned exit 0. The main bootstrap log ended after the absent-only message, without a worker failure record.
+
+The worker now redirects both SSH streams to unique per-run probe logs, checks for an explicit zero exit code, and writes the version/success to the main log. Launch errors and missing/nonzero exit codes remain fatal; no security checks or policies were relaxed.
+
+`node --test tools/test/mingit-ssh-probe.test.cjs` passed all eight tests on this managed Windows workstation: the legacy inherited-stream failure was reproduced, the canonical fixed probe succeeded through the same strict PS 5.1 wrapper, both output files were checked, and mocked launch/nonzero/missing-exit/missing-process plus missing-executable failures remained fatal. The tests extract only the probe function, never run the bootstrap entry point, and do not install Git or change registry/PATH. Runtime cases are Windows-only and skip on other platforms; static packaging checks still run there. This is probe regression evidence, not a new deployment or policy approval. AppLocker script-policy records may still occur.
+
 ## Still not certified
 
-The selective copy was staged, not promoted over the existing full Git. End-to-end missing-install final promotion/PATH registration and full-Git migration were not tested by uninstalling Git again. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
+The selective copy was staged, not promoted over the existing full Git. The fresh-install attempt above failed before deployment; successful end-to-end missing-install final promotion/PATH registration and full-Git migration remain untested. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
 
 The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot migrate/repair an existing installation. On 2026-10-02 the stable profile copy ran in this mode, detected existing 2.54.0.windows.1, and returned 0 without download/install/configuration changes. A fresh agent instruction check recognized the skill route and absent-only/policy-block rules. The three bundled skill files were hash-matched between source payload and the live profile, and repository diff whitespace checks passed. Do not label these integration/no-op checks as fresh-install tests.
 

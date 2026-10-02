@@ -67,6 +67,28 @@ function Invoke-Git {
     }
     return ($output -join ' ').Trim()
 }
+function Confirm-WindowsOpenSsh {
+    param([string]$Executable, [string]$LogPrefix)
+    if (-not (Test-Path -LiteralPath $Executable -PathType Leaf) -or $Executable -match '\s') {
+        throw 'Expected Windows OpenSSH at a standard, space-free SystemRoot path.'
+    }
+    # ssh -V normally writes its version to stderr, even when it exits 0.
+    # Do not inherit either native stream: an outer PS 5.1 caller using
+    # ErrorActionPreference=Stop and 2>&1 would turn it into NativeCommandError.
+    # Keep both streams as evidence; never relax error or security policy.
+    $stdout = "$LogPrefix.stdout.log"
+    $stderr = "$LogPrefix.stderr.log"
+    try {
+        $process = Start-Process -FilePath $Executable -ArgumentList '-V' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    } catch {
+        throw "Windows OpenSSH failed to start; deployment stopped. Probe logs: $stdout; $stderr. $($_.Exception.Message)"
+    }
+    if ($null -eq $process -or $null -eq $process.ExitCode -or $process.ExitCode -ne 0) {
+        throw "Windows OpenSSH probe failed or returned no exit code; deployment stopped. Exit: $($process.ExitCode). Probe logs: $stdout; $stderr"
+    }
+    $version = (Get-Content -LiteralPath $stderr, $stdout -ErrorAction Stop) -join ' '
+    Write-Log "Windows OpenSSH probe passed (exit 0): $($version.Trim()). Probe logs: $stdout; $stderr"
+}
 function Read-GitVersion {
     param([string]$Executable)
     $text = Invoke-Git $Executable @('--version')
@@ -222,11 +244,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or ($groups -join ' ') -match 'S-1-16-(12288|16384|20480)') {
         throw 'Cannot verify a non-elevated user context. Do not run as Administrator or SYSTEM.'
     }
-    if (-not (Test-Path -LiteralPath $windowsSsh -PathType Leaf) -or $windowsSsh -match '\s') {
-        throw 'Expected Windows OpenSSH at a standard, space-free SystemRoot path.'
-    }
-    $sshCheck = Start-Process -FilePath $windowsSsh -ArgumentList '-V' -NoNewWindow -Wait -PassThru
-    if ($sshCheck.ExitCode -ne 0) { throw 'Windows OpenSSH failed to start; deployment stopped.' }
+    Confirm-WindowsOpenSsh $windowsSsh (Join-Path $LogDirectory "ssh-$runId")
     Confirm-NoBusyGit
 
     $uninstaller = $null
