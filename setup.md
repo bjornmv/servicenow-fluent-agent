@@ -38,32 +38,33 @@ Wait for completion and verify the result before continuing to step 2. Record th
 Install or update the ServiceNow SDK globally:
 
 ```powershell
-npm install -g "@servicenow/sdk@latest"
+$NodeExe = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+$NpmCli = Join-Path (Split-Path -Parent $NodeExe) 'node_modules\npm\bin\npm-cli.js'
+if (-not (Test-Path -LiteralPath $NpmCli)) { throw 'Locate the approved npm JavaScript entry point before continuing.' }
+& $NodeExe $NpmCli install -g "@servicenow/sdk@latest"
+if ($LASTEXITCODE -ne 0) { throw 'SDK installation failed; stop setup.' }
 ```
 
 Stop if this command fails. Do not use `--force` or administrator elevation.
 
-### 3. Configure the VS Code terminal profile
+### 3. Refresh the active setup terminal
 
-Open the VS Code user `settings.json`. Preserve its existing JSONC settings and terminal profiles. Add or update the following profile, then set it as the default Windows profile:
+A fresh terminal can inherit an old PATH from VS Code, Windows Terminal or Explorer. A registry update or **Reload Window** alone is not a guarantee that it can resolve Git. Add the **verified** Git directory to this setup session, without reinstalling Git or replacing the rest of PATH:
 
-```jsonc
-"terminal.integrated.profiles.windows": {
-  "PowerShell with now-sdk": {
-    "path": "${env:windir}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-    "args": [
-      "-NoLogo",
-      "-NoProfile",
-      "-NoExit",
-      "-Command",
-      "function global:now-sdk { $sdk = '.\\node_modules\\@servicenow\\sdk\\bin\\index.js'; if (!(Test-Path $sdk)) { $sdk = Join-Path $env:APPDATA 'npm\\node_modules\\@servicenow\\sdk\\bin\\index.js' }; & node.exe $sdk @args }"
-    ]
-  }
-},
-"terminal.integrated.defaultProfile.windows": "PowerShell with now-sdk"
+```powershell
+$GitDirectory = Split-Path -Parent $GitExe
+if (($env:Path -split ';') -notcontains $GitDirectory) {
+    $env:Path = "$GitDirectory;$env:Path"
+}
+$ResolvedGit = Get-Command git -ErrorAction Stop
+if ($ResolvedGit.CommandType -ne 'Application' -or $ResolvedGit.Source -ine $GitExe) {
+    throw 'Bare git does not resolve to the verified executable; stop and review.'
+}
+git --version
+if ($LASTEXITCODE -ne 0) { throw 'Git command resolution verification failed.' }
 ```
 
-Do not remove unrelated settings or profiles. Ensure `settings.json` remains valid JSONC.
+This is only the active shell refresh. In step 5 the installer automatically configures the **PowerShell with now-sdk** VS Code profile with an explicit Git directory in its `env.Path`, ahead of the inherited PATH. New terminals using that profile therefore do not depend on stale parent processes noticing a registry change. Existing arguments, environment settings, other profiles and JSONC comments are preserved; ambiguous or disabled PATH customizations stop for review. Do not skip this update just because the named profile already exists.
 
 ### 4. Clone ServiceNowDocs
 
@@ -91,21 +92,32 @@ In the same source directory, clone this repository:
 
 If it already exists, verify that its `origin` matches that URL before updating it with `& $GitExe pull --ff-only`.
 
-Open the repository folder in VS Code. Run **Terminal: Run Task** and select **Install/Update ServiceNow Fluent Agent**. If VS Code task execution is unavailable, run this equivalent command from the repository root:
+Open the repository folder in VS Code. From the repository root, pass the verified Git executable explicitly to the installer:
 
 ```powershell
-node bin/sn-fluent-agent.cjs install
+node bin/sn-fluent-agent.cjs install --git-exe "$GitExe"
+if ($LASTEXITCODE -ne 0) { throw 'Agent installation failed; stop setup.' }
 ```
 
-Stop if the installation reports a failure.
+This installs the payload and automatically configures the default Windows terminal profile and its Git PATH. It backs up changed settings and makes surgical JSONC edits rather than rewriting unrelated settings. It does not reinstall Git or modify system/user PATH, PowerShell security policy or unrelated terminal profiles. `--no-vscode-settings` is not a complete setup.
+
+The **Install/Update ServiceNow Fluent Agent** VS Code task remains available; without `--git-exe`, the installer verifies Git from its current PATH or standard locations, and stops if the selected executable is missing, older or blocked.
+
+For terminal configuration only (no payload installation/removal), use `node bin/sn-fluent-agent.cjs configure-terminal --git-exe "$GitExe"`. Both commands support `--dry-run`. Stop on any failure.
 
 ### 6. Reload and verify
 
-Reload VS Code with **Developer: Reload Window**. Then open a new **PowerShell with now-sdk** integrated terminal and run:
+Reload VS Code with **Developer: Reload Window**. Kill the setup terminal, then create a **new** **PowerShell with now-sdk** integrated terminal (not a restored/reconnected terminal). From the agent repository, run:
 
 ```powershell
+Get-Command git
+git --version
 now-sdk --version
 node bin/sn-fluent-agent.cjs verify
 ```
+
+Require `Get-Command git` to identify an **Application** at the same absolute path verified in step 1, and require the bare `git --version` command to succeed with that version. If it fails, stop: an absolute-path Git probe, settings-file inspection, simulated child shell or payload verifier alone is **not** successful new-terminal verification. Report any inability to operate a real new VS Code terminal as an unverified step, not setup complete. Locally modified payload files must also be reported accurately; do not suppress a nonzero verifier result.
+
+The configured profile works without signing out. This does not refresh already-running shells or promise refreshed PATH in unrelated external terminal applications.
 
 Report the Node.js and Git versions, verified Git executable path, whether Git was preserved or installed, Git bootstrap result/log path if used, SDK version, ServiceNowDocs path and branch, agent repository path, installation result, and verification result. Do not claim authentication or instance connectivity; this procedure does not test either.

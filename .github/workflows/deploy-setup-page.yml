@@ -10,6 +10,12 @@ on:
       - tools/stage-setup-pages.cjs
       - tools/test/setup-pages.test.cjs
       - tools/test/mingit-ssh-probe.test.cjs
+      - tools/test/jsonc-settings.test.cjs
+      - tools/test/vscode-terminal.test.cjs
+      - lib/jsonc-settings.cjs
+      - lib/vscode-terminal.cjs
+      - bin/sn-fluent-agent.cjs
+      - package.json
       - .github/workflows/deploy-setup-page.yml
   workflow_dispatch:
 
@@ -32,7 +38,7 @@ jobs:
         with:
           node-version: '22'
       - name: Validate setup documents and worker checksum
-        run: node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs
+        run: node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs tools/test/jsonc-settings.test.cjs tools/test/vscode-terminal.test.cjs
       - name: Stage setup pages and bootstrap download
         run: node tools/stage-setup-pages.cjs
       - uses: actions/jekyll-build-pages@v1

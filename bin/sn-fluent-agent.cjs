@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
+const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
+const { prepareTerminalSettings, writeTerminalSettings } = require('../lib/vscode-terminal.cjs');
 
 const PACKAGE_NAME = 'servicenow-fluent-agent';
 const RECEIPT_NAME = '.servicenow-fluent-agent-install.json';
@@ -211,121 +213,6 @@ function removeObsoleteFiles(payloadRels, backupRoot, summary) {
   }
 }
 
-function stripJsonComments(text) {
-  let output = '';
-  let inString = false;
-  let quote = '';
-  let escaped = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    const next = text[i + 1];
-
-    if (inLineComment) {
-      if (ch === '\n' || ch === '\r') {
-        inLineComment = false;
-        output += ch;
-      }
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (ch === '*' && next === '/') {
-        inBlockComment = false;
-        i += 1;
-      } else if (ch === '\n' || ch === '\r') {
-        output += ch;
-      }
-      continue;
-    }
-
-    if (inString) {
-      output += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        inString = false;
-        quote = '';
-      }
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      quote = ch;
-      output += ch;
-      continue;
-    }
-
-    if (ch === '/' && next === '/') {
-      inLineComment = true;
-      i += 1;
-      continue;
-    }
-
-    if (ch === '/' && next === '*') {
-      inBlockComment = true;
-      i += 1;
-      continue;
-    }
-
-    output += ch;
-  }
-
-  return output;
-}
-
-function removeTrailingCommas(text) {
-  let output = '';
-  let inString = false;
-  let quote = '';
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-
-    if (inString) {
-      output += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        inString = false;
-        quote = '';
-      }
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      quote = ch;
-      output += ch;
-      continue;
-    }
-
-    if (ch === ',') {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j])) j += 1;
-      if (text[j] === '}' || text[j] === ']') continue;
-    }
-
-    output += ch;
-  }
-
-  return output;
-}
-
-function parseJsonc(text) {
-  const stripped = removeTrailingCommas(stripJsonComments(text));
-  if (!stripped.trim()) return {};
-  return JSON.parse(stripped);
-}
-
 function settingsPath() {
   const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
   return path.join(appData, 'Code', 'User', 'settings.json');
@@ -345,11 +232,15 @@ function configureVsCodeSettings(summary) {
   }
 
   const file = settingsPath();
-  const original = readTextIfExists(file) || '{}\n';
+  const original = readTextIfExists(file) ?? '{}\n';
+  // Validate Git and plan terminal PATH before copying/removing managed files.
+  const terminal = process.platform === 'win32' ? prepareTerminalSettings(file, flagValue('--git-exe')) : null;
+  let updated = terminal ? terminal.text : original;
+  if (terminal) summary.vscodeGit = terminal.git;
   let settings;
 
   try {
-    settings = parseJsonc(original);
+    settings = parseJsonc(updated);
   } catch (error) {
     summary.vscodeSettings = `skipped (could not parse ${file}: ${error.message})`;
     summary.vscodeManualSettings = requiredSettingsBlock();
@@ -366,9 +257,10 @@ function configureVsCodeSettings(summary) {
   const instructionsPath = toSlash(path.join(home, '.agents', 'instructions'));
   const skillsPath = toSlash(path.join(home, '.agents', 'skills'));
 
-  let changed = false;
+  let changed = updated !== original;
 
   function setScalar(key, value) {
+    updated = setJsoncValue(updated, [key], value);
     if (settings[key] !== value) {
       settings[key] = value;
       changed = true;
@@ -376,6 +268,7 @@ function configureVsCodeSettings(summary) {
   }
 
   function setMapValue(key, mapKey, value) {
+    updated = setJsoncValue(updated, [key, mapKey], value);
     const object = ensureObjectSetting(settings, key);
     if (object[mapKey] !== value) {
       object[mapKey] = value;
@@ -395,15 +288,9 @@ function configureVsCodeSettings(summary) {
     return;
   }
 
-  const backup = `${file}.${PACKAGE_NAME}.${timestamp()}.bak`;
-  summary.vscodeSettingsBackup = toSlash(backup);
-  summary.vscodeSettings = dryRun ? 'would update' : 'updated';
-
-  if (!dryRun) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    if (fs.existsSync(file)) fs.copyFileSync(file, backup);
-    fs.writeFileSync(file, JSON.stringify(settings, null, 4) + '\n', 'utf8');
-  }
+  const result = writeTerminalSettings({ file, original, text: updated }, { dryRun });
+  summary.vscodeSettings = result.status;
+  if (result.backup) summary.vscodeSettingsBackup = toSlash(result.backup);
 }
 
 function requiredSettingsBlock() {
@@ -447,13 +334,13 @@ function install() {
     backups: [],
   };
 
+  configureVsCodeSettings(summary);
   for (const sourceFile of sourceFiles) {
     const rel = payloadRel(sourceFile);
     copyPayloadFile(sourceFile, targetForRel(rel), backupRoot, rel, summary);
   }
 
   removeObsoleteFiles(payloadRels, backupRoot, summary);
-  configureVsCodeSettings(summary);
 
   const receipt = {
     packageName: PACKAGE_NAME,
@@ -467,6 +354,17 @@ function install() {
   writeReceipt(receipt);
 
   printInstallSummary(summary, Object.keys(receipt.files).length);
+}
+
+function configureTerminal() {
+  if (process.platform !== 'win32') throw new Error('configure-terminal requires Windows.');
+  const plan = prepareTerminalSettings(settingsPath(), flagValue('--git-exe'));
+  const result = writeTerminalSettings(plan, { dryRun });
+  console.log(`VS Code terminal settings: ${result.status}`);
+  console.log(`Verified Git: ${plan.git.executable} (${plan.git.version})`);
+  if (result.backup) console.log(`Settings backup: ${result.backup}`);
+  console.log('Open a NEW PowerShell with now-sdk terminal (do not restore/reuse an existing one).');
+  console.log('Run Get-Command git and git --version there; configuration alone is not terminal verification.');
 }
 
 function verify() {
@@ -499,6 +397,7 @@ function verify() {
   console.log(`ok: ${ok.length}`);
   console.log(`missing: ${missing.length}`);
   console.log(`mismatched: ${mismatched.length}`);
+  console.log('Payload check only: separately verify Get-Command git and git --version in a new configured terminal.');
 
   if (missing.length) {
     console.log('\nMissing:');
@@ -617,6 +516,7 @@ function printInstallSummary(summary, receiptCount) {
   console.log(`receipt files: ${receiptCount}`);
   console.log(`VS Code settings: ${summary.vscodeSettings || 'not checked'}`);
   if (summary.vscodeSettingsBackup) console.log(`VS Code settings backup: ${summary.vscodeSettingsBackup}`);
+  if (summary.vscodeGit) console.log(`Terminal Git PATH configured for: ${summary.vscodeGit.executable} (${summary.vscodeGit.version})`);
 
   if (summary.skippedConflicts.length) {
     console.log('\nSkipped locally modified files. Review or rerun with --force:');
@@ -633,12 +533,14 @@ function printInstallSummary(summary, receiptCount) {
     console.log(JSON.stringify(summary.vscodeManualSettings, null, 4));
   }
 
-  console.log('\nRestart VS Code or reload the VS Code window after install/update.');
+  console.log('\nReload VS Code, then create a NEW PowerShell with now-sdk terminal.');
+  console.log('Run Get-Command git and git --version there before reporting terminal setup complete.');
 }
 
 function help() {
   console.log(`Usage:
-  node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings]
+  node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings] [--git-exe <absolute path>]
+  node bin/sn-fluent-agent.cjs configure-terminal [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
   node bin/sn-fluent-agent.cjs check-updates [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
@@ -647,6 +549,7 @@ function help() {
 
 Commands:
   install    Copy payload files into this user's profile and configure VS Code settings.
+  configure-terminal    Configure only the Windows terminal profile and its verified Git PATH (no payload install).
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
   check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.
@@ -657,11 +560,13 @@ Options:
   --dry-run              Show what would happen without writing files.
   --force                Overwrite/remove locally modified managed files.
   --no-vscode-settings   Do not patch VS Code User/settings.json.
+  --git-exe <path>        Use the Git executable verified during prerequisites; never install Git here.
 `);
 }
 
 async function main() {
   if (command === 'install' || command === 'update') install();
+  else if (command === 'configure-terminal') configureTerminal();
   else if (command === 'verify') verify();
   else if (command === 'status') status();
   else if (command === 'check-updates') await checkForUpdates();

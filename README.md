@@ -10,7 +10,7 @@ Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step li
 
 The Git page provides a directly downloadable, SHA-256-checked worker, so no Git clone is required to bootstrap Git. The Pages workflow publishes both pages and copies the canonical payload script to `/downloads/Ensure-MinGit254.ps1` in the same deployment. These URLs become available after the change is pushed and Pages deployment succeeds.
 
-Maintainers: run `node --test tools/test/setup-pages.test.cjs` before publishing. If the worker changes, review it and update the **worker script** hash in `git-setup.md`; the worker's separate pinned **MinGit ZIP** hash must not be confused with it. Publication fails if the script and page digest disagree. Do not duplicate the worker at the repository root.
+Maintainers: run the `test:setup` command from `package.json` before publishing (Windows runtime tests skip on other platforms). If the worker changes, review it and update the **worker script** hash in `git-setup.md`; the worker's separate pinned **MinGit ZIP** hash must not be confused with it. Publication fails if the script and page digest disagree. Do not duplicate the worker at the repository root.
 
 ## Install with VS Code
 
@@ -41,6 +41,20 @@ node bin/sn-fluent-agent.cjs install
 ```
 
 Then restart VS Code, or reload the VS Code window.
+
+## Automatic terminal Git PATH
+
+On Windows, installation verifies Git >=2.54.0 and configures the default **PowerShell with now-sdk** profile with its directory explicitly prepended to the terminal environment. This works even when the parent VS Code process has an old PATH; registry changes and reloads alone are not treated as proof. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. No Git is installed by this Node command.
+
+Existing profile arguments, other profiles, environment settings and JSONC comments are preserved. Changed settings are backed up. Disabled/ambiguous PATH settings require review, not forced replacement. `--no-vscode-settings` opts out of this terminal setup.
+
+To update only the terminal configuration, without reinstalling/removing agent files:
+
+```text
+node bin/sn-fluent-agent.cjs configure-terminal --git-exe "C:\\path\\to\\git.exe"
+```
+
+Then create a **new PowerShell with now-sdk terminal**, not a restored terminal. Run `Get-Command git` and `git --version`; require the verified path/version before calling setup complete. Already-running shells and unrelated external terminal applications are not refreshed by this profile setting.
 
 ## Update with VS Code
 
@@ -114,7 +128,7 @@ It also attempts to add the required VS Code user settings:
 }
 ```
 
-Before modifying VS Code settings, the installer creates a backup next to `settings.json`.
+Before modifying VS Code settings, the installer creates a backup next to `settings.json`. On Windows it also creates/updates the terminal profile's Git PATH and selects that profile as the default, as described above. Edits are surgical rather than reformatting the entire JSONC document.
 
 ## Useful commands
 

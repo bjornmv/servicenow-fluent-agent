@@ -39,9 +39,17 @@ The worker now redirects both SSH streams to unique per-run probe logs, checks f
 
 `node --test tools/test/mingit-ssh-probe.test.cjs` passed all eight tests on this managed Windows workstation: the legacy inherited-stream failure was reproduced, the canonical fixed probe succeeded through the same strict PS 5.1 wrapper, both output files were checked, and mocked launch/nonzero/missing-exit/missing-process plus missing-executable failures remained fatal. The tests extract only the probe function, never run the bootstrap entry point, and do not install Git or change registry/PATH. Runtime cases are Windows-only and skip on other platforms; static packaging checks still run there. This is probe regression evidence, not a new deployment or policy approval. AppLocker script-policy records may still occur.
 
+## Successful fresh installation and terminal PATH follow-up
+
+The subsequent user-run bootstrap at 23:03 on 2026-10-02 completed fresh-install promotion into `%LOCALAPPDATA%\Programs\Git` and user PATH registration. The retained ZIP was hash-verified; this was not a fresh-download test. The worker logged successful SSH/init/status/security-log checks and `SUCCESS`. Independent reads verified the installed version, Schannel, certificate verification, Windows SSH configuration and absence of both excluded utilities.
+
+However, bare `git` and `git.exe` could not resolve in the user's fresh VS Code terminal. Adding the managed cmd directory to that terminal's process PATH immediately resolved Git at version 2.54.0.windows.1. Registry registration and an absolute-path probe therefore did not establish working terminal command resolution.
+
+Agent installer 0.3.1 now sets the verified Git directory explicitly in the configured VS Code profile's environment, preserving the remainder of PATH and JSONC settings. A regression launches PowerShell with a deliberately stale PATH, confirms bare Git is initially missing, then applies the profile environment and verifies the selected executable and version. This is a simulated fresh-shell test, not an actual VS Code terminal acceptance test. The setup guide now requires that real new-terminal check before claiming completion. Existing terminals and unrelated external terminal applications are outside the profile fix.
+
 ## Still not certified
 
-The selective copy was staged, not promoted over the existing full Git. The fresh-install attempt above failed before deployment; successful end-to-end missing-install final promotion/PATH registration and full-Git migration remain untested. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
+Fresh MinGit promotion and registry PATH registration succeeded as described above. Full-Git migration and actual VS Code new-terminal acceptance of the automatic profile fix remain unverified. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
 
 The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot migrate/repair an existing installation. On 2026-10-02 the stable profile copy ran in this mode, detected existing 2.54.0.windows.1, and returned 0 without download/install/configuration changes. A fresh agent instruction check recognized the skill route and absent-only/policy-block rules. The three bundled skill files were hash-matched between source payload and the live profile, and repository diff whitespace checks passed. Do not label these integration/no-op checks as fresh-install tests.
 

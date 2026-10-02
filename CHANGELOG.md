@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Automatically configure the Windows VS Code terminal profile with the verified Git directory ahead of inherited PATH, including when the parent process has a stale environment.
+- Preserve JSONC comments, unrelated profiles, custom arguments and environment settings; back up edits and stop on ambiguous/disabled PATH customizations.
+- Add `configure-terminal` for settings-only repair and `--git-exe` to retain the prerequisite's verified executable.
+- Require bare Git resolution in a real new configured terminal before reporting setup complete; add stale-PATH regression tests.
+
 ## 0.3.0
 
 - Add a quiet, state-backed update advisor for the agent, active project's now-sdk dependency, and contextually requested ServiceNowDocs checkout.
