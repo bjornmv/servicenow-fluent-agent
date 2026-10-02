@@ -1,20 +1,8 @@
 # ServiceNow Fluent Agent
 
-Team distribution package for the **ServiceNow Fluent** VS Code custom agent, its instruction files, and its ServiceNow skills, including AIUX experience/page/widget workflows.
+Team distribution package for the **ServiceNow Fluent** VS Code custom agent, its instruction files, and its ServiceNow skills.
 
 The package is designed for locked-down Windows machines where Node, npm, Git, and VS Code are available, but PowerShell/cmd scripts may be restricted. The installer is a dependency-free Node program.
-
-## Documentation
-
-- [Technical documentation](docs/servicenow-fluent-agent-technical-documentation.md) — architecture, installed layout, skills, now-sdk workflow, REST/auth handling, and ServiceNowDocs usage.
-- [Agent-assisted setup](setup.md) — a paste-ready prompt for setting up a new Windows machine with a blank coding agent.
-
-## AIUX support
-
-- **`sn-aiux`** — setup/scaffolding and handoff to the official project-local AIUX authoring skills.
-- **`sn-aiux-build`** — build/deploy/runtime checks, Windows asset-path and gallery-prefetch troubleshooting.
-
-See [AIUX skill usage and validation](docs/aiux-skills.md). Official ServiceNow packs remain project dependencies; installing this agent does not install an AIUX runtime or deploy an app.
 
 ## Install with VS Code
 
