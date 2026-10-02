@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - setup.md
+      - git-setup.md
+      - payload/.agents/skills/win-git-bootstrap/**
+      - tools/stage-setup-pages.cjs
+      - tools/test/setup-pages.test.cjs
       - .github/workflows/deploy-setup-page.yml
   workflow_dispatch:
 
@@ -23,10 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Stage setup page
-        run: |
-          mkdir -p _pages
-          cp setup.md _pages/setup.md
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate setup documents and worker checksum
+        run: node --test tools/test/setup-pages.test.cjs
+      - name: Stage setup pages and bootstrap download
+        run: node tools/stage-setup-pages.cjs
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./_pages

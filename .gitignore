@@ -6,3 +6,5 @@ npm-debug.log*
 Thumbs.db
 payload/**/__pycache__/
 payload/**/*.pyc
+_pages/
+_site/

@@ -11,7 +11,8 @@
     "install-agent": "node bin/sn-fluent-agent.cjs install",
     "verify-agent": "node bin/sn-fluent-agent.cjs verify",
     "refresh-payload": "node tools/refresh-payload.cjs",
-    "test:update-advisor": "node --test tools/test/update-advisor.test.cjs"
+    "test:update-advisor": "node --test tools/test/update-advisor.test.cjs",
+    "test:setup": "node --test tools/test/setup-pages.test.cjs"
   },
   "engines": {
     "node": ">=18"
