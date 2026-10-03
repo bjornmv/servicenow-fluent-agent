@@ -33,8 +33,9 @@ function sourceFixture(directory) {
   return source;
 }
 
-test('setup delegates Git-only prerequisite installation before SDK or clone steps', () => {
-  assert.match(setup, /The only missing prerequisite you may install is Git/);
+test('setup scopes approved changes and ensures Git before SDK or clone steps', () => {
+  assert.match(setup, /Node\.js must already be installed/);
+  assert.match(setup, /global SDK package install\/update/);
   assert.match(setup, /If Node\.js is missing or fails, report it and stop/);
   assert.match(setup, /https:\/\/bjornmv\.github\.io\/servicenow-fluent-agent\/git-setup\//);
   assert.match(setup, /-InstallIfMissing/);
@@ -153,5 +154,7 @@ test('Pages rebuilds for docs, canonical worker and staging/test changes', () =>
   assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/vscode-terminal\.test\.cjs/);
   assert.match(workflow, /run: node --test [^\n]*tools\/test\/windows-git-environment\.test\.cjs/);
   assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/windows-git-environment\.test\.cjs/);
+  assert.match(workflow, /run: node --test [^\n]*tools\/test\/setup-sdk-capture\.test\.cjs/);
+  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/setup-sdk-capture\.test\.cjs/);
   assert.match(workflow, /source: \.\/_pages/);
 });

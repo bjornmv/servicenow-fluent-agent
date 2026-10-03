@@ -58,6 +58,14 @@ Known legacy Git profile overrides/startup blocks are removed conservatively, wi
 
 Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 
+## SDK package versus terminal readiness
+
+The full setup guide installs the SDK package through Node's npm JavaScript entry, preserving separate stdout/stderr logs and an explicit exit code. Package installation is verified from metadata; it does not require running a batch shim.
+
+After agent installation configures **PowerShell with now-sdk**, create a **new terminal using that profile**. Require `Get-Command now-sdk` to resolve to a **Function**, then run `now-sdk --version`. Old terminals do not gain the function retroactively. Do not probe `now-sdk.cmd`, reinstall the SDK to repair an old shell, or treat package presence as CLI acceptance. Policy blocks require review, not alternative-launcher retries.
+
+Timeouts and truncated transcripts mean completion is unknown: inspect the existing operation/logs instead of repeating installation. Git remains shell-independent; its PATH update is separate from this SDK-only function.
+
 ## Documentation paths
 
 Windows setup and the documentation lookup CLI share these defaults:

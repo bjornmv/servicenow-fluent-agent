@@ -377,7 +377,8 @@ function configureTerminal() {
   console.log(`VS Code terminal settings: ${result.status}`);
   console.log(`Verified Git: ${plan.git.executable} (${plan.git.version})`);
   if (result.backup) console.log(`Settings backup: ${result.backup}`);
-  console.log('SDK profile configuration only. Git PATH is configured by install/configure-git in the Windows user environment.');
+  console.log('SDK profile configuration only. Create a NEW PowerShell with now-sdk terminal; Get-Command now-sdk must resolve to a Function before running now-sdk --version.');
+  console.log('Git PATH is configured by install/configure-git in the Windows user environment.');
 }
 
 function verify() {
@@ -549,7 +550,9 @@ function printInstallSummary(summary, receiptCount) {
     console.log(JSON.stringify(summary.vscodeManualSettings, null, 4));
   }
 
-  console.log('\nRestart affected terminal applications from a refreshed launcher; reload alone may retain old process environments.');
+  console.log('\nFor SDK acceptance, create a NEW PowerShell with now-sdk terminal after profile configuration.');
+  console.log('Require Get-Command now-sdk to resolve to a Function before running now-sdk --version; do not probe batch shims or reinstall for an old terminal.');
+  console.log('Restart affected terminal applications from a refreshed launcher if Git PATH remains stale; reload alone may retain old process environments.');
   console.log('Run bare git --version in actual fresh terminals before reporting setup complete. No shell-specific Git PATH workaround is installed.');
 }
 

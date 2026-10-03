@@ -42,7 +42,7 @@ if ((Get-FileHash -LiteralPath $BootstrapPath -Algorithm SHA256).Hash -ne $Expec
 
 The value above authenticates the **worker script bytes**, not the MinGit ZIP. The worker separately checks the pinned MinGit ZIP SHA-256 from the skill before extraction. A downloaded HTML error page or altered script must fail this check.
 
-Read the saved script before executing it. If using a local payload/installed-skill copy instead, set `$BootstrapPath` to its absolute path and compare it with the same expected script hash. A mismatch is a stop/review condition, not a reason to skip validation.
+Read the saved script before executing it, using a file-reading tool with bounded ranges rather than dumping it into the terminal. In PowerShell diagnostics, assume ConstrainedLanguage: use cmdlets and plain strings, not `[pscustomobject]` construction or non-core static methods. Do not repeatedly pass the whole script to `Select-String -InputObject`; each match can echo the whole file and bury the result. If using a local payload/installed-skill copy instead, set `$BootstrapPath` to its absolute path and compare it with the same expected script hash. A mismatch is a stop/review condition, not a reason to skip validation.
 
 If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If `RemoteSigned`, Mark-of-the-Web or application control prevents execution, request the organization's approval/signing process. Do not remove the zone marker, pass `-ExecutionPolicy Bypass`, elevate, or retry through another interpreter.
 

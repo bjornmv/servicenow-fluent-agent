@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+- Separate SDK package installation/metadata checks from live `now-sdk` function acceptance in a genuinely new configured VS Code terminal; never probe batch shims.
+- Capture npm stdout/stderr separately with an explicit exit-code log so PowerShell 5.1 warnings cannot masquerade as installation failures.
+- Clarify ConstrainedLanguage-safe diagnostics, bounded file review, optional-dependency reporting and no retry merely because a transcript is truncated or a command times out.
+- Resolve setup scope wording and add isolated PowerShell capture regressions; no live reinstall or security-policy changes.
+
 ## 0.3.3
 
 - Standardize Windows docs and index defaults on `%LOCALAPPDATA%\SNDocs\repo` and `%LOCALAPPDATA%\SNDocs\index`, retaining explicit-path and environment overrides.
