@@ -45,11 +45,25 @@ The subsequent user-run bootstrap at 23:03 on 2026-10-02 completed fresh-install
 
 However, bare `git` and `git.exe` could not resolve in the user's fresh VS Code terminal. Adding the managed cmd directory to that terminal's process PATH immediately resolved Git at version 2.54.0.windows.1. Registry registration and an absolute-path probe therefore did not establish working terminal command resolution.
 
-Agent installer 0.3.1 now sets the verified Git directory explicitly in the configured VS Code profile's environment, preserving the remainder of PATH and JSONC settings. A regression launches PowerShell with a deliberately stale PATH, confirms bare Git is initially missing, then applies the profile environment and verifies the selected executable and version. This is a simulated fresh-shell test, not an actual VS Code terminal acceptance test. The setup guide now requires that real new-terminal check before claiming completion. Existing terminals and unrelated external terminal applications are outside the profile fix.
+Agent installer 0.3.1 attempted to set the verified Git directory explicitly in the configured VS Code profile's environment, preserving the remainder of PATH and JSONC settings. A regression launches PowerShell with a deliberately stale PATH, confirms bare Git is initially missing, then applies the profile environment and verifies the selected executable and version. This is a simulated fresh-shell test, not an actual VS Code terminal acceptance test. The setup guide now requires that real new-terminal check before claiming completion. Existing terminals and unrelated external terminal applications are outside the profile fix.
+
+## Env-only profile follow-up
+
+On 2026-10-03 the user reported that fresh terminals still could not resolve Git after the 0.3.1 profile change. The setting remained on disk, and read-only process metadata showed a newly created PowerShell using the SDK profile (not merely a restored old process). The exact cause of the lost environment override is unconfirmed; a passing simulated test that injects `profile.env` is insufficient evidence.
+
+A local follow-up candidate added a PowerShell startup PATH refresh. It was not published: the user clarified that Git must work across shells, not only the SDK profile. Both shell-specific workarounds have now been removed from the local settings and replaced by the Windows user environment implementation below.
+
+## Shell-independent update accepted on 2026-10-03
+
+The environment-only operation at 16:59:39-16:59:41 verified the existing Git executable, backed up the raw user PATH/type, confirmed no PATH rewrite was needed, and used the native Windows updater with a short `SN_FLUENT_ENV_REFRESH` marker. PATH itself was never passed through setx. The worker logged `ENVIRONMENT UPDATED`, and the Node command removed the known profile PATH override and startup block with a settings backup. No Git or payload reinstallation, machine PATH or policy changes occurred.
+
+A real Windows Terminal launch using its `--reloadEnvironment` option ran a read-only Node probe. It inherited the new notification marker and resolved `git.exe --version` directly, `where.exe git.exe`, and an ordinary Windows PowerShell `-NoProfile` child running bare `git --version`. All three succeeded with the managed Git path/version. The probe did not inject PATH or SDK/profile initialization. This checks a genuinely refreshed Windows Terminal environment; it does not prove all existing processes received or adopted a broadcast. CMD/batch execution was not tested because local policy prohibits it.
+
+The user subsequently confirmed: **"It's working in new terminals now."** The same registration/native-update function is now called automatically by the fresh Git bootstrap before `SUCCESS`, and by the full Agent installer for an existing verified Git. Orchestration tests cover long raw PATHs, expandable references, duplicate registration, registry types, concurrent changes and publisher failures with registry/publisher test doubles. A separate backend test creates and removes an isolated HKCU Software fixture (never the real Environment key) and confirms exact roundtrips of long values, quotes, leading/trailing whitespace and both string types. Review also hardened marker ownership reads to fail on access errors rather than treating them as absence. A complete fresh Git reinstallation was not repeated after this change.
 
 ## Still not certified
 
-Fresh MinGit promotion and registry PATH registration succeeded as described above. Full-Git migration and actual VS Code new-terminal acceptance of the automatic profile fix remain unverified. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
+Fresh MinGit promotion and registry PATH registration succeeded as described above, and the user accepted new-terminal resolution after the shell-independent environment update. Full-Git migration and every possible terminal host/custom PATH override are not certified. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
 
 The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot migrate/repair an existing installation. On 2026-10-02 the stable profile copy ran in this mode, detected existing 2.54.0.windows.1, and returned 0 without download/install/configuration changes. A fresh agent instruction check recognized the skill route and absent-only/policy-block rules. The three bundled skill files were hash-matched between source payload and the live profile, and repository diff whitespace checks passed. Do not label these integration/no-op checks as fresh-install tests.
 
@@ -63,6 +77,8 @@ The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot mig
 
 References:
 
+- https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/setx
+- https://learn.microsoft.com/en-us/windows/terminal/command-line-arguments
 - https://github.com/git-for-windows/git/releases/tag/v2.54.0.windows.1
 - https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference
 - https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/applocker/script-rules-in-applocker

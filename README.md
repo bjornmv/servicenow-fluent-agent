@@ -42,19 +42,21 @@ node bin/sn-fluent-agent.cjs install
 
 Then restart VS Code, or reload the VS Code window.
 
-## Automatic terminal Git PATH
+## Shell-independent Windows Git PATH
 
-On Windows, installation verifies Git >=2.54.0 and configures the default **PowerShell with now-sdk** profile with its directory explicitly prepended to the terminal environment. This works even when the parent VS Code process has an old PATH; registry changes and reloads alone are not treated as proof. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. No Git is installed by this Node command.
+On Windows, installation verifies Git >=2.54.0, registers its directory in **Windows user PATH**, and requests native Windows environment propagation. It does not add Git to any PowerShell/VS Code profile, shell startup script, function or alias. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. The Node installer never downloads/reinstalls Git.
 
-Existing profile arguments, other profiles, environment settings and JSONC comments are preserved. Changed settings are backed up. Disabled/ambiguous PATH settings require review, not forced replacement. `--no-vscode-settings` opts out of this terminal setup.
+Raw PATH and its registry type are backed up and preserved, including long values and `%VARIABLE%` references. `reg.exe` reads the raw value; a typed Windows registry-provider write preserves quotes and the original type. Windows `setx.exe` receives **only** a short owned `SN_FLUENT_ENV_REFRESH` notification marker, never PATH. A missing/blocked native updater or failed readback stops setup. No elevation, machine PATH or policy changes are used. See Microsoft's [setx documentation](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/setx) for future-process behavior and its value-length limit.
 
-To update only the terminal configuration, without reinstalling/removing agent files:
+For environment repair only, without Git/payload reinstallation:
 
 ```text
-node bin/sn-fluent-agent.cjs configure-terminal --git-exe "C:\\path\\to\\git.exe"
+node bin/sn-fluent-agent.cjs configure-git --git-exe "C:\\path\\to\\git.exe"
 ```
 
-Then create a **new PowerShell with now-sdk terminal**, not a restored terminal. Run `Get-Command git` and `git --version`; require the verified path/version before calling setup complete. Already-running shells and unrelated external terminal applications are not refreshed by this profile setting.
+Known legacy Git profile overrides/startup blocks are removed conservatively, with settings backups. Other profiles and custom settings are preserved. `configure-terminal` now configures only the SDK profile; Git works independently of it. `--no-vscode-settings` does not skip the Windows user environment operation.
+
+Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 
 ## Update with VS Code
 
@@ -128,7 +130,7 @@ It also attempts to add the required VS Code user settings:
 }
 ```
 
-Before modifying VS Code settings, the installer creates a backup next to `settings.json`. On Windows it also creates/updates the terminal profile's Git PATH and selects that profile as the default, as described above. Edits are surgical rather than reformatting the entire JSONC document.
+Before modifying VS Code settings, the installer creates a backup next to `settings.json`. On Windows it also configures the SDK profile separately from shell-independent Git user PATH registration, as described above. Edits are surgical rather than reformatting the entire JSONC document.
 
 ## Useful commands
 

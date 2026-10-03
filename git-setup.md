@@ -29,7 +29,7 @@ Run this **download-and-verify block only**, in non-elevated Windows PowerShell:
 ```powershell
 $ErrorActionPreference = 'Stop'
 $BootstrapUrl = 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Ensure-MinGit254.ps1'
-$ExpectedBootstrapSha256 = 'E2A24CA68E668638C46A43DCABFD90E12B30289B2B480F2EB1E15B15E78AC89C'
+$ExpectedBootstrapSha256 = 'DEB83CF364D3584EAC718B68F0A65BCCCA30D8809AD2BA0FDC6673DFCD4693B9'
 $RunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $BootstrapDirectory = Join-Path $env:LOCALAPPDATA "Git254Bootstrap\bootstrap\$RunId"
 New-Item -ItemType Directory -Path $BootstrapDirectory -Force -ErrorAction Stop | Out-Null
@@ -81,7 +81,7 @@ Require successful commands, exact `git version 2.54.0.windows.1`, `schannel`, t
 
 If the worker reports `SKIP`, verify the existing executable at the path it found and set `$GitExe` to **that** path; do not assume it is the per-user managed path. Use `$GitExe` for all subsequent clone/pull commands. Parent processes can retain stale PATH; do not reinstall to fix that.
 
-The full Agent setup also refreshes its active shell and automatically sets the verified Git directory in the **PowerShell with now-sdk** profile's terminal environment. Do not skip that configuration because the profile already exists, and do not report complete setup until bare `git` resolves in a real new configured terminal. The standalone Git bootstrap cannot change an already-running parent's environment.
+A fresh bootstrap registers Git in Windows **user PATH** and requests native Windows environment propagation. It preserves the raw PATH/type and never passes PATH through `setx`; only a short owned `SN_FLUENT_ENV_REFRESH` marker uses that native updater. The full Agent setup also provides `configure-git` / the worker's explicit `-RefreshEnvironment -GitExecutable <absolute path>` mode for an existing verified Git, without reinstalling it. No shell-specific Git overrides are required. Existing terminal hosts may still need restarting from a refreshed launcher; do not call setup complete until bare `git` resolves in the actual terminal hosts the user uses.
 
 Only then return to **step 2 of `setup.md`**. Report the version, verified path, whether Git was preserved/installed, and the worker result/log path. Do not claim private authentication or ServiceNow connectivity.
 
@@ -89,4 +89,4 @@ Only then return to **step 2 of `setup.md`**. Report the version, verified path,
 
 The reduced MinGit staging copy passed native init/add/commit/branch/merge/local push/clone/fetch/status and public HTTPS tests. The excluded Unix utilities were never written, and no new Defender ASR or executable/code-integrity blocks were found in that test window. PowerShell constrained-language script-policy records can still occur.
 
-Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. Fresh VS Code terminals still inherited a PATH without Git; the Agent installer now supplies an explicit terminal-profile Git PATH, backed by stale-parent regression tests. The actual new VS Code terminal check remains mandatory; a simulated shell test is not a substitute. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.
+Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. The initial shell-specific profile workaround was insufficient and has been replaced by user PATH registration plus native environment propagation. A real Windows Terminal fresh-environment test resolved Git through a native child process, Windows `where.exe`, and PowerShell with `-NoProfile`, without injecting PATH or SDK startup code. That is not certification of every already-running host; actual user-terminal checks remain mandatory. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.

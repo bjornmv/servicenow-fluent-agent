@@ -47,24 +47,13 @@ if ($LASTEXITCODE -ne 0) { throw 'SDK installation failed; stop setup.' }
 
 Stop if this command fails. Do not use `--force` or administrator elevation.
 
-### 3. Refresh the active setup terminal
+### 3. Keep Git shell-independent
 
-A fresh terminal can inherit an old PATH from VS Code, Windows Terminal or Explorer. A registry update or **Reload Window** alone is not a guarantee that it can resolve Git. Add the **verified** Git directory to this setup session, without reinstalling Git or replacing the rest of PATH:
+Continue using `$GitExe` while setup runs. An existing PowerShell, VS Code or Windows Terminal process may still have its old environment; do not repair that by adding Git to a particular terminal profile, shell startup script, function or alias.
 
-```powershell
-$GitDirectory = Split-Path -Parent $GitExe
-if (($env:Path -split ';') -notcontains $GitDirectory) {
-    $env:Path = "$GitDirectory;$env:Path"
-}
-$ResolvedGit = Get-Command git -ErrorAction Stop
-if ($ResolvedGit.CommandType -ne 'Application' -or $ResolvedGit.Source -ine $GitExe) {
-    throw 'Bare git does not resolve to the verified executable; stop and review.'
-}
-git --version
-if ($LASTEXITCODE -ne 0) { throw 'Git command resolution verification failed.' }
-```
+The fresh Git bootstrap registers the directory in **Windows user PATH** and requests normal Windows environment propagation. Step 5 also performs this environment-only operation for an existing verified Git. The raw PATH and registry type are preserved and backed up; only a short owned `SN_FLUENT_ENV_REFRESH` marker is passed through Windows `setx.exe` to request its native environment update. PATH itself is never passed through `setx`, which can truncate long values. No machine PATH, security policy or Git installation/configuration is changed by the environment-only operation.
 
-This is only the active shell refresh. In step 5 the installer automatically configures the **PowerShell with now-sdk** VS Code profile with an explicit Git directory in its `env.Path`, ahead of the inherited PATH. New terminals using that profile therefore do not depend on stale parent processes noticing a registry change. Existing arguments, environment settings, other profiles and JSONC comments are preserved; ambiguous or disabled PATH customizations stop for review. Do not skip this update just because the named profile already exists.
+This applies independently of shell type. It cannot rewrite every already-running application's environment. Restart affected terminal **hosts** from a refreshed launcher after setup, rather than repeatedly reinstalling Git or editing each new terminal's PATH. Do not kill applications or discard work automatically.
 
 ### 4. Clone ServiceNowDocs
 
@@ -99,15 +88,17 @@ node bin/sn-fluent-agent.cjs install --git-exe "$GitExe"
 if ($LASTEXITCODE -ne 0) { throw 'Agent installation failed; stop setup.' }
 ```
 
-This installs the payload and automatically configures the default Windows terminal profile and its Git PATH. It backs up changed settings and makes surgical JSONC edits rather than rewriting unrelated settings. It does not reinstall Git or modify system/user PATH, PowerShell security policy or unrelated terminal profiles. `--no-vscode-settings` is not a complete setup.
+This installs the payload, registers the verified Git directory in **Windows user PATH**, requests native environment propagation, and configures the SDK-only terminal profile. Git availability does not depend on that profile. Known legacy Git profile overrides/startup blocks from earlier versions are removed conservatively; unrelated settings and startup commands are preserved with backups. No Git reinstall, machine PATH or security-policy change is performed. `--no-vscode-settings` skips VS Code/SDK-profile configuration, not Windows Git environment registration.
 
 The **Install/Update ServiceNow Fluent Agent** VS Code task remains available; without `--git-exe`, the installer verifies Git from its current PATH or standard locations, and stops if the selected executable is missing, older or blocked.
 
-For terminal configuration only (no payload installation/removal), use `node bin/sn-fluent-agent.cjs configure-terminal --git-exe "$GitExe"`. Both commands support `--dry-run`. Stop on any failure.
+For Windows Git environment repair only (no Git or payload installation/removal), use `node bin/sn-fluent-agent.cjs configure-git --git-exe "$GitExe"`. It also removes known legacy profile workarounds, with a settings backup. Both commands support `--dry-run`. `configure-terminal` configures the SDK profile only; it is not a Git PATH repair. Stop on any failed native update or policy block; do not substitute another interpreter or weaken policy.
 
-### 6. Reload and verify
+### 6. Restart affected hosts and verify
 
-Reload VS Code with **Developer: Reload Window**. Kill the setup terminal, then create a **new** **PowerShell with now-sdk** integrated terminal (not a restored/reconnected terminal). From the agent repository, run:
+Save work, then fully restart affected terminal applications from a refreshed Windows launcher. **Developer: Reload Window** is not a guaranteed environment refresh. Do not launch the restarted application from an old shell with stale PATH. Create genuinely new terminals (not a restored/reconnected terminal).
+
+Verify plain `git --version` across the actual hosts/shells the user uses, including an ordinary terminal outside the SDK profile. In PowerShell, `Get-Command git` should identify the verified executable. Do not launch CMD/batch or another prohibited shell merely to test it; report policy-restricted cases as untested. Then use the SDK profile for its separate SDK verification. From the agent repository:
 
 ```powershell
 Get-Command git
@@ -118,6 +109,6 @@ node bin/sn-fluent-agent.cjs verify
 
 Require `Get-Command git` to identify an **Application** at the same absolute path verified in step 1, and require the bare `git --version` command to succeed with that version. If it fails, stop: an absolute-path Git probe, settings-file inspection, simulated child shell or payload verifier alone is **not** successful new-terminal verification. Report any inability to operate a real new VS Code terminal as an unverified step, not setup complete. Locally modified payload files must also be reported accurately; do not suppress a nonzero verifier result.
 
-The configured profile works without signing out. This does not refresh already-running shells or promise refreshed PATH in unrelated external terminal applications.
+Report registration/notification success separately from live command-resolution success. If a host still retains its old environment after restart, stop and identify its launcher or explicit PATH override; do not claim that every terminal is verified. Signing out/in is the fallback for persistent stale process environments, not a substitute for testing the installer.
 
 Report the Node.js and Git versions, verified Git executable path, whether Git was preserved or installed, Git bootstrap result/log path if used, SDK version, ServiceNowDocs path and branch, agent repository path, installation result, and verification result. Do not claim authentication or instance connectivity; this procedure does not test either.

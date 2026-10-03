@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Replace shell-specific Git PATH workarounds with Windows user PATH registration and native environment propagation, preserving raw values/types and never passing PATH through setx.
+- Add explicit environment-only `configure-git` / `-RefreshEnvironment` modes; no Git/payload reinstall, elevation, machine PATH or policy changes.
+- Back up settings and remove known legacy Git profile overrides/startup blocks without replacing unrelated customization.
+- Test long PATHs, expandable references, duplicates, concurrency and notification failures; distinguish native-update success from real terminal acceptance.
+
 ## 0.3.1
 
 - Automatically configure the Windows VS Code terminal profile with the verified Git directory ahead of inherited PATH, including when the parent process has a stale environment.

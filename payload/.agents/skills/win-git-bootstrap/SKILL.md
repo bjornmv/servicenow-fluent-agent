@@ -51,9 +51,19 @@ This skill is also usable directly from the Agent distribution payload before it
 
 These constraints are implemented in the bundled script; do not improvise another installer. Omission of optional utilities avoids attempting their installation; it is not a security-policy exemption or permission to execute them elsewhere.
 
+## Shell-independent Windows environment
+
+A fresh installation registers the Git cmd directory in **Windows user PATH** and requests native Windows environment propagation before logging `SUCCESS`. It preserves and verifies the raw PATH and registry type, including long values and `%VARIABLE%` references, with an `environment-before-*.json` backup. No machine PATH is changed.
+
+The native Windows `setx.exe` updater receives **only** a short owned `SN_FLUENT_ENV_REFRESH` marker. `reg.exe` reads raw PATH with exact separators; a typed registry-provider write preserves embedded quotes, whitespace and the original registry type. PATH is never written with `setx`, avoiding truncation/reference expansion. The marker is non-secret notification metadata. Unknown existing marker values, unavailable/blocked updater execution, concurrent PATH edits and failed readback stop the operation. No Add-Type/PInvoke, alternate-interpreter or policy fallback is used.
+
+For an explicitly requested environment-only repair of a verified existing Git, run the same worker with `-RefreshEnvironment -GitExecutable <absolute git.exe path>`, or the Agent distribution's `node bin/sn-fluent-agent.cjs configure-git --git-exe <absolute path>`. This does not download/extract/reinstall Git or alter Git configuration. Do not combine it with installation/staging/migration switches. The full Agent installer performs this environment step automatically and removes known legacy Git-specific profile workarounds with a settings backup.
+
+Do not add Git PATH code, aliases or overrides to a particular shell/profile. Native update success does not prove that every running host adopted the environment: save work and restart affected applications from a refreshed launcher. Verify bare `git --version` in the actual terminal hosts used; do not label a simulated shell or absolute-path check as universal acceptance.
+
 ## Verification and reporting
 
-- Capture the worker's exit code **and** log result. Exit 0 can mean skip, staging-only validation or actual installation: report the actual outcome.
+- Capture the worker's exit code **and** log result. Exit 0 can mean skip, staging-only validation, actual installation or `ENVIRONMENT UPDATED`: report the actual outcome.
 - For an actual install, use `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` directly to verify `git version 2.54.0.windows.1`, system Schannel and Windows SSH configuration. Verify the two excluded utilities are absent.
 - The worker checks deployment-path Defender/AppLocker/Code Integrity blocks and fails closed if those logs cannot be inspected. On a block, stop; do not change exclusions/policies or retry via another executable without review.
 - A public HTTPS `ls-remote` with certificate checking and credential helpers disabled is an optional network smoke test, not proof of private SSH/HTTPS authentication.
@@ -66,7 +76,8 @@ These constraints are implemented in the bundled script; do not improvise anothe
 - `-StageOnly`: download/hash-check only; no deployment.
 - `-ValidateOnly`: selectively extract/configure/test a separate stage; no uninstall, promotion or PATH changes.
 - `-ReplaceFullGit`: potentially uninstalls existing full Git. **Never use this for automatic setup. Requires separate explicit user approval.**
-- The modes are mutually exclusive. Routine agent setup always uses `-InstallIfMissing`.
+- `-RefreshEnvironment -GitExecutable <path>`: explicit user PATH registration/native update for existing verified Git; no installation or Git configuration changes.
+- The modes are mutually exclusive. Routine missing-Git installation always uses `-InstallIfMissing`; the full Agent installer separately performs its documented environment-registration step.
 - No repositories or user/global Git configuration are modified. No security exclusions, mitigation changes, auto-updater or reboot are introduced.
 - This is a reduced MinGit deployment, not the entire upstream distribution. Unix scripts/hooks requiring find/sort, LFS, private authentication, signing and arbitrary shell utilities are outside the validated base feature set. Do not substitute Windows find/sort for their Unix counterparts.
 

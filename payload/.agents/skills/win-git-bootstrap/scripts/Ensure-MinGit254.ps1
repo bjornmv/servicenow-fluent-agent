@@ -11,6 +11,11 @@ repair, replace or migrate an existing installation automatically.
 .PARAMETER ReplaceFullGit
 Explicit one-time migration of the registered per-user full Git at the managed
 path. Stage/configure/test MinGit before invoking its signed uninstaller.
+.PARAMETER RefreshEnvironment
+Register an explicitly verified existing Git in user PATH and request Windows
+environment propagation. No download, extraction, Git configuration or reinstall.
+.PARAMETER GitExecutable
+Absolute git.exe path for RefreshEnvironment only.
 .PARAMETER StageOnly
 Download and verify the fixed ZIP without changing the installed Git.
 .PARAMETER ValidateOnly
@@ -23,6 +28,8 @@ param(
     [switch]$StageOnly,
     [switch]$ValidateOnly,
     [switch]$ReplaceFullGit,
+    [switch]$RefreshEnvironment,
+    [string]$GitExecutable,
     [string]$CacheDirectory = (Join-Path $env:LOCALAPPDATA 'Git254Bootstrap\cache'),
     [string]$LogDirectory = (Join-Path $env:LOCALAPPDATA 'Git254Bootstrap\logs')
 )
@@ -176,39 +183,89 @@ function Confirm-NoDeploymentBlocks {
     }
     Write-Log 'No deployment-path block found in the checked Defender/AppLocker/Code Integrity events so far (not a policy approval).'
 }
-function Add-UserGitPath {
-    # reg.exe preserves the raw REG_EXPAND_SZ value (including %VARIABLES%).
-    # Never use setx, which can truncate PATH. No system PATH changes.
+function Read-UserGitPath {
+    # Preserve the raw registry value and type, including %VARIABLES%.
+    $key = Get-Item -LiteralPath 'HKCU:\Environment' -ErrorAction Stop
+    if ($key.Property -notcontains 'Path') { return @{ Value = ''; Kind = 'REG_EXPAND_SZ'; Exists = $false } }
+    $existing = Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -ErrorAction Stop
+    if ([string]$existing.Path -match '[\r\n]') { throw 'Multiline user PATH requires manual review; no changes made.' }
     $reg = Join-Path $env:SystemRoot 'System32\reg.exe'
-    $values = & $reg query 'HKCU\Environment' /v Path 2>$null
-    $queryExit = $LASTEXITCODE
-    $oldPath = ''
-    $kind = 'REG_EXPAND_SZ'
-    if ($queryExit -eq 0) {
-        $matched = $false
-        foreach ($line in $values) {
-            if ($line -match '^\s*Path\s+(REG_EXPAND_SZ|REG_SZ)\s+(.*)$') {
-                $kind = $Matches[1]; $oldPath = $Matches[2]; $matched = $true
-            }
+    $values = & $reg query 'HKCU\Environment' /v Path 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read the existing raw user PATH. No PATH changes made.' }
+    foreach ($line in $values) {
+        # reg query uses exactly four separator spaces. Do not greedily consume
+        # leading whitespace that belongs to the value itself.
+        if ($line -match '^ {4}Path {4}(REG_EXPAND_SZ|REG_SZ) {4}(.*)$') {
+            return @{ Value = $Matches[2]; Kind = $Matches[1]; Exists = $true }
         }
-        if (-not $matched) { throw 'Could not parse the existing raw user PATH. No PATH changes made.' }
-    } elseif (Test-Path -LiteralPath 'HKCU:\Environment') {
-        $existing = Get-ItemProperty -LiteralPath 'HKCU:\Environment'
-        if ($null -ne $existing.Path) { throw 'Unable to read the existing user PATH. No PATH changes made.' }
-    } else { throw 'Unable to read HKCU environment.' }
-    $cmd = Join-Path $target 'cmd'
+    }
+    throw 'Could not parse the existing raw user PATH. No PATH changes made.'
+}
+function Write-UserGitPath {
+    param([string]$Value, [string]$Kind)
+    # NEVER send PATH to setx: it can truncate long values and expand references.
+    # A typed registry-provider write avoids PS 5.1 native argument quoting
+    # stripping embedded double quotes. No .NET interop or policy changes.
+    if ($Kind -eq 'REG_SZ') { $propertyType = 'String' }
+    elseif ($Kind -eq 'REG_EXPAND_SZ') { $propertyType = 'ExpandString' }
+    else { throw 'Unsupported user PATH registry type; no changes made.' }
+    New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -PropertyType $propertyType -Value $Value -Force -ErrorAction Stop | Out-Null
+}
+function Get-EnvironmentPublisher {
+    $publisher = Join-Path $env:SystemRoot 'System32\setx.exe'
+    if (-not (Test-Path -LiteralPath $publisher -PathType Leaf)) { throw 'Windows setx.exe is unavailable. Stop for review; no notification fallback or policy bypass.' }
+    $key = Get-Item -LiteralPath 'HKCU:\Environment' -ErrorAction Stop
+    if ($key.Property -contains 'SN_FLUENT_ENV_REFRESH') {
+        $marker = Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name SN_FLUENT_ENV_REFRESH -ErrorAction Stop
+        if ([string]$marker.SN_FLUENT_ENV_REFRESH -notmatch '^Git254Bootstrap:[0-9-]+$') {
+            throw 'SN_FLUENT_ENV_REFRESH already has an unrecognized value; do not overwrite another application setting.'
+        }
+    }
+    return $publisher
+}
+function Publish-EnvironmentChange {
+    param([string]$Publisher)
+    # Use the standard Windows environment updater, not Add-Type/PInvoke,
+    # COM, an alternate interpreter or a compiled policy workaround. Only this
+    # short, owned, non-secret notification marker goes through setx, NOT PATH.
+    $stamp = 'Git254Bootstrap:' + $runId
+    if ($stamp.Length -gt 100 -or $stamp -notmatch '^Git254Bootstrap:[0-9-]+$') { throw 'Invalid environment notification marker.' }
+    $unused = & $Publisher SN_FLUENT_ENV_REFRESH $stamp 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Windows environment update failed. PATH may be registered, but propagation is incomplete; stop for review.' }
+    $saved = Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name SN_FLUENT_ENV_REFRESH -ErrorAction Stop
+    if ($saved.SN_FLUENT_ENV_REFRESH -cne $stamp) { throw 'Windows environment notification marker verification failed.' }
+    Write-Log 'Requested Windows environment propagation using the native updater and a short owned marker; PATH was not passed to setx.'
+}
+function Add-UserGitPath {
+    param([string]$GitDirectory)
+    $publisher = Get-EnvironmentPublisher
+    $before = Read-UserGitPath
+    $cmd = $GitDirectory.TrimEnd('\')
     $hasPath = $false
-    foreach ($entry in ($oldPath -split ';')) {
-        if ($entry.Trim().TrimEnd('\') -in @($cmd, '%LOCALAPPDATA%\Programs\Git\cmd')) { $hasPath = $true }
+    $managedCmd = Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd'
+    foreach ($entry in ($before.Value -split ';')) {
+        $entry = $entry.Trim().TrimEnd('\')
+        if ($entry -ieq $cmd -or ($cmd -ieq $managedCmd -and $entry -ieq '%LOCALAPPDATA%\Programs\Git\cmd')) { $hasPath = $true }
     }
+    $newPath = $before.Value
     if (-not $hasPath) {
-        $newPath = $cmd
-        if ($oldPath) { $newPath = $oldPath.TrimEnd(';') + ';' + $cmd }
-        $unused = & $reg add 'HKCU\Environment' /v Path /t $kind /d $newPath /f 2>&1
-        if ($LASTEXITCODE -ne 0) { throw 'Unable to register MinGit in the user PATH.' }
-        Write-Log 'Added only the Git cmd directory to the user PATH.'
+        if ($newPath -and -not $newPath.EndsWith(';')) { $newPath += ';' }
+        $newPath += $cmd
     }
-    Write-Log 'PATH changes do not refresh already-running parent processes. Use the explicit Git path now, or sign out/in for a guaranteed refresh.'
+    $backup = Join-Path $LogDirectory "environment-before-$runId.json"
+    if (Test-Path -LiteralPath $backup) { throw 'Environment backup already exists; stop rather than overwrite it.' }
+    $before | ConvertTo-Json | Set-Content -LiteralPath $backup -Encoding utf8
+    Write-Log "Saved raw user PATH/type before environment update: $backup"
+    $current = Read-UserGitPath
+    if ($current.Value -cne $before.Value -or $current.Kind -cne $before.Kind -or $current.Exists -ne $before.Exists) { throw 'User PATH changed during preparation; stop rather than overwrite concurrent edits.' }
+    if (-not $hasPath) { Write-UserGitPath $newPath $before.Kind }
+    $registered = Read-UserGitPath
+    if ($registered.Value -cne $newPath -or $registered.Kind -cne $before.Kind) { throw 'Raw user PATH/type readback failed.' }
+    Publish-EnvironmentChange $publisher
+    $after = Read-UserGitPath
+    if ($after.Value -cne $newPath -or $after.Kind -cne $before.Kind) { throw 'PATH changed during environment notification; review before proceeding.' }
+    Write-Log 'Verified shell-independent user PATH registration and native environment update. No machine PATH or shell startup file was changed.'
+    Write-Log 'Already-running terminals/hosts may retain old environments. Restart affected applications from a refreshed launcher; do not reinstall Git. Live terminal acceptance remains required.'
 }
 
 try {
@@ -217,6 +274,18 @@ try {
     if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'Use 64-bit Windows PowerShell on Windows x64.' }
     if (($InstallIfMissing -and ($StageOnly -or $ValidateOnly -or $ReplaceFullGit)) -or ($StageOnly -and ($ValidateOnly -or $ReplaceFullGit)) -or ($ValidateOnly -and $ReplaceFullGit)) {
         throw 'InstallIfMissing, StageOnly, ValidateOnly and ReplaceFullGit are mutually exclusive.'
+    }
+    if ($RefreshEnvironment -and ($InstallIfMissing -or $StageOnly -or $ValidateOnly -or $ReplaceFullGit)) { throw 'RefreshEnvironment cannot be combined with installation/staging/migration modes.' }
+    if ($GitExecutable -and -not $RefreshEnvironment) { throw 'GitExecutable is only supported with RefreshEnvironment.' }
+    if ($RefreshEnvironment) {
+        if (-not $GitExecutable -or $GitExecutable -notmatch '^[A-Za-z]:[\\/]' -or (Split-Path -Leaf $GitExecutable) -ine 'git.exe' -or $GitExecutable -match '[;\r\n%]') { throw 'RefreshEnvironment requires a safe absolute GitExecutable path to an existing git.exe.' }
+        $git = Read-GitVersion $GitExecutable
+        if ($git.Version -lt $minimum) { throw 'Existing Git is older than the required minimum. No upgrade or replacement is allowed.' }
+        $groups = & "$env:SystemRoot\System32\whoami.exe" /groups /fo csv /nh 2>&1
+        if ($LASTEXITCODE -ne 0 -or ($groups -join ' ') -match 'S-1-16-(12288|16384|20480)') { throw 'Use the intended non-elevated user context for environment updates.' }
+        Add-UserGitPath (Split-Path -Parent $GitExecutable)
+        Write-Log "ENVIRONMENT UPDATED for $($git.FullVersion): $GitExecutable. No Git installation/configuration changes; existing process environments are not certified."
+        exit 0
     }
     if ($StageOnly) { Get-Archive; Write-Log 'STAGED: ZIP verified; installed Git unchanged.'; exit 0 }
     $inventory = @(Get-Inventory)
@@ -338,7 +407,7 @@ try {
     foreach ($key in @('http.sslBackend', 'core.sshCommand')) {
         if ((Invoke-Git $targetGit @('config', '--system', '--get', $key)) -ne $settings[$key]) { throw "Installed system setting mismatch: $key" }
     }
-    Add-UserGitPath
+    Add-UserGitPath (Join-Path $target 'cmd')
     Confirm-NoDeploymentBlocks $auditStart
     Write-Log "SUCCESS: Official MinGit $pinned deployed at $target. Only native Git was exercised; private authentication is untested."
     Write-Log 'Check security events for this deployment interval before calling it warning-free. No automatic update or reboot.'

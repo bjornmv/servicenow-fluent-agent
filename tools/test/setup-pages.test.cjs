@@ -76,15 +76,25 @@ test('HTTPS handoff needs no Git and hashes the saved script before execution', 
   assert.match(gitSetup, /Read the saved script before executing it/);
 });
 
-test('setup configures terminal Git PATH and requires actual new-terminal command resolution', () => {
+test('setup configures Windows user PATH, not a shell profile, and requires actual terminal checks', () => {
   assert.match(setup, /install --git-exe "\$GitExe"/);
-  assert.match(setup, /configure-terminal --git-exe "\$GitExe"/);
-  assert.match(setup, /\$env:Path = "\$GitDirectory;\$env:Path"/);
+  assert.match(setup, /configure-git --git-exe "\$GitExe"/);
+  assert.match(setup, /SN_FLUENT_ENV_REFRESH/);
+  assert.match(setup, /PATH itself is never passed through `setx`/);
+  assert.doesNotMatch(setup, /\$env:Path =/);
   assert.match(setup, /Get-Command git\ngit --version/);
   assert.match(setup, /not a restored\/reconnected terminal/);
   assert.match(setup, /unverified step, not setup complete/);
-  assert.match(setup, /Do not skip this update just because the named profile already exists/);
+  assert.match(setup, /independently of shell type/);
   assert.match(setup, /npm-cli\.js/);
+});
+
+test('fresh MinGit installation registers and publishes user environment before SUCCESS', () => {
+  const promote = worker.indexOf('Move-Item -LiteralPath $stage -Destination $target');
+  const register = worker.indexOf("Add-UserGitPath (Join-Path $target 'cmd')", promote);
+  const success = worker.indexOf('SUCCESS: Official MinGit', register);
+  assert.ok(promote > 0 && register > promote && success > register);
+  assert.match(worker, /Publish-EnvironmentChange \$publisher/);
 });
 
 test('documented worker digest matches exact canonical bytes', () => {
@@ -133,7 +143,7 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'bin/sn-fluent-agent.cjs']) {
+  for (const entry of ['git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));
@@ -141,5 +151,7 @@ test('Pages rebuilds for docs, canonical worker and staging/test changes', () =>
   assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/mingit-ssh-probe\.test\.cjs/);
   assert.match(workflow, /run: node --test [^\n]*tools\/test\/vscode-terminal\.test\.cjs/);
   assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/vscode-terminal\.test\.cjs/);
+  assert.match(workflow, /run: node --test [^\n]*tools\/test\/windows-git-environment\.test\.cjs/);
+  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/windows-git-environment\.test\.cjs/);
   assert.match(workflow, /source: \.\/_pages/);
 });

@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
 const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
 const { prepareTerminalSettings, writeTerminalSettings } = require('../lib/vscode-terminal.cjs');
+const { configureWindowsGit } = require('../lib/windows-git-environment.cjs');
 
 const PACKAGE_NAME = 'servicenow-fluent-agent';
 const RECEIPT_NAME = '.servicenow-fluent-agent-install.json';
@@ -233,7 +234,7 @@ function configureVsCodeSettings(summary) {
 
   const file = settingsPath();
   const original = readTextIfExists(file) ?? '{}\n';
-  // Validate Git and plan terminal PATH before copying/removing managed files.
+  // SDK profile only; Git PATH belongs to the Windows user environment.
   const terminal = process.platform === 'win32' ? prepareTerminalSettings(file, flagValue('--git-exe')) : null;
   let updated = terminal ? terminal.text : original;
   if (terminal) summary.vscodeGit = terminal.git;
@@ -334,6 +335,7 @@ function install() {
     backups: [],
   };
 
+  if (process.platform === 'win32') summary.windowsGit = configureWindowsGit({ gitExe: flagValue('--git-exe'), dryRun });
   configureVsCodeSettings(summary);
   for (const sourceFile of sourceFiles) {
     const rel = payloadRel(sourceFile);
@@ -356,6 +358,18 @@ function install() {
   printInstallSummary(summary, Object.keys(receipt.files).length);
 }
 
+function configureGit() {
+  const plan = prepareTerminalSettings(settingsPath(), flagValue('--git-exe'), { cleanupOnly: true });
+  const result = configureWindowsGit({ gitExe: plan.git.executable, dryRun });
+  const cleanup = writeTerminalSettings(plan, { dryRun });
+  console.log(`Windows Git environment: ${result.status}`);
+  if (result.log) console.log(result.log);
+  console.log(`Legacy profile workaround cleanup: ${cleanup.status}`);
+  if (cleanup.backup) console.log(`Settings backup: ${cleanup.backup}`);
+  console.log('Restart affected terminal applications from a refreshed launcher. Existing processes are not forced to refresh or killed.');
+  console.log('Verify bare git --version in the actual terminal hosts you use; no shell/profile-specific PATH is required.');
+}
+
 function configureTerminal() {
   if (process.platform !== 'win32') throw new Error('configure-terminal requires Windows.');
   const plan = prepareTerminalSettings(settingsPath(), flagValue('--git-exe'));
@@ -363,8 +377,7 @@ function configureTerminal() {
   console.log(`VS Code terminal settings: ${result.status}`);
   console.log(`Verified Git: ${plan.git.executable} (${plan.git.version})`);
   if (result.backup) console.log(`Settings backup: ${result.backup}`);
-  console.log('Open a NEW PowerShell with now-sdk terminal (do not restore/reuse an existing one).');
-  console.log('Run Get-Command git and git --version there; configuration alone is not terminal verification.');
+  console.log('SDK profile configuration only. Git PATH is configured by install/configure-git in the Windows user environment.');
 }
 
 function verify() {
@@ -397,7 +410,7 @@ function verify() {
   console.log(`ok: ${ok.length}`);
   console.log(`missing: ${missing.length}`);
   console.log(`mismatched: ${mismatched.length}`);
-  console.log('Payload check only: separately verify Get-Command git and git --version in a new configured terminal.');
+  console.log('Payload check only: separately verify bare git --version in fresh terminals across the hosts you use.');
 
   if (missing.length) {
     console.log('\nMissing:');
@@ -516,7 +529,10 @@ function printInstallSummary(summary, receiptCount) {
   console.log(`receipt files: ${receiptCount}`);
   console.log(`VS Code settings: ${summary.vscodeSettings || 'not checked'}`);
   if (summary.vscodeSettingsBackup) console.log(`VS Code settings backup: ${summary.vscodeSettingsBackup}`);
-  if (summary.vscodeGit) console.log(`Terminal Git PATH configured for: ${summary.vscodeGit.executable} (${summary.vscodeGit.version})`);
+  if (summary.windowsGit) {
+    console.log(`Windows Git environment: ${summary.windowsGit.status}`);
+    if (summary.windowsGit.log) console.log(summary.windowsGit.log);
+  }
 
   if (summary.skippedConflicts.length) {
     console.log('\nSkipped locally modified files. Review or rerun with --force:');
@@ -533,13 +549,14 @@ function printInstallSummary(summary, receiptCount) {
     console.log(JSON.stringify(summary.vscodeManualSettings, null, 4));
   }
 
-  console.log('\nReload VS Code, then create a NEW PowerShell with now-sdk terminal.');
-  console.log('Run Get-Command git and git --version there before reporting terminal setup complete.');
+  console.log('\nRestart affected terminal applications from a refreshed launcher; reload alone may retain old process environments.');
+  console.log('Run bare git --version in actual fresh terminals before reporting setup complete. No shell-specific Git PATH workaround is installed.');
 }
 
 function help() {
   console.log(`Usage:
   node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings] [--git-exe <absolute path>]
+  node bin/sn-fluent-agent.cjs configure-git [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs configure-terminal [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
@@ -549,7 +566,8 @@ function help() {
 
 Commands:
   install    Copy payload files into this user's profile and configure VS Code settings.
-  configure-terminal    Configure only the Windows terminal profile and its verified Git PATH (no payload install).
+  configure-git    Register existing Git in user PATH, request native Windows environment propagation and remove known legacy profile workarounds. No Git/payload reinstall.
+  configure-terminal    Configure the SDK terminal profile only, not Git PATH.
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
   check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.
@@ -566,6 +584,7 @@ Options:
 
 async function main() {
   if (command === 'install' || command === 'update') install();
+  else if (command === 'configure-git') configureGit();
   else if (command === 'configure-terminal') configureTerminal();
   else if (command === 'verify') verify();
   else if (command === 'status') status();
