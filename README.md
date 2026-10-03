@@ -58,6 +58,17 @@ Known legacy Git profile overrides/startup blocks are removed conservatively, wi
 
 Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 
+## Documentation paths
+
+Windows setup and the documentation lookup CLI share these defaults:
+
+```text
+%LOCALAPPDATA%\SNDocs\repo
+%LOCALAPPDATA%\SNDocs\index
+```
+
+Explicit CLI paths take precedence over `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then these defaults. The lookup CLI's `paths` command only reports locations. Installing/updating skill files does not download, move or index docs; the full setup procedure clones and indexes them in its dedicated steps. Existing checkouts elsewhere are left alone, with no silent fallback.
+
 ## Update with VS Code
 
 1. Open this repo folder in VS Code.

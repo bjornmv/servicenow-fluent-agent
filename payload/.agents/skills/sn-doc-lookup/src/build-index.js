@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { resolveDocs, resolveIndex } = require('./paths');
 const {
   normalizeSlashes,
   normalizeText,
@@ -136,11 +137,20 @@ function resolvePaths(docsArg) {
 
 async function buildIndex(options) {
   const t0 = Date.now();
-  const { root, markdown } = resolvePaths(options.docs || options.markdown);
-  const outDir = path.resolve(options.out || path.join(root, '.sn-doc-index', options.family || 'australia'));
+  const { root, markdown } = resolvePaths(resolveDocs(options.docs || options.markdown));
+  const outDir = resolveIndex(options.out);
   const family = options.family || 'australia';
+  const sourceRelative = path.relative(outDir, root);
+  if (!sourceRelative || (sourceRelative !== '..' && !sourceRelative.startsWith('..' + path.sep) && !path.isAbsolute(sourceRelative))) {
+    throw new Error('Index output cannot be the docs source or an ancestor of it');
+  }
   if (fs.existsSync(outDir)) {
     if (!options.force) throw new Error(`output exists: ${outDir} (pass --force)`);
+    const manifestFile = path.join(outDir, 'manifest.json');
+    const previous = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : null;
+    if (!previous || previous.schema_version !== 1 || !/^sn-doc-md@/.test(previous.generator || '')) {
+      throw new Error(`Refusing to replace an unrecognized index directory: ${outDir}`);
+    }
     fs.rmSync(outDir, { recursive: true, force: true });
   }
   ensureDir(outDir);

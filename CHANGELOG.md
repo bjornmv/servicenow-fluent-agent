@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3
+
+- Standardize Windows docs and index defaults on `%LOCALAPPDATA%\SNDocs\repo` and `%LOCALAPPDATA%\SNDocs\index`, retaining explicit-path and environment overrides.
+- Share path resolution across build/search/read/benchmark commands; add a read-only `paths` command, with no legacy fallback or automatic migration.
+- Update full setup to clone into the exact docs destination and build/verify the index separately; guard index rebuilds against source or unrecognized directories.
+- Test with isolated tiny fixtures only; do not populate the new real-machine docs location during this change.
+
 ## 0.3.2
 
 - Replace shell-specific Git PATH workarounds with Windows user PATH registration and native environment propagation, preserving raw values/types and never passing PATH through setx.

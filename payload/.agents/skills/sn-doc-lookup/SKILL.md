@@ -24,25 +24,16 @@ node "$Skill\bin\sn-doc-md.js" read   --index <index> --path <source_rel> --json
 node "$Skill\test\run-tests.js"       --index <index>
 ```
 
-## Default local paths on this machine
-
-Official corpus:
+## Default Windows paths
 
 ```text
-C:\Personal\SNDocs\ServiceNowDocs
+Docs:  %LOCALAPPDATA%\SNDocs\repo
+Index: %LOCALAPPDATA%\SNDocs\index
 ```
 
-Current prebuilt index:
+All CLI commands share these defaults. Explicit `--docs` / `--out` / `--index` paths take precedence over `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then the defaults above. No legacy-location discovery or automatic migration is performed. Other platforms must provide explicit paths or those overrides when `LOCALAPPDATA` is unavailable.
 
-```text
-C:\Personal\SNDocs\sn-doc-md\.sn-doc-index\australia
-```
-
-Portable cache location for other machines:
-
-```text
-%USERPROFILE%\.agents\cache\sn-doc-md\australia
-```
+`node "$Skill\bin\sn-doc-md.js" paths` reports resolved paths without creating directories, downloading docs or building an index.
 
 ## Before searching
 
@@ -50,15 +41,17 @@ Set paths in PowerShell style when invoking from a shell. In Pi tool calls, pass
 
 ```powershell
 $Skill = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-lookup'
-$Docs  = if ($env:SN_DOCS_HOME) { $env:SN_DOCS_HOME } else { 'C:\Personal\SNDocs\ServiceNowDocs' }
-$Index = if ($env:SN_DOC_MD_INDEX) { $env:SN_DOC_MD_INDEX } elseif (Test-Path 'C:\Personal\SNDocs\sn-doc-md\.sn-doc-index\australia\manifest.json') { 'C:\Personal\SNDocs\sn-doc-md\.sn-doc-index\australia' } else { Join-Path $env:USERPROFILE '.agents\cache\sn-doc-md\australia' }
+$Docs  = if ($env:SN_DOCS_HOME) { $env:SN_DOCS_HOME } else { Join-Path $env:LOCALAPPDATA 'SNDocs\repo' }
+$Index = if ($env:SN_DOC_MD_INDEX) { $env:SN_DOC_MD_INDEX } else { Join-Path $env:LOCALAPPDATA 'SNDocs\index' }
 ```
 
-If `$Index\manifest.json` is missing, build it:
+If the docs checkout is missing, report that documentation installation is pending. Do not silently use an older checkout or download/move docs outside an authorized installation. If the checkout exists but the index is missing, build it only when indexing is authorized:
 
 ```powershell
-node "$Skill\bin\sn-doc-md.js" build --docs "$Docs" --out "$Index" --family australia --force
+node "$Skill\bin\sn-doc-md.js" build --docs "$Docs" --out "$Index" --family australia
 ```
+
+Rebuilding an existing recognized index requires explicit `--force`. Never delete an unexpected directory to make indexing succeed. Search/read/test do not create or rebuild indexes.
 
 ## Search workflow
 

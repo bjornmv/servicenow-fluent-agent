@@ -3,6 +3,7 @@ const path = require('path');
 const { performance } = require('perf_hooks');
 const { parseArgs } = require('../src/common');
 const { DocSearch } = require('../src/search');
+const { resolveIndex } = require('../src/paths');
 
 function matchesExpectation(result, exp) {
   if (exp.source_rel && result.source_rel !== exp.source_rel) return false;
@@ -13,8 +14,7 @@ function matchesExpectation(result, exp) {
 }
 
 async function runBenchmarks(options = {}) {
-  const indexDir = options.indexDir || options.index;
-  if (!indexDir) throw new Error('indexDir required');
+  const indexDir = resolveIndex(options.indexDir || options.index);
   const file = options.file || path.join(__dirname, 'benchmarks.json');
   const cases = JSON.parse(fs.readFileSync(file, 'utf8'));
   const ds = new DocSearch(indexDir);
@@ -81,7 +81,7 @@ function printSummary(s) {
 
 if (require.main === module) {
   const args = parseArgs(process.argv.slice(2));
-  runBenchmarks({ indexDir: args.index || process.env.SN_DOC_MD_INDEX, json: !!args.json, file: args.file })
+  runBenchmarks({ indexDir: args.index, json: !!args.json, file: args.file })
     .then(ok => process.exit(ok ? 0 : 1))
     .catch(e => { console.error(e.stack || e.message); process.exit(1); });
 }

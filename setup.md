@@ -57,23 +57,40 @@ This applies independently of shell type. It cannot rewrite every already-runnin
 
 ### 4. Clone ServiceNowDocs
 
-Use a normal local source directory, such as `$HOME\source`. Clone the Australia documentation branch there:
+Use the same short, per-user defaults on every Windows machine:
 
-```powershell
-& $GitExe clone --depth 1 --single-branch --branch australia https://github.com/ServiceNow/ServiceNowDocs.git
+```text
+Docs:  %LOCALAPPDATA%\SNDocs\repo
+Index: %LOCALAPPDATA%\SNDocs\index
 ```
 
-If `ServiceNowDocs` already exists, verify that its `origin` is `https://github.com/ServiceNow/ServiceNowDocs.git` and its checked-out branch is `australia` before running:
+Resolve these once, retaining optional environment overrides (use absolute paths for full setup):
 
 ```powershell
-& $GitExe pull --ff-only
+$Docs  = if ($env:SN_DOCS_HOME) { $env:SN_DOCS_HOME } else { Join-Path $env:LOCALAPPDATA 'SNDocs\repo' }
+$Index = if ($env:SN_DOC_MD_INDEX) { $env:SN_DOC_MD_INDEX } else { Join-Path $env:LOCALAPPDATA 'SNDocs\index' }
 ```
 
-Stop rather than modifying an unexpected existing directory.
+For a missing `$Docs`, create its parent and clone the Australia documentation branch into that exact destination:
+
+```powershell
+New-Item -ItemType Directory -Path (Split-Path -Parent $Docs) -Force | Out-Null
+& $GitExe clone --depth 1 --single-branch --branch australia https://github.com/ServiceNow/ServiceNowDocs.git "$Docs"
+if ($LASTEXITCODE -ne 0) { throw 'Documentation clone failed; stop setup.' }
+```
+
+If `$Docs` already exists, require it to be the repository root, verify its `origin` is `https://github.com/ServiceNow/ServiceNowDocs.git`, its checked-out branch is `australia`, and its working tree is clean before updating:
+
+```powershell
+& $GitExe -C "$Docs" pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Documentation update failed; stop setup.' }
+```
+
+Stop rather than modifying an unexpected existing directory. Do not discover, move, delete or silently reuse an old checkout/index elsewhere. Merely configuring these defaults must not create directories or populate them; cloning and indexing belong to an authorized full installation.
 
 ### 5. Clone and install this agent
 
-In the same source directory, clone this repository:
+Use a normal source directory such as `$HOME\source` for the agent repository, separate from `$Docs` and `$Index`. Clone this repository there:
 
 ```powershell
 & $GitExe clone https://github.com/bjornmv/servicenow-fluent-agent.git
@@ -94,7 +111,23 @@ The **Install/Update ServiceNow Fluent Agent** VS Code task remains available; w
 
 For Windows Git environment repair only (no Git or payload installation/removal), use `node bin/sn-fluent-agent.cjs configure-git --git-exe "$GitExe"`. It also removes known legacy profile workarounds, with a settings backup. Both commands support `--dry-run`. `configure-terminal` configures the SDK profile only; it is not a Git PATH repair. Stop on any failed native update or policy block; do not substitute another interpreter or weaken policy.
 
-### 6. Restart affected hosts and verify
+### 6. Build and verify the documentation index
+
+After payload installation, use the installed lookup skill to build the index at the resolved `$Index`. Do not create the index directory beforehand:
+
+```powershell
+$Skill = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-lookup'
+node "$Skill\bin\sn-doc-md.js" build --docs "$Docs" --out "$Index" --family australia
+if ($LASTEXITCODE -ne 0) { throw 'Documentation indexing failed; stop setup.' }
+node "$Skill\test\run-tests.js" --index "$Index"
+if ($LASTEXITCODE -ne 0) { throw 'Documentation lookup verification failed; stop setup.' }
+```
+
+For an existing recognized index, inspect its manifest (generator, family and docs root) first and use `--force` only for an approved rebuild. Never delete an unexpected directory or source checkout to make indexing succeed. Report benchmark failures rather than claiming success.
+
+The CLI shares the same defaults and overrides for build/search/read/test. `node "$Skill\bin\sn-doc-md.js" paths` is a read-only way to inspect resolved paths; it does not download, move or index anything.
+
+### 7. Restart affected hosts and verify
 
 Save work, then fully restart affected terminal applications from a refreshed Windows launcher. **Developer: Reload Window** is not a guaranteed environment refresh. Do not launch the restarted application from an old shell with stale PATH. Create genuinely new terminals (not a restored/reconnected terminal).
 
@@ -111,4 +144,4 @@ Require `Get-Command git` to identify an **Application** at the same absolute pa
 
 Report registration/notification success separately from live command-resolution success. If a host still retains its old environment after restart, stop and identify its launcher or explicit PATH override; do not claim that every terminal is verified. Signing out/in is the fallback for persistent stale process environments, not a substitute for testing the installer.
 
-Report the Node.js and Git versions, verified Git executable path, whether Git was preserved or installed, Git bootstrap result/log path if used, SDK version, ServiceNowDocs path and branch, agent repository path, installation result, and verification result. Do not claim authentication or instance connectivity; this procedure does not test either.
+Report the Node.js and Git versions, verified Git executable path, whether Git was preserved or installed, Git bootstrap result/log path if used, SDK version, ServiceNowDocs path and branch, index path and benchmark result, agent repository path, installation result, and verification result. Do not claim authentication or instance connectivity; this procedure does not test either.

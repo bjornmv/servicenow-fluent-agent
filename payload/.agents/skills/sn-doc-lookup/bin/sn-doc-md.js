@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-const path = require('path');
-const fs = require('fs');
+const { resolveDocs, resolveIndex } = require('../src/paths');
 const { parseArgs } = require('../src/common');
 const { buildIndex } = require('../src/build-index');
 const { DocSearch } = require('../src/search');
@@ -9,14 +8,17 @@ async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   try {
+    if (cmd === 'paths') {
+      console.log(JSON.stringify({ docs: resolveDocs(args.docs), index: resolveIndex(args.index || args.out) }, null, 2));
+      return;
+    }
     if (cmd === 'build') {
       const res = await buildIndex(args);
       console.log(JSON.stringify({ ok: true, outDir: res.outDir, manifest: res.manifest }, null, 2));
       return;
     }
     if (cmd === 'search') {
-      const index = args.index || process.env.SN_DOC_MD_INDEX;
-      if (!index) throw new Error('missing --index or SN_DOC_MD_INDEX');
+      const index = resolveIndex(args.index);
       const query = args.query || args.q || args._.join(' ');
       if (!query) throw new Error('missing --query');
       const ds = new DocSearch(index);
@@ -26,8 +28,7 @@ async function main() {
       return;
     }
     if (cmd === 'read') {
-      const index = args.index || process.env.SN_DOC_MD_INDEX;
-      if (!index) throw new Error('missing --index or SN_DOC_MD_INDEX');
+      const index = resolveIndex(args.index);
       const ds = new DocSearch(index);
       let rows;
       if (args.id !== undefined) rows = [ds.readById(args.id)].filter(Boolean);
@@ -48,8 +49,7 @@ async function main() {
     }
     if (cmd === 'test') {
       const { runBenchmarks } = require('../test/run-tests');
-      const index = args.index || process.env.SN_DOC_MD_INDEX;
-      if (!index) throw new Error('missing --index or SN_DOC_MD_INDEX');
+      const index = resolveIndex(args.index);
       const ok = await runBenchmarks({ indexDir: index, json: !!args.json });
       process.exit(ok ? 0 : 1);
     }
@@ -82,11 +82,16 @@ function usage() {
   console.log(`sn-doc-md
 
 Commands:
-  build  --docs <ServiceNowDocs root or markdown dir> --out <index dir> --family australia [--force]
-  search --index <index dir> --query <text> [--keywords <terms>] [--limit 10] [--json]
-  read   --index <index dir> --id <chunk id> [--json]
-  read   --index <index dir> --path <markdown/source/path.md> [--json]
-  test   --index <index dir> [--json]
+  paths  [--docs <repo>] [--index <index>] (report paths only; no filesystem changes)
+  build  [--docs <ServiceNowDocs root or markdown dir>] [--out <index dir>] --family australia [--force]
+  search [--index <index dir>] --query <text> [--keywords <terms>] [--limit 10] [--json]
+  read   [--index <index dir>] --id <chunk id> [--json]
+  read   [--index <index dir>] --path <markdown/source/path.md> [--json]
+  test   [--index <index dir>] [--json]
+
+Defaults: %LOCALAPPDATA%\\SNDocs\\repo and %LOCALAPPDATA%\\SNDocs\\index.
+Precedence: explicit flags > SN_DOCS_HOME / SN_DOC_MD_INDEX > defaults.
+No legacy-location fallback, automatic download or migration.
 `);
 }
 
