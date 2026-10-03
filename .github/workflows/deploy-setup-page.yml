@@ -9,6 +9,7 @@ on:
       - payload/.agents/skills/win-git-bootstrap/**
       - payload/.agents/skills/sn-doc-lookup/**
       - tools/stage-setup-pages.cjs
+      - tools/Invoke-SdkSetup.ps1
       - tools/test/setup-pages.test.cjs
       - tools/test/mingit-ssh-probe.test.cjs
       - tools/test/jsonc-settings.test.cjs

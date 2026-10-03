@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5
+
+- Replace inline SDK installation with a hash-verified saved worker run in a child PowerShell process, avoiding runner-added `exit` closing the interactive host.
+- Persist package verification and provide read-only recovery for the exact run, including 0.3.4 logs; missing/nonzero evidence never triggers a reinstall or a false success.
+- Refuse duplicate installation into the same run directory and prohibit execution-subagent rewriting of setup/recovery commands.
+- Test parent-shell survival, durable results, recovery without writes/npm, missing SDK files and SDK-download checksum enforcement.
+
 ## 0.3.4
 
 - Separate SDK package installation/metadata checks from live `now-sdk` function acceptance in a genuinely new configured VS Code terminal; never probe batch shims.

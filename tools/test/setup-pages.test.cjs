@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { stageSetupPages, validateBootstrapHash, workerRelativePath, downloadRelativePath } = require('../stage-setup-pages.cjs');
+const { stageSetupPages, validateBootstrapHash, validateSdkSetupHash, workerRelativePath, downloadRelativePath, sdkWorkerRelativePath, sdkDownloadRelativePath } = require('../stage-setup-pages.cjs');
 
 const root = path.resolve(__dirname, '../..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -25,7 +25,7 @@ function withTemp(fn) {
 
 function sourceFixture(directory) {
   const source = path.join(directory, 'source');
-  for (const file of ['setup.md', 'git-setup.md', workerRelativePath]) {
+  for (const file of ['setup.md', 'git-setup.md', workerRelativePath, sdkWorkerRelativePath]) {
     const destination = path.join(source, file);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(path.join(root, file), destination);
@@ -106,7 +106,9 @@ test('documented worker digest matches exact canonical bytes', () => {
 test('Pages staging copies both documents and download byte-for-byte', () => withTemp(directory => {
   const output = path.join(directory, 'pages');
   const result = stageSetupPages(output);
-  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath]);
+  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath]);
+  assert.deepEqual(fs.readFileSync(path.join(output, sdkDownloadRelativePath)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
+  assert.equal(result.sdkSetupSha256, validateSdkSetupHash());
   assert.equal(fs.readFileSync(path.join(output, 'setup.md'), 'utf8'), setup);
   assert.equal(fs.readFileSync(path.join(output, 'git-setup.md'), 'utf8'), gitSetup);
   assert.deepEqual(fs.readFileSync(path.join(output, downloadRelativePath)), fs.readFileSync(path.join(root, workerRelativePath)));
@@ -129,6 +131,23 @@ test('missing or ambiguous worker digest blocks publication', () => withTemp(dir
   assert.throws(() => validateBootstrapHash(source), /exactly one/);
 }));
 
+test('altered SDK worker blocks publication before output is written', () => withTemp(directory => {
+  const source = sourceFixture(directory);
+  fs.appendFileSync(path.join(source, sdkWorkerRelativePath), '\n# altered SDK worker\n');
+  const output = path.join(directory, 'pages');
+  assert.throws(() => stageSetupPages(output, source), /SDK worker SHA-256 mismatch/);
+  assert.equal(fs.existsSync(output), false);
+}));
+
+test('missing or ambiguous SDK digest blocks publication', () => withTemp(directory => {
+  const source = sourceFixture(directory);
+  const page = path.join(source, 'setup.md');
+  fs.writeFileSync(page, setup.replace('$ExpectedSdkSetupSha256 =', '$RemovedSdkDigest ='));
+  assert.throws(() => validateSdkSetupHash(source), /exactly one/);
+  fs.writeFileSync(page, setup + "\n$ExpectedSdkSetupSha256 = '" + '0'.repeat(64) + "'\n");
+  assert.throws(() => validateSdkSetupHash(source), /exactly one/);
+}));
+
 test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exclusions', () => {
   assert.match(worker, /\[switch\]\$InstallIfMissing/);
   assert.match(worker, /if \(\$InstallIfMissing\)/);
@@ -144,7 +163,7 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
+  for (const entry of ['tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));

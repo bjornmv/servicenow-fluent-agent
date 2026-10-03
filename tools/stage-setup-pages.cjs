@@ -8,6 +8,17 @@ const crypto = require('node:crypto');
 const repoRoot = path.resolve(__dirname, '..');
 const workerRelativePath = 'payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1';
 const downloadRelativePath = 'downloads/Ensure-MinGit254.ps1';
+const sdkWorkerRelativePath = 'tools/Invoke-SdkSetup.ps1';
+const sdkDownloadRelativePath = 'downloads/Invoke-SdkSetup.ps1';
+
+function validateSdkSetupHash(sourceRoot = repoRoot) {
+  const page = fs.readFileSync(path.join(sourceRoot, 'setup.md'), 'utf8');
+  const matches = [...page.matchAll(/\$ExpectedSdkSetupSha256\s*=\s*'([a-f\d]{64})'/gi)];
+  if (matches.length !== 1) throw new Error('setup.md must declare exactly one ExpectedSdkSetupSha256.');
+  const actual = crypto.createHash('sha256').update(fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath))).digest('hex');
+  if (actual !== matches[0][1].toLowerCase()) throw new Error('SDK worker SHA-256 mismatch: review and update setup.md before publishing.');
+  return actual;
+}
 
 function validateBootstrapHash(sourceRoot = repoRoot) {
   const page = fs.readFileSync(path.join(sourceRoot, 'git-setup.md'), 'utf8');
@@ -25,10 +36,12 @@ function validateBootstrapHash(sourceRoot = repoRoot) {
 
 function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
   const sha256 = validateBootstrapHash(sourceRoot);
+  const sdkSha256 = validateSdkSetupHash(sourceRoot);
   const files = [
     ['setup.md', 'setup.md'],
     ['git-setup.md', 'git-setup.md'],
     [workerRelativePath, downloadRelativePath],
+    [sdkWorkerRelativePath, sdkDownloadRelativePath],
   ];
   // Validate all inputs before writing. Copy bytes unchanged (including LF).
   const inputs = files.map(([source, destination]) => ({
@@ -40,10 +53,10 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
   }
-  return { outputDirectory, files: inputs.map(({ destination }) => destination), bootstrapSha256: sha256 };
+  return { outputDirectory, files: inputs.map(({ destination }) => destination), bootstrapSha256: sha256, sdkSetupSha256: sdkSha256 };
 }
 
-module.exports = { stageSetupPages, validateBootstrapHash, workerRelativePath, downloadRelativePath };
+module.exports = { stageSetupPages, validateBootstrapHash, validateSdkSetupHash, workerRelativePath, downloadRelativePath, sdkWorkerRelativePath, sdkDownloadRelativePath };
 
 if (require.main === module) {
   try {

@@ -21,7 +21,7 @@ Set up the ServiceNow Fluent agent on this Windows machine. Work through the ste
 - Use the permitted native executables/Node JavaScript entry points from the outset. Do not invoke CMD, `.cmd`/`.bat` launchers, or probe `now-sdk.cmd`. A policy block must be reported and reviewed, not worked around with another launcher or weaker policy.
 - Assume Windows PowerShell 5.1 **ConstrainedLanguage**. Keep diagnostics to cmdlets, hashtables and plain strings; avoid `[pscustomobject]` construction and non-core static calls such as `[IO.Path]::GetFullPath` or `[Diagnostics.FileVersionInfo]::GetVersionInfo`. Use `(Resolve-Path -LiteralPath $ExistingPath).Path` for existing paths and `$PSVersionTable.PSVersion` for the current host version.
 - Use file-reading tools with bounded ranges for source/log review. Do not dump whole scripts into the interactive terminal, or run `Select-String -InputObject $WholeScript` repeatedly: each match can print the entire script. Prefer `Select-String -LiteralPath $File -Pattern ...` when needed.
-- Keep one owner for each mutating step. Do not delegate repeated tiny commands to separate runners that lose variables or completion state. For longer blocks, save and review a local `.ps1` file and run it normally; never bypass script policy. Use `throw`, not `exit`, in a shared interactive terminal.
+- Keep setup execution in the parent agent; do not delegate installation or recovery to an execution subagent that rewrites commands or loses completion state. Use the reviewed saved workers and the short launch commands exactly. Never append `exit` to a command in a shared interactive terminal: it closes the host and can destroy the runner's completion result. Use `throw` for a blocking failure. Do not bypass script policy.
 - A timeout, spinner or truncated transcript means **completion unknown**, not failure or permission to repeat an install/clone/build. Inspect that operation's existing logs and process/terminal state; wait for it or report the unresolved result. Do not start a second copy or kill applications automatically.
 - Keep stdout, stderr and exit status. Never discard native output with `*> $null`, hide exceptions in empty catch blocks, or merge native stderr into a strict PowerShell error pipeline. Warnings alone are not nonzero exit codes; genuine launch failures, missing exit status and policy blocks remain failures.
 
@@ -46,32 +46,43 @@ Wait for completion and verify the result before continuing to step 2. Record th
 
 This step installs the **package**, not the VS Code shell function. Do not run bare `now-sdk` yet: the installer creates the **PowerShell with now-sdk** profile in step 5, and its function is available only in newly created terminals using that profile. CLI acceptance belongs to step 7, not this step.
 
-Install once through Node's npm JavaScript entry, with separate stream logs so npm warnings do not become terminating native-stderr errors in Windows PowerShell 5.1:
+Use the canonical [saved SDK worker](https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1) (`tools/Invoke-SdkSetup.ps1` in this repository), not an improvised multiline terminal command. It runs Node's `npm-cli.js` with separate stdout/stderr files and records `npm.exit-code.txt` plus `sdk.result.json` after package verification. A child script ends without closing the calling terminal.
+
+Download and hash-check **without executing**, then read the saved file using a file-reading tool:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$NodeExe = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
-$NpmCli = Join-Path (Split-Path -Parent $NodeExe) 'node_modules\npm\bin\npm-cli.js'
-if (-not (Test-Path -LiteralPath $NpmCli -PathType Leaf)) { throw 'Locate the approved npm JavaScript entry point before continuing.' }
-$RunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
-$SdkLogDir = Join-Path $env:LOCALAPPDATA "SNSetup\$RunId"
-New-Item -ItemType Directory -Path $SdkLogDir -ErrorAction Stop | Out-Null
-$SdkStdout = Join-Path $SdkLogDir 'npm.stdout.log'
-$SdkStderr = Join-Path $SdkLogDir 'npm.stderr.log'
+$ExpectedSdkSetupSha256 = '9BCC0FFD8848EAF5442EF644A9E8CCC11F76570C922DB915E856330F35F6D7A0'
+$SdkRunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
+$SdkWorkerDir = Join-Path $env:LOCALAPPDATA "SNSetup\workers\$SdkRunId"
+New-Item -ItemType Directory -Path $SdkWorkerDir -ErrorAction Stop | Out-Null
+$SdkWorker = Join-Path $SdkWorkerDir 'Invoke-SdkSetup.ps1'
+Invoke-WebRequest -Uri 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1' -OutFile $SdkWorker -UseBasicParsing -TimeoutSec 120
+if ((Get-FileHash -LiteralPath $SdkWorker -Algorithm SHA256).Hash -ne $ExpectedSdkSetupSha256) { throw 'SDK worker hash mismatch; do not execute.' }
+$SdkLogDir = Join-Path $env:LOCALAPPDATA "SNSetup\$SdkRunId"
 Write-Output "SDK_LOG_DIR=$SdkLogDir"
-$NpmProcess = Start-Process -FilePath $NodeExe -ArgumentList @("`"$NpmCli`"", 'install', '--global', '@servicenow/sdk@latest', '--no-progress') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $SdkStdout -RedirectStandardError $SdkStderr -ErrorAction Stop
-if ($null -eq $NpmProcess -or $null -eq $NpmProcess.ExitCode) { throw 'SDK install completion is unknown; inspect existing logs/process state, do not repeat it.' }
-$SdkExit = $NpmProcess.ExitCode
-Set-Content -LiteralPath (Join-Path $SdkLogDir 'npm.exit-code.txt') -Value $SdkExit -Encoding ascii
-Write-Output "SDK_NPM_EXIT=$SdkExit"
-Get-Content -LiteralPath $SdkStderr -Tail 12
-if ($SdkExit -ne 0) { throw 'SDK installation failed; preserve both logs and stop setup.' }
-$SdkPackage = Join-Path $env:APPDATA 'npm\node_modules\@servicenow\sdk\package.json'
-if (-not (Test-Path -LiteralPath $SdkPackage -PathType Leaf)) { throw 'SDK metadata is missing at the profile global path; review npm prefix configuration, do not reinstall blindly.' }
-$SdkMetadata = Get-Content -LiteralPath $SdkPackage -Raw | ConvertFrom-Json
-if ($SdkMetadata.name -ne '@servicenow/sdk' -or -not $SdkMetadata.version) { throw 'Unexpected SDK package metadata.' }
-Write-Output "SDK_PACKAGE_VERSION=$($SdkMetadata.version)"
 ```
+
+A reviewed local repository copy can be used instead, with the same hash check. Stop on download/hash/signing or policy failure; no alternate interpreter, zone-marker removal or policy override. Record the exact `$SdkLogDir` **before** starting. Do not create it yourself; the worker refuses an existing run directory to prevent a duplicate install.
+
+Launch exactly once in a child process and retain the same terminal/tool operation until completion (allow several minutes; poll the original operation if it becomes backgrounded):
+
+```powershell
+$PowerShellExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+& $PowerShellExe -NoLogo -NoProfile -NonInteractive -File $SdkWorker -RunDirectory $SdkLogDir -Install
+if ($LASTEXITCODE -ne 0) { throw 'SDK worker stopped; inspect this run, do not reinstall.' }
+```
+
+Do not append `exit`, merge child stderr into a strict error pipeline, or translate the worker back into inline commands. In a direct-process tool, use the same executable and argument array with resolved absolute paths.
+
+**If the runner loses its completion result:** use the SAME saved worker and exact recorded run directory, **without `-Install`**. This read-only check also understands the 0.3.4 log format. Do not guess the newest directory, use package presence alone, or start a new install:
+
+```powershell
+& $PowerShellExe -NoLogo -NoProfile -NonInteractive -File $SdkWorker -RunDirectory $SdkLogDir
+if ($LASTEXITCODE -ne 0) { throw 'SDK recovery is unresolved or failed; inspect the original operation and stop.' }
+```
+
+Recovery checks the recorded npm exit, both logs, current package metadata and SDK entry file without running npm or the SDK. `SDK_PACKAGE_VERIFIED=true` and a zero recovery exit authorize **continuing at step 3**, not repeating step 2. Missing/unreadable/malformed/nonzero evidence is not success; wait for the original operation if unfinished. Do not wrap recovery in `SilentlyContinue` or replace it with `[pscustomobject]` diagnostics.
 
 Require an explicit zero npm exit and valid package metadata before continuing. The default profile expects the standard per-user npm prefix under `%APPDATA%\npm`; a customized prefix requires review, not silent installation into a second location. Do not use `--force`, suppress lifecycle scripts to hide a failure, or elevate.
 

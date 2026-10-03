@@ -60,7 +60,9 @@ Save work and restart affected terminal applications from a refreshed launcher, 
 
 ## SDK package versus terminal readiness
 
-The full setup guide installs the SDK package through Node's npm JavaScript entry, preserving separate stdout/stderr logs and an explicit exit code. Package installation is verified from metadata; it does not require running a batch shim.
+The full setup guide uses the hash-verified `tools/Invoke-SdkSetup.ps1` saved worker in a child PowerShell process. It installs the SDK through Node's npm JavaScript entry, preserving separate stdout/stderr logs, an explicit exit code and `sdk.result.json`. Package installation is verified from metadata and the entry file; it does not require running a batch shim. Never paste the installer inline or append `exit` to the shared terminal command.
+
+If the runner loses its completion result, run the same worker with the exact `-RunDirectory` **without `-Install`**. This read-only recovery also supports 0.3.4 logs. A verified result resumes setup at step 3 without reinstalling; missing or failed evidence stops for review. The worker refuses `-Install` against an existing run directory.
 
 After agent installation configures **PowerShell with now-sdk**, create a **new terminal using that profile**. Require `Get-Command now-sdk` to resolve to a **Function**, then run `now-sdk --version`. Old terminals do not gain the function retroactively. Do not probe `now-sdk.cmd`, reinstall the SDK to repair an old shell, or treat package presence as CLI acceptance. Policy blocks require review, not alternative-launcher retries.
 
