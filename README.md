@@ -6,6 +6,8 @@ The package is designed for locked-down Windows machines where Node, npm, and VS
 
 ## Agent-assisted setup
 
+Use the complete [release-specific 0.3.6 guide](https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.6/setup.txt), or read local [setup.md](setup.md) in full. Confirm its protocol version, all seven steps and end marker before changes. A successful web fetch can still return stale or excerpted instructions: do not execute those. The release directory includes the SDK worker and a SHA-256 manifest; publishing rejects mismatched release markers and worker versions.
+
 Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step links to the separate [Windows Git setup procedure](git-setup.md), which reuses the packaged `win-git-bootstrap` skill and worker. Working Git is preserved; only genuinely missing Git is installed, using pinned MinGit 2.54.0.windows.1 with blocked Unix find/sort omitted before extraction.
 
 The Git page provides a directly downloadable, SHA-256-checked worker, so no Git clone is required to bootstrap Git. The Pages workflow publishes both pages and copies the canonical payload script to `/downloads/Ensure-MinGit254.ps1` in the same deployment. These URLs become available after the change is pushed and Pages deployment succeeds.
@@ -62,7 +64,7 @@ Save work and restart affected terminal applications from a refreshed launcher, 
 
 The full setup guide uses the hash-verified `tools/Invoke-SdkSetup.ps1` saved worker in a child PowerShell process. It installs the SDK through Node's npm JavaScript entry, preserving separate stdout/stderr logs, an explicit exit code and `sdk.result.json`. Package installation is verified from metadata and the entry file; it does not require running a batch shim. Never paste the installer inline or append `exit` to the shared terminal command.
 
-If the runner loses its completion result, run the same worker with the exact `-RunDirectory` **without `-Install`**. This read-only recovery also supports 0.3.4 logs. A verified result resumes setup at step 3 without reinstalling; missing or failed evidence stops for review. The worker refuses `-Install` against an existing run directory.
+If the runner loses its completion result, do not queue diagnostics into the same busy terminal. Re-read the exact run's result files with file tools, or run the same worker in an idle terminal/direct-process tool with the exact `-RunDirectory -WaitSeconds 180` **without `-Install`**. A missing marker in an early sample is not failure; recheck after bounded waiting. This read-only recovery also supports 0.3.4 logs. A verified result resumes setup at step 3 without reinstalling; missing or failed evidence stops for review. The worker refuses `-Install` against an existing run directory.
 
 After agent installation configures **PowerShell with now-sdk**, create a **new terminal using that profile**. Require `Get-Command now-sdk` to resolve to a **Function**, then run `now-sdk --version`. Old terminals do not gain the function retroactively. Do not probe `now-sdk.cmd`, reinstall the SDK to repair an old shell, or treat package presence as CLI acceptance. Policy blocks require review, not alternative-launcher retries.
 

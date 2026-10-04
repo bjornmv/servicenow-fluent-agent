@@ -4,17 +4,27 @@ permalink: /setup/
 
 # Agent-Assisted Installation
 
-Give a new agent this short prompt:
-
 ```text
-Read https://bjornmv.github.io/servicenow-fluent-agent/setup and perform the full ServiceNow Fluent agent setup.
+SETUP_PROTOCOL_VERSION=0.3.6
 ```
 
-If the agent cannot access the URL, read the [raw setup document](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/setup.md), or download the repository source ZIP and read this file locally. Do not require a Git clone to install missing Git.
+Give a new agent this release-specific prompt (not the unversioned `/setup/` URL):
+
+```text
+Read the COMPLETE guide at https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.6/setup.txt and perform setup. Before changes, confirm protocol 0.3.6, the end marker and all seven steps. Do not execute search excerpts or older cached instructions. Use the saved workers, not inline installation commands. Keep existing repositories, settings and docs/index; recover completed steps instead of reinstalling them.
+```
+
+If web extraction is incomplete, download that exact text file over HTTPS and read the saved file in bounded ranges, or read this file from a reviewed local repository. Do not require a Git clone to install missing Git. A policy denial is a stop condition, not a reason to change transport. A version mismatch or missing content must be resolved before executing anything.
 
 ## Instructions for the Agent
 
 Set up the ServiceNow Fluent agent on this Windows machine. Work through the steps in order, report each result, and stop at the first blocking failure. Node.js must already be installed. This procedure authorizes only the prescribed missing-Git bootstrap, the global SDK package install/update, the two repository checkouts, agent configuration and documentation indexing. Do not install other prerequisites, use elevation, handle credentials, authenticate to ServiceNow, or deploy an application.
+
+### 0. Confirm the guide before execution
+
+Report the guide source and protocol version, and read through its final end marker. Require version **0.3.6**, all steps 1–7, the saved `Invoke-SdkSetup.ps1` launch and the `-WaitSeconds` recovery option. A web tool's “relevant context” response containing omitted sections or ellipses is NOT the complete guide. In a local checkout, compare `VERSION` with the guide before proceeding. If versions differ, stop and obtain the intended complete release; never reconstruct missing commands from memory or blend releases.
+
+The release-specific text and worker are published together under `/releases/0.3.6/`, with a `manifest.json` containing their SHA-256 digests. The unversioned page is for discovery; a successful fetch alone does not establish freshness. If the requested release is unavailable, stop and report it rather than silently using another one.
 
 ### Execution discipline
 
@@ -46,18 +56,18 @@ Wait for completion and verify the result before continuing to step 2. Record th
 
 This step installs the **package**, not the VS Code shell function. Do not run bare `now-sdk` yet: the installer creates the **PowerShell with now-sdk** profile in step 5, and its function is available only in newly created terminals using that profile. CLI acceptance belongs to step 7, not this step.
 
-Use the canonical [saved SDK worker](https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1) (`tools/Invoke-SdkSetup.ps1` in this repository), not an improvised multiline terminal command. It runs Node's `npm-cli.js` with separate stdout/stderr files and records `npm.exit-code.txt` plus `sdk.result.json` after package verification. A child script ends without closing the calling terminal.
+Use the canonical [saved SDK worker](https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.6/Invoke-SdkSetup.ps1) (`tools/Invoke-SdkSetup.ps1` in this repository), not an improvised multiline terminal command. It runs Node's `npm-cli.js` with separate stdout/stderr files and records `npm.exit-code.txt` plus `sdk.result.json` after package verification. A child script ends without closing the calling terminal.
 
 Download and hash-check **without executing**, then read the saved file using a file-reading tool:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$ExpectedSdkSetupSha256 = '9BCC0FFD8848EAF5442EF644A9E8CCC11F76570C922DB915E856330F35F6D7A0'
+$ExpectedSdkSetupSha256 = 'CE63A4CD050D1CC2A30C94D06F551AFCF5589864C3DBB1EB9F404EF333AAA0A8'
 $SdkRunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $SdkWorkerDir = Join-Path $env:LOCALAPPDATA "SNSetup\workers\$SdkRunId"
 New-Item -ItemType Directory -Path $SdkWorkerDir -ErrorAction Stop | Out-Null
 $SdkWorker = Join-Path $SdkWorkerDir 'Invoke-SdkSetup.ps1'
-Invoke-WebRequest -Uri 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1' -OutFile $SdkWorker -UseBasicParsing -TimeoutSec 120
+Invoke-WebRequest -Uri 'https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.6/Invoke-SdkSetup.ps1' -OutFile $SdkWorker -UseBasicParsing -TimeoutSec 120
 if ((Get-FileHash -LiteralPath $SdkWorker -Algorithm SHA256).Hash -ne $ExpectedSdkSetupSha256) { throw 'SDK worker hash mismatch; do not execute.' }
 $SdkLogDir = Join-Path $env:LOCALAPPDATA "SNSetup\$SdkRunId"
 Write-Output "SDK_LOG_DIR=$SdkLogDir"
@@ -75,14 +85,16 @@ if ($LASTEXITCODE -ne 0) { throw 'SDK worker stopped; inspect this run, do not r
 
 Do not append `exit`, merge child stderr into a strict error pipeline, or translate the worker back into inline commands. In a direct-process tool, use the same executable and argument array with resolved absolute paths.
 
-**If the runner loses its completion result:** use the SAME saved worker and exact recorded run directory, **without `-Install`**. This read-only check also understands the 0.3.4 log format. Do not guess the newest directory, use package presence alone, or start a new install:
+**If the runner returns early or loses its completion result:** an empty transcript or `SDK_LOG_DIR` alone is not completion. Do not send diagnostic commands into the same still-busy terminal; they can queue behind npm and also return no output. Poll the original tool operation, or use file-reading tools to re-read this run's `npm.exit-code.txt` and `sdk.result.json` every 10–15 seconds for up to **5 minutes**. A missing marker in one early sample only means “not finished yet”. Re-read at the end of the wait budget before reporting status; do not base a final failure report on an old snapshot.
+
+For a deterministic recovery check in a **separate idle terminal or approved direct-process tool**, use the SAME saved worker and exact recorded run directory, **without `-Install`**. `-WaitSeconds 180` waits read-only for the original run's exit marker; it does not install anything. It also understands 0.3.4 logs. Do not guess the newest directory, use package presence alone, or start a new install:
 
 ```powershell
-& $PowerShellExe -NoLogo -NoProfile -NonInteractive -File $SdkWorker -RunDirectory $SdkLogDir
+& $PowerShellExe -NoLogo -NoProfile -NonInteractive -File $SdkWorker -RunDirectory $SdkLogDir -WaitSeconds 180
 if ($LASTEXITCODE -ne 0) { throw 'SDK recovery is unresolved or failed; inspect the original operation and stop.' }
 ```
 
-Recovery checks the recorded npm exit, both logs, current package metadata and SDK entry file without running npm or the SDK. `SDK_PACKAGE_VERIFIED=true` and a zero recovery exit authorize **continuing at step 3**, not repeating step 2. Missing/unreadable/malformed/nonzero evidence is not success; wait for the original operation if unfinished. Do not wrap recovery in `SilentlyContinue` or replace it with `[pscustomobject]` diagnostics.
+The worker prints `SDK_WORKER_VERSION=0.3.6`; an unexpected version is a stop/review condition. Wait-budget expiry means **completion still unknown**, not that npm failed; report the exact run and latest evidence without retrying. Recovery checks the recorded npm exit, both logs, current package metadata and SDK entry file without running npm or the SDK. `SDK_PACKAGE_VERIFIED=true` and a zero recovery exit authorize **continuing at step 3**, not repeating step 2. Missing/unreadable/malformed/nonzero evidence is not success; wait for the original operation if unfinished. Do not wrap recovery in `SilentlyContinue` or replace it with `[pscustomobject]` diagnostics.
 
 Require an explicit zero npm exit and valid package metadata before continuing. The default profile expects the standard per-user npm prefix under `%APPDATA%\npm`; a customized prefix requires review, not silent installation into a second location. Do not use `--force`, suppress lifecycle scripts to hide a failure, or elevate.
 
@@ -195,3 +207,7 @@ Require `Get-Command git` to identify an **Application** at the same absolute pa
 Report registration/notification success separately from live command-resolution success. If a host still retains its old environment after restart, stop and identify its launcher or explicit PATH override; do not claim that every terminal is verified. Signing out/in is the fallback for persistent stale process environments, not a substitute for testing the installer.
 
 Report the Node.js and Git versions, verified Git executable path, whether Git was preserved or installed, Git bootstrap result/log path if used, SDK version, ServiceNowDocs path and branch, index path and benchmark result, agent repository path, installation result, and verification result. Do not claim authentication or instance connectivity; this procedure does not test either.
+
+```text
+SETUP_GUIDE_END=0.3.6
+```

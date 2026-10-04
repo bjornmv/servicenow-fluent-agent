@@ -37,6 +37,19 @@ function validateBootstrapHash(sourceRoot = repoRoot) {
 function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
   const sha256 = validateBootstrapHash(sourceRoot);
   const sdkSha256 = validateSdkSetupHash(sourceRoot);
+  const version = fs.readFileSync(path.join(sourceRoot, 'VERSION'), 'utf8').trim();
+  const packageVersion = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'package.json'), 'utf8')).version;
+  const setup = fs.readFileSync(path.join(sourceRoot, 'setup.md'), 'utf8');
+  const sdk = fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath), 'utf8');
+  if (!/^\d+\.\d+\.\d+$/.test(version) || version !== packageVersion ||
+      setup.match(/^SETUP_PROTOCOL_VERSION=(.+)$/m)?.[1] !== version ||
+      setup.match(/^SETUP_GUIDE_END=(.+)$/m)?.[1] !== version ||
+      !setup.includes(`/releases/${version}/setup.txt`) ||
+      !setup.includes(`/releases/${version}/Invoke-SdkSetup.ps1`) ||
+      !sdk.includes(`$WorkerVersion = '${version}'`)) {
+    throw new Error('Setup release versions disagree: VERSION, package, guide markers/URLs and SDK worker must match.');
+  }
+  const releaseRoot = `releases/${version}`;
   const files = [
     ['setup.md', 'setup.md'],
     ['git-setup.md', 'git-setup.md'],
@@ -48,12 +61,25 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
     destination,
     bytes: fs.readFileSync(path.join(sourceRoot, source)),
   }));
+  // Plain text has no Jekyll front matter, so it is copied rather than rendered
+  // or redirected to the unversioned page. Release URLs avoid stale extraction keys.
+  const text = Buffer.from(setup.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''));
+  const manifest = {
+    version,
+    setup: { file: 'setup.txt', sha256: crypto.createHash('sha256').update(text).digest('hex') },
+    sdkWorker: { file: 'Invoke-SdkSetup.ps1', sha256: sdkSha256 },
+  };
+  inputs.push(
+    { destination: `${releaseRoot}/setup.txt`, bytes: text },
+    { destination: `${releaseRoot}/Invoke-SdkSetup.ps1`, bytes: fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath)) },
+    { destination: `${releaseRoot}/manifest.json`, bytes: Buffer.from(JSON.stringify(manifest, null, 2) + '\n') },
+  );
   for (const { destination, bytes } of inputs) {
     const target = path.join(outputDirectory, destination);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
   }
-  return { outputDirectory, files: inputs.map(({ destination }) => destination), bootstrapSha256: sha256, sdkSetupSha256: sdkSha256 };
+  return { outputDirectory, version, files: inputs.map(({ destination }) => destination), bootstrapSha256: sha256, sdkSetupSha256: sdkSha256 };
 }
 
 module.exports = { stageSetupPages, validateBootstrapHash, validateSdkSetupHash, workerRelativePath, downloadRelativePath, sdkWorkerRelativePath, sdkDownloadRelativePath };

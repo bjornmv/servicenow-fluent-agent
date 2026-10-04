@@ -22,6 +22,7 @@ on:
       - lib/windows-git-environment.cjs
       - bin/sn-fluent-agent.cjs
       - package.json
+      - VERSION
       - .github/workflows/deploy-setup-page.yml
   workflow_dispatch:
 

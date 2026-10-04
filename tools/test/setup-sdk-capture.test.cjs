@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const setup = fs.readFileSync(path.join(root, 'setup.md'), 'utf8');
 const section = setup.split('### 2. Install now-sdk')[1].split('### 3.')[0];
@@ -16,7 +16,7 @@ const windows = { skip: process.platform !== 'win32' };
 const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
 const quote = value => "'" + value.replaceAll("'", "''") + "'";
 
-function run({ exit = 0, metadata = true, entry = true, mock = '', recover = false, repeat = false, legacy = false, recorded = '0', logs = true } = {}) {
+function run({ exit = 0, metadata = true, entry = true, mock = '', recover = false, repeat = false, legacy = false, recorded = '0', logs = true, waitSeconds = 0, delayedExit = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk capture '));
   try {
     const npm = path.join(dir, "fake npm's cli.js");
@@ -46,7 +46,7 @@ function run({ exit = 0, metadata = true, entry = true, mock = '', recover = fal
     const invoke = install => {
       // The child returns to the caller: this marker would be lost if an inline
       // exit closed the parent terminal, the regression seen in the real runner.
-      const wrapper = `$ErrorActionPreference='Stop'; try { $text=@(& ${quote(powershell)} -NoLogo -NoProfile -NonInteractive -File ${quote(script)} -RunDirectory ${quote(logDir)} ${install ? '-Install' : ''} 2>&1); $code=$LASTEXITCODE; $text | ForEach-Object { Write-Output ([string]$_) }; Write-Output 'PARENT_STILL_ALIVE'; exit $code } catch { Write-Output ('WRAPPER_ERROR: '+$_.FullyQualifiedErrorId); exit 92 }`;
+      const wrapper = `$ErrorActionPreference='Stop'; try { $text=@(& ${quote(powershell)} -NoLogo -NoProfile -NonInteractive -File ${quote(script)} -RunDirectory ${quote(logDir)} ${install ? '-Install' : ''} -WaitSeconds ${waitSeconds} 2>&1); $code=$LASTEXITCODE; $text | ForEach-Object { Write-Output ([string]$_) }; Write-Output 'PARENT_STILL_ALIVE'; exit $code } catch { Write-Output ('WRAPPER_ERROR: '+$_.FullyQualifiedErrorId); exit 92 }`;
       const r = spawnSync(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', wrapper], {
         env: { ...process.env, APPDATA: appData, LOCALAPPDATA: localData }, encoding: 'utf8', timeout: 30000,
       });
@@ -55,8 +55,15 @@ function run({ exit = 0, metadata = true, entry = true, mock = '', recover = fal
     };
     const snapshot = () => fs.existsSync(logDir) ? fs.readdirSync(logDir).sort().map(n => [n, fs.statSync(path.join(logDir, n)).mtimeMs, fs.readFileSync(path.join(logDir, n), 'utf8')]) : [];
     const before = snapshot();
+    if (delayedExit) {
+      // Simulate the ORIGINAL operation completing independently after the first
+      // missing-marker observation. This child never runs npm/the SDK.
+      spawn(process.execPath, ['-e', `setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(path.join(logDir, 'npm.exit-code.txt'))},'0'),4000)`], { stdio: 'ignore' });
+    }
+    const started = Date.now();
     const result = invoke(!legacy);
-    if (legacy) assert.deepEqual(snapshot(), before, 'legacy recovery must not change logs');
+    result.elapsedMs = Date.now() - started;
+    if (legacy) assert.deepEqual(snapshot().filter(x => !delayedExit || x[0] !== 'npm.exit-code.txt'), before, 'recovery must not change logs apart from the external fixture writer');
     let second;
     if (recover || repeat) {
       const saved = snapshot();
@@ -77,7 +84,9 @@ test('SDK setup uses a reviewed saved worker and read-only recovery, never inlin
   assert.match(blocks[0], /Get-FileHash -LiteralPath \$SdkWorker/);
   assert.doesNotMatch(blocks[0], /-File \$SdkWorker/);
   assert.match(blocks[1], /-File \$SdkWorker -RunDirectory \$SdkLogDir -Install/);
-  assert.match(blocks[2], /-File \$SdkWorker -RunDirectory \$SdkLogDir\n/);
+  assert.match(blocks[2], /-File \$SdkWorker -RunDirectory \$SdkLogDir -WaitSeconds 180\n/);
+  assert.match(section, /same still-busy terminal/);
+  assert.match(section, /Re-read at the end of the wait budget/);
   assert.doesNotMatch(blocks.join('\n'), /\bexit\b|ExecutionPolicy|\[pscustomobject\]|SilentlyContinue/);
   assert.match(section, /continuing at step 3/);
   assert.match(setup, /do not delegate installation or recovery to an execution subagent/);
@@ -97,8 +106,34 @@ test('npm warning survives strict PS 5.1, saves durable result, returns to calle
   assert.match(r.stdout, /PARENT_STILL_ALIVE/);
   assert.equal(r.durable.state, 'package-verified');
   assert.equal(r.durable.cliVerified, false);
+  assert.equal(r.durable.workerVersion, fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim());
   assert.equal(r.second.status, 0, JSON.stringify(r));
   assert.match(r.second.stdout, /SDK_NEXT_STEP=3/);
+});
+
+test('read-only recovery waits for a late exit marker without reinstalling', windows, () => {
+  const r = run({ legacy: true, recorded: null, delayedExit: true, waitSeconds: 8 });
+  assert.equal(r.status, 0, JSON.stringify(r));
+  assert.equal(r.calls, 0);
+  assert.ok(r.elapsedMs >= 3500, JSON.stringify(r));
+  assert.match(r.stdout, /SDK_PACKAGE_VERIFIED=true/);
+});
+
+test('read-only wait expires as unknown, not a failed or repeated installation', windows, () => {
+  const r = run({ legacy: true, recorded: null, waitSeconds: 1 });
+  assert.equal(r.status, 11, JSON.stringify(r));
+  assert.equal(r.calls, 0);
+  assert.equal(r.code, null);
+  assert.match(r.stdout, /waiting-for-original-run/);
+  assert.match(r.stdout, /completion is unknown/);
+  assert.ok(r.elapsedMs < 15000, JSON.stringify(r));
+});
+
+test('wait mode cannot accidentally authorize installation', windows, () => {
+  const r = run({ waitSeconds: 1 });
+  assert.equal(r.status, 11, JSON.stringify(r));
+  assert.equal(r.calls, 0);
+  assert.match(r.stdout, /for read-only recovery/);
 });
 
 test('same run cannot trigger duplicate installation', windows, () => {

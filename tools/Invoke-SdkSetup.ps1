@@ -2,9 +2,13 @@
 # Without -Install this is a read-only recovery check for the EXACT recorded run.
 param(
     [Parameter(Mandatory = $true)][string]$RunDirectory,
-    [switch]$Install
+    [switch]$Install,
+    [ValidateRange(0, 600)][int]$WaitSeconds = 0
 )
 $ErrorActionPreference = 'Stop'
+$WorkerVersion = '0.3.6'
+Write-Output "SDK_WORKER_VERSION=$WorkerVersion"
+if ($Install -and $WaitSeconds -ne 0) { throw 'WaitSeconds is for read-only recovery, not installation.' }
 
 if ($RunDirectory -notmatch '^[a-zA-Z]:[\\/]') { throw 'Use an absolute local run directory.' }
 $SdkLogDir = $RunDirectory
@@ -26,12 +30,21 @@ if ($Install) {
     $NpmProcess = Start-Process -FilePath $NodeExe -ArgumentList @("`"$NpmCli`"", 'install', '--global', '@servicenow/sdk@latest', '--no-progress') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $SdkStdout -RedirectStandardError $SdkStderr -ErrorAction Stop
     if ($null -eq $NpmProcess -or $null -eq $NpmProcess.ExitCode) { throw 'SDK install completion is unknown; inspect existing logs/process state, do not repeat it.' }
     $SdkExit = $NpmProcess.ExitCode
-    Set-Content -LiteralPath $ExitFile -Value $SdkExit -Encoding ascii
+    $ExitPending = Join-Path $SdkLogDir 'npm.exit-code.pending'
+    Set-Content -LiteralPath $ExitPending -Value $SdkExit -Encoding ascii
+    Move-Item -LiteralPath $ExitPending -Destination $ExitFile -ErrorAction Stop
 }
 
 # Also supports recovery of 0.3.4 runs, which have logs/exit status but no result JSON.
 # Missing, unreadable, malformed or nonzero evidence never means success.
-if (-not (Test-Path -LiteralPath $ExitFile -PathType Leaf)) { throw 'SDK install completion is unknown: no recorded exit status. Wait/check the original operation, do not reinstall.' }
+$Deadline = (Get-Date).AddSeconds($WaitSeconds)
+if (-not (Test-Path -LiteralPath $ExitFile -PathType Leaf) -and $WaitSeconds -gt 0) {
+    Write-Output "SDK_STATUS=waiting-for-original-run; budget=$WaitSeconds seconds; no installation will be started."
+}
+while (-not (Test-Path -LiteralPath $ExitFile -PathType Leaf)) {
+    if ((Get-Date) -ge $Deadline) { throw 'SDK install completion is unknown: no recorded exit status within the wait budget. Check the original operation, do not reinstall or claim failure.' }
+    Start-Sleep -Seconds 1
+}
 $ExitText = (Get-Content -LiteralPath $ExitFile -Raw -ErrorAction Stop).Trim()
 if ($ExitText -notmatch '^-?[0-9]+$') { throw 'Invalid recorded npm exit status; stop for review.' }
 Write-Output "SDK_NPM_EXIT=$ExitText"
@@ -47,6 +60,7 @@ if ($SdkMetadata.name -ne '@servicenow/sdk' -or -not $SdkMetadata.version) { thr
 if (-not (Test-Path -LiteralPath $SdkEntry -PathType Leaf)) { throw 'SDK entry point is missing; package installation is incomplete.' }
 $Result = @{
     schemaVersion = 1
+    workerVersion = $WorkerVersion
     state = 'package-verified'
     npmExitCode = 0
     packageVersion = $SdkMetadata.version
@@ -55,7 +69,9 @@ $Result = @{
     cliVerified = $false
 }
 if ($Install) {
-    $Result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $SdkLogDir 'sdk.result.json') -Encoding utf8 -ErrorAction Stop
+    $ResultPending = Join-Path $SdkLogDir 'sdk.result.pending'
+    $Result | ConvertTo-Json | Set-Content -LiteralPath $ResultPending -Encoding utf8 -ErrorAction Stop
+    Move-Item -LiteralPath $ResultPending -Destination (Join-Path $SdkLogDir 'sdk.result.json') -ErrorAction Stop
 }
 Write-Output "SDK_PACKAGE_VERSION=$($SdkMetadata.version)"
 Write-Output 'SDK_PACKAGE_VERIFIED=true'

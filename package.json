@@ -1,6 +1,6 @@
 {
   "name": "servicenow-fluent-agent",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "Team distribution package for the ServiceNow Fluent VS Code agent, instructions, and skills.",
   "type": "commonjs",

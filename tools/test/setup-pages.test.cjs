@@ -25,7 +25,7 @@ function withTemp(fn) {
 
 function sourceFixture(directory) {
   const source = path.join(directory, 'source');
-  for (const file of ['setup.md', 'git-setup.md', workerRelativePath, sdkWorkerRelativePath]) {
+  for (const file of ['setup.md', 'git-setup.md', 'VERSION', 'package.json', workerRelativePath, sdkWorkerRelativePath]) {
     const destination = path.join(source, file);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(path.join(root, file), destination);
@@ -106,7 +106,19 @@ test('documented worker digest matches exact canonical bytes', () => {
 test('Pages staging copies both documents and download byte-for-byte', () => withTemp(directory => {
   const output = path.join(directory, 'pages');
   const result = stageSetupPages(output);
-  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath]);
+  const version = read('VERSION').trim();
+  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath, `releases/${version}/setup.txt`, `releases/${version}/Invoke-SdkSetup.ps1`, `releases/${version}/manifest.json`]);
+  const release = path.join(output, 'releases', version);
+  const text = fs.readFileSync(path.join(release, 'setup.txt'), 'utf8');
+  assert.doesNotMatch(text, /^---/);
+  assert.equal(text, setup.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''));
+  assert.match(text, /SETUP_PROTOCOL_VERSION=/);
+  assert.match(text, /SETUP_GUIDE_END=/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(release, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.version, version);
+  assert.equal(manifest.setup.sha256, crypto.createHash('sha256').update(text).digest('hex'));
+  assert.equal(manifest.sdkWorker.sha256, validateSdkSetupHash());
+  assert.deepEqual(fs.readFileSync(path.join(release, manifest.sdkWorker.file)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.deepEqual(fs.readFileSync(path.join(output, sdkDownloadRelativePath)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.equal(result.sdkSetupSha256, validateSdkSetupHash());
   assert.equal(fs.readFileSync(path.join(output, 'setup.md'), 'utf8'), setup);
@@ -148,6 +160,22 @@ test('missing or ambiguous SDK digest blocks publication', () => withTemp(direct
   assert.throws(() => validateSdkSetupHash(source), /exactly one/);
 }));
 
+test('release version mismatch blocks publication before writing files', () => withTemp(directory => {
+  const source = sourceFixture(directory);
+  fs.writeFileSync(path.join(source, 'VERSION'), '0.0.0\n');
+  const output = path.join(directory, 'pages');
+  assert.throws(() => stageSetupPages(output, source), /release versions disagree/);
+  assert.equal(fs.existsSync(output), false);
+}));
+
+test('missing guide end marker blocks publication rather than publishing incomplete instructions', () => withTemp(directory => {
+  const source = sourceFixture(directory);
+  fs.writeFileSync(path.join(source, 'setup.md'), setup.replace(/^SETUP_GUIDE_END=.*$/m, ''));
+  const output = path.join(directory, 'pages');
+  assert.throws(() => stageSetupPages(output, source), /release versions disagree/);
+  assert.equal(fs.existsSync(output), false);
+}));
+
 test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exclusions', () => {
   assert.match(worker, /\[switch\]\$InstallIfMissing/);
   assert.match(worker, /if \(\$InstallIfMissing\)/);
@@ -163,7 +191,7 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
+  for (const entry of ['VERSION', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6
+
+- Publish release-specific full-text setup instructions, SDK worker and a checksum manifest; gate execution on guide version/completeness instead of trusting stale web-extraction results.
+- Validate package/VERSION, guide markers/URLs and SDK worker version together before Pages writes any output.
+- Add bounded read-only SDK completion waiting and atomic exit/result publication. Warn against queued diagnostics in a busy terminal and premature failure reports based on an early missing-marker sample.
+- Confirmed the latest failed session had received the old inline 0.3.4 procedure; npm actually succeeded after its last file-status sample. No SDK reinstall is needed.
+
 ## 0.3.5
 
 - Replace inline SDK installation with a hash-verified saved worker run in a child PowerShell process, avoiding runner-added `exit` closing the interactive host.
