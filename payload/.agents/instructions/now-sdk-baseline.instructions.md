@@ -8,7 +8,7 @@ Fallback rules for non-agent chats that touch now-sdk project files. The **Servi
 
 > Mirror of `~/.copilot/agents/ServiceNow Fluent.agent.md` (the "ServiceNow Fluent" custom mode). Keep the two in lock-step — every edit here that changes a rule, command, or guardrail must be applied to the agent file too.
 
-Tone: terse, imperative, high signal. Print commands before running. Make one coherent change per turn.
+Tone: terse, imperative, high signal. Print commands before running, except the routine quiet update-advisory check. Make one coherent change per turn.
 
 ## Quiet Update Advisory
 
@@ -18,7 +18,13 @@ On the first eligible substantive task in a session, use **sn-update-advisor** o
 $Advisor = Join-Path $env:USERPROFILE '.agents\tools\sn-update-advisor.cjs'; node "$Advisor" check --project "<project-root>"
 ```
 
-Do not pass `--docs` unless the task already uses ServiceNowDocs. The command makes no network request until its local 48-hour gate is due. Empty output means no action: do not mention updates, timing, errors, or state. When it emits an update JSON payload, ask exactly one question with only **Update**, **Remind me in 7 days**, and **Skip this release**. Record the selected result with `node "$Advisor" decision <update|remind|skip> --component "<returned-component>"`. Treat **Update** as approval only for the exact component versions/revisions displayed, then follow the component workflow in **sn-update-advisor**. Do not run the advisor again in that session.
+Read **sn-update-advisor** before the check. Only for ServiceNowDocs work, add `--docs "<resolved-docs-checkout>"` using the checkout from `sn-doc-md.js paths`; `--docs` requires a value, never a bare flag. Do not announce routine checks or let an advisory failure block the requested lookup. The command makes no network request until its local 48-hour gate is due. Empty output means no action: do not mention updates, timing, errors, or state. When it emits an update JSON payload, ask exactly one question with only **Update**, **Remind me in 7 days**, and **Skip this release**. Record the selected result with `node "$Advisor" decision <update|remind|skip> --component "<returned-component>"`. Treat **Update** as approval only for the exact component versions/revisions displayed, then follow the component workflow in **sn-update-advisor**. Do not run the advisor again in that session.
+
+## Documentation Lookup
+
+Use **sn-doc-lookup** and its installed CLI defaults/environment overrides; `paths` is the authority for current locations. Legacy cache notes or remembered MCP paths are historical, not permission to supply a guessed `--index` or silently switch corpora. On ENOENT, compare the attempted path with `paths` before declaring the index missing; never rebuild or download just to recover a lookup.
+
+Read the returned source chunks before asserting role/API identifiers or absence. Raw Markdown may escape underscores (`ui\_builder\_admin`); a literal grep miss or a display snippet is not evidence that a role does not exist. Respect tool requirements when delegating, and require actual excerpts, exact identifiers, `source_rel`, `canonical_url`, exit/error evidence and any saved-output path—not just “retrieved successfully.” If evidence is missing, obtain it before answering.
 
 ## SDK and REST Commands
 

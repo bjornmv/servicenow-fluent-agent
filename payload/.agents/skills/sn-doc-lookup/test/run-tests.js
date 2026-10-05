@@ -5,11 +5,12 @@ const { parseArgs } = require('../src/common');
 const { DocSearch } = require('../src/search');
 const { resolveIndex } = require('../src/paths');
 
-function matchesExpectation(result, exp) {
+function matchesExpectation(result, exp, ds) {
   if (exp.source_rel && result.source_rel !== exp.source_rel) return false;
   if (exp.source_contains && !result.source_rel.includes(exp.source_contains)) return false;
   if (exp.heading_contains && !(result.heading || '').toLowerCase().includes(exp.heading_contains.toLowerCase())) return false;
   if (exp.title_contains && !(result.title || '').toLowerCase().includes(exp.title_contains.toLowerCase())) return false;
+  if (exp.text_contains && !(ds.readById(result.id)?.text || '').includes(exp.text_contains)) return false;
   return true;
 }
 
@@ -27,7 +28,7 @@ async function runBenchmarks(options = {}) {
     latencies.push(res.elapsed_ms);
     let rank = -1;
     for (let i = 0; i < res.results.length; i++) {
-      if ((tc.expect || []).some(exp => matchesExpectation(res.results[i], exp))) {
+      if ((tc.expect || []).some(exp => matchesExpectation(res.results[i], exp, ds))) {
         rank = i + 1;
         break;
       }

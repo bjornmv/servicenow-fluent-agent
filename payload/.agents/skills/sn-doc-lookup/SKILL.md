@@ -18,9 +18,10 @@ The CLI is dependency-free Node.js and supports:
 
 ```powershell
 node "$Skill\bin\sn-doc-md.js" build  --docs <ServiceNowDocs> --out <index> --family australia --force
-node "$Skill\bin\sn-doc-md.js" search --index <index> --query "..." --keywords "..." --json
-node "$Skill\bin\sn-doc-md.js" read   --index <index> --id <chunk-id> --json
-node "$Skill\bin\sn-doc-md.js" read   --index <index> --path <source_rel> --json
+node "$Skill\bin\sn-doc-md.js" paths
+node "$Skill\bin\sn-doc-md.js" search --query "..." --keywords "..." --json
+node "$Skill\bin\sn-doc-md.js" read   --id <chunk-id> --json
+node "$Skill\bin\sn-doc-md.js" read   --path <source_rel> --json
 node "$Skill\test\run-tests.js"       --index <index>
 ```
 
@@ -33,7 +34,9 @@ Index: %LOCALAPPDATA%\SNDocs\index
 
 All CLI commands share these defaults. Explicit `--docs` / `--out` / `--index` paths take precedence over `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then the defaults above. No legacy-location discovery or automatic migration is performed. Other platforms must provide explicit paths or those overrides when `LOCALAPPDATA` is unavailable.
 
-`node "$Skill\bin\sn-doc-md.js" paths` reports resolved paths without creating directories, downloading docs or building an index.
+`node "$Skill\bin\sn-doc-md.js" paths` reports resolved paths without creating directories, downloading docs or building an index. Prefer omitting `--index` for search/read: the CLI already honors the configured override/default. Use an explicit path only when intentionally selected and verified.
+
+Current resolver output takes precedence over legacy cache/MCP memories. `%LOCALAPPDATA%\sn-docs` is NOT `%LOCALAPPDATA%\SNDocs` (the hyphen matters). On ENOENT, run `paths` and compare the failed path with its output before declaring documentation unavailable. Do not silently fall back to a bare Git cache, guess another path, migrate, download or rebuild. If a selected override is genuinely missing, report that exact path and stop for review.
 
 ## Before searching
 
@@ -60,10 +63,12 @@ Rebuilding an existing recognized index requires explicit `--force`. Never delet
 3. Read only the few top source paths/chunks needed for citations.
 4. Answer with concise synthesis, `source_rel`, and `canonical_url`.
 
+For exact roles/APIs, use the **read text**, not just search snippets (display formatting may remove underscores). Raw Markdown can contain escaped identifiers such as `ui\_builder\_admin`; a literal grep miss does not establish semantic absence. Read relevant overview/access pages before making negative claims, and distinguish general use, specialized features and permissions needed to grant a role.
+
 Example:
 
 ```powershell
-node "$Skill\bin\sn-doc-md.js" search --index "$Index" `
+node "$Skill\bin\sn-doc-md.js" search `
   --query "How do I reduce the size of the audit logs?" `
   --keywords "audit retention purge sys_audit no_audit audit_type whitelist audited fields" `
   --limit 8 --json
@@ -72,7 +77,7 @@ node "$Skill\bin\sn-doc-md.js" search --index "$Index" `
 Then read a cited doc:
 
 ```powershell
-node "$Skill\bin\sn-doc-md.js" read --index "$Index" --path "platform-security/setup-audit-retention.md" --json
+node "$Skill\bin\sn-doc-md.js" read --path "platform-security/setup-audit-retention.md" --json
 ```
 
 ## Keyword discipline
@@ -88,7 +93,7 @@ Drop generic words like `how`, `what`, `best`, `use`, `between` unless they are 
 
 ## Fast path vs subagent
 
-Use direct CLI lookup first. It typically returns in a few hundred milliseconds once indexed.
+Prefer a direct CLI lookup when the harness permits it. It typically returns in a few hundred milliseconds once indexed. If the harness requires an execution subagent, preserve the same lookup/read commands and require its response to include the actual excerpts, exact identifiers, `source_rel`, `canonical_url`, observed exit/error evidence and any saved-output path. “Files retrieved successfully” is not sufficient. Read a saved result if provided; do not answer without the evidence or invent a failure/exit code from missing output.
 
 Use a documentation subagent only when:
 
@@ -105,10 +110,10 @@ Run after changing ranking/indexing code:
 node "$Skill\test\run-tests.js" --index "$Index"
 ```
 
-Current benchmark from the Australia corpus (`ServiceNowDocs@cb48b5c3`): 12/12 passed, p50 ~253 ms, p95 ~333 ms on this machine.
+The suite includes UI Builder roles: the overview must rank near the top and its read text must preserve `ui_builder_admin`. Report measured results and available index provenance from the current run; do not reuse a historical timing or assume an indexed commit when the manifest lacks it.
 
 ## Notes for distribution
 
 - Do not bundle `.sn-doc-index/`; it is large and machine-generated.
 - Bundle this skill's source files and build the index locally from the user's cloned/shallow-cloned ServiceNowDocs repository.
-- The official docs corpus can be refreshed with `git fetch/reset` in the docs checkout, then rebuild the index.
+- Refresh the corpus/index only through an approved update workflow (`sn-update-advisor`), preserving dirty work and existing sources. A lookup error alone does not authorize refresh or rebuild.

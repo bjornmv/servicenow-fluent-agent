@@ -1,5 +1,14 @@
 [
   {
+    "name": "UI Builder roles and exact identifier",
+    "query": "UI Builder required roles",
+    "keywords": "UI Builder roles admin ui_builder_admin experience_admin",
+    "max_rank": 3,
+    "expect": [
+      { "source_rel": "application-development/ui-builder/ui-builder-overview.md", "heading_contains": "UI Builder overview", "text_contains": "The ui_builder_admin role is required" }
+    ]
+  },
+  {
     "name": "GlideRecord addQuery server API",
     "query": "GlideRecord.addQuery",
     "keywords": "GlideRecord addQuery",

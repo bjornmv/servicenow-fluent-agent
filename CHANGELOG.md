@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8
+
+- Route documentation questions through the current lookup resolver/defaults, not historical cache/MCP memories or guessed index paths. Diagnose ENOENT before declaring an index missing; never silently switch corpora or rebuild for a lookup.
+- Require source text and exact role/API identifiers; Markdown-escaped underscores and grep misses do not establish absence. Preserve excerpts, citations, exit/error evidence and saved-output paths through execution subagents.
+- Clarify the required `--docs` value in mirrored advisor guidance. Capture/bound routine-check output and emit only successful actionable update JSON, keeping diagnostics quiet; preserve decision-mode errors and failure status.
+- Add UI Builder role/identifier benchmark coverage and isolated launcher/default-path/evidence regressions. The existing index remains usable without a rebuild; no SDK/Git behavior changes beyond the worker release stamp.
+
 ## 0.3.7
 
 - Make fresh-terminal verification the installing agent's final step: save completed results, retire only its own idle setup shell in a separate call, then let the next synchronous terminal call create a new shell.

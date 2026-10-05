@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 const {
   CHECK_INTERVAL_MS,
   REMINDER_INTERVAL_MS,
@@ -12,6 +13,97 @@ const {
   keyFor,
   recordDecision,
 } = require('../../lib/update-advisor.cjs');
+
+// Execute only the reviewed launcher with fake fs/home/process/spawn bindings.
+// No real child, network, receipt, user state or Git/SDK invocation.
+const launcher = fs.readFileSync(path.join(__dirname, '../../payload/.agents/tools/sn-update-advisor.cjs'), 'utf8');
+function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: '' }, options = {}) {
+  const stop = {};
+  const calls = [];
+  const stdout = [];
+  const stderr = [];
+  const fakeHome = path.resolve(os.tmpdir(), 'advisor-vm-home');
+  const fakeRepo = path.join(fakeHome, 'repo');
+  const proc = {
+    argv: ['node', 'launcher.cjs', ...args], execPath: 'fixture-node', exitCode: 0,
+    exit(code) { if (code !== undefined) this.exitCode = code; throw stop; },
+  };
+  const mocks = {
+    'node:fs': {
+      readFileSync(file) {
+        assert.equal(file, path.join(fakeHome, '.agents', '.servicenow-fluent-agent-install.json'));
+        return options.badReceipt ? '{' : JSON.stringify({ repoRoot: fakeRepo });
+      },
+      existsSync(file) { assert.equal(file, path.join(fakeRepo, 'bin', 'sn-fluent-agent.cjs')); return !options.missingCli; },
+    },
+    'node:os': { homedir: () => fakeHome },
+    'node:path': path,
+    'node:child_process': { spawnSync(...call) { calls.push(call); if (options.throwSpawn) throw new Error('launch denied'); return child; } },
+  };
+  try {
+    vm.runInNewContext(launcher, {
+      require(name) { assert.ok(mocks[name], name); return mocks[name]; },
+      process: proc, Buffer,
+      console: { log: value => stdout.push(String(value)), error: value => stderr.push(String(value)) },
+    }, { timeout: 1000 });
+  } catch (error) { if (error !== stop) throw error; }
+  return { status: proc.exitCode, stdout, stderr, calls };
+}
+const notification = { component: 'agent', id: '222222222222', label: 'ServiceNow Fluent Agent', current: '111111111111', available: '222222222222' };
+
+test('launcher keeps a malformed bare --docs check quiet and forwards the original arguments', () => {
+  const r = runLauncher(['check', '--docs'], { status: 1, stdout: '', stderr: 'Error: Missing value for --docs' });
+  assert.equal(r.status, 0);
+  assert.deepEqual(r.stdout, []);
+  assert.deepEqual(r.stderr, []);
+  assert.deepEqual(Array.from(r.calls[0][1]).slice(1), ['check-updates', '--docs']);
+  assert.deepEqual(Array.from(r.calls[0][2].stdio), ['ignore', 'pipe', 'pipe']);
+  assert.equal(r.calls[0][2].maxBuffer, 64 * 1024);
+});
+
+test('launcher emits successful actionable JSON only, never stderr diagnostics', () => {
+  const r = runLauncher(['check'], { status: 0, stdout: JSON.stringify({ updates: [notification] }), stderr: 'fixture warning' });
+  assert.equal(r.status, 0);
+  assert.deepEqual(r.stdout.map(JSON.parse), [{ updates: [notification] }]);
+  assert.deepEqual(r.stderr, []);
+});
+
+test('launcher suppresses empty, malformed, nonactionable and oversized check responses', () => {
+  for (const stdout of ['', 'not JSON', '{}', '{"updates":[]}', '{"updates":[{}]}', JSON.stringify({ updates: [{ ...notification, available: notification.current }] }), 'x'.repeat(65537)]) {
+    const r = runLauncher(['check'], { status: 0, stdout, stderr: 'error' });
+    assert.equal(r.status, 0);
+    assert.deepEqual(r.stdout, [], stdout.slice(0,80));
+    assert.deepEqual(r.stderr, []);
+  }
+});
+
+test('launcher does not publish partial success on failure, signal, launch error or absent receipt', () => {
+  for (const child of [{ status: 1 }, { status: null }, { status: 0, signal: 'SIGTERM' }, { error: new Error('denied') }]) {
+    const r = runLauncher(['check'], { stdout: JSON.stringify({ updates: [notification] }), ...child });
+    assert.equal(r.status, 0);
+    assert.deepEqual(r.stdout, []);
+    assert.deepEqual(r.stderr, []);
+  }
+  for (const options of [{ throwSpawn: true }, { badReceipt: true }, { missingCli: true }]) {
+    const r = runLauncher(['check'], undefined, options);
+    assert.equal(r.status, 0);
+    assert.deepEqual(r.stdout, []);
+    assert.deepEqual(r.stderr, []);
+  }
+});
+
+test('decision mode preserves inherited output and truthful error/exit status', () => {
+  for (const [child, expected] of [[{ status: 0 }, 0], [{ status: 7 }, 7], [{ status: null }, 1], [{ status: null, signal: 'SIGTERM' }, 1]]) {
+    const r = runLauncher(['decision', 'remind', '--component', 'agent'], child);
+    assert.equal(r.status, expected);
+    assert.equal(r.calls[0][2].stdio, 'inherit');
+    assert.equal(r.calls[0][1][1], 'update-decision');
+  }
+  const failure = runLauncher(['decision'], { error: new Error('launch denied') });
+  assert.equal(failure.status, 1);
+  assert.deepEqual(failure.stderr, ['launch denied']);
+  assert.equal(runLauncher(['decision'], undefined, { missingCli: true }).status, 1);
+});
 
 function temporaryPath() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sn-fluent-agent-update-test-'));

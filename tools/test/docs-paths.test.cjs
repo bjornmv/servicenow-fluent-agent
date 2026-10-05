@@ -92,6 +92,54 @@ test('build, search, read and benchmark share defaults using tiny isolated fixtu
   assert.equal(cli(['build', '--force'], env).status, 0);
 }));
 
+test('escaped UI Builder roles are found/read via defaults despite a legacy cache; benchmark checks exact text', () => fixture(async (temp, env) => {
+  const docs = resolveDocs(undefined, env);
+  const source = 'application-development/ui-builder/ui-builder-overview.md';
+  const file = path.join(docs, 'markdown', source);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const raw = '# UI Builder overview\n\nThe ui\\_builder\\_admin role is required to complete tasks in UI Builder.\n' + 'Create pages and configure components for workspace experiences. '.repeat(4);
+  fs.writeFileSync(file, raw);
+  assert.equal(raw.includes('ui_builder_admin'), false, 'literal grep misses the escaped source');
+  const legacy = path.join(env.LOCALAPPDATA, 'sn-docs/index');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(path.join(legacy, 'manifest.json'), 'historical cache - do not open');
+  assert.equal(cli(['build'], env).status, 0);
+  const search = cli(['search', '--query', 'UI Builder required roles', '--keywords', 'UI Builder roles admin ui_builder_admin experience_admin', '--json'], env);
+  assert.equal(search.status, 0, search.stderr);
+  assert.equal(JSON.parse(search.stdout).results[0].source_rel, source);
+  const read = cli(['read', '--path', source, '--json'], env);
+  assert.equal(read.status, 0, read.stderr);
+  assert.ok(JSON.parse(read.stdout).rows.some(row => row.text.includes('The ui_builder_admin role is required')));
+  const cases = path.join(temp, 'roles.json');
+  const tc = { name: 'UI Builder', query: 'UI Builder roles', max_rank: 3, expect: [{ source_rel: source, text_contains: 'The ui_builder_admin role is required' }] };
+  fs.writeFileSync(cases, JSON.stringify([tc]));
+  assert.equal(cli(['--file', cases], env, 'test/run-tests.js').status, 0);
+  tc.expect[0].text_contains = 'nonexistent_admin_role';
+  fs.writeFileSync(cases, JSON.stringify([tc]));
+  assert.equal(cli(['--file', cases], env, 'test/run-tests.js').status, 1, 'ranking alone cannot satisfy an exact-text expectation');
+  assert.equal(fs.readFileSync(path.join(legacy, 'manifest.json'), 'utf8'), 'historical cache - do not open');
+}));
+
+test('lookup and mirrored agent guidance prevent the observed path/advisor/evidence mistakes', () => {
+  const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+  const agent = read('payload/.copilot/agents/ServiceNow Fluent.agent.md');
+  const baseline = read('payload/.agents/instructions/now-sdk-baseline.instructions.md');
+  const section = (text, heading) => text.split(`## ${heading}\n`)[1].split('\n## ')[0].trim();
+  assert.equal(section(agent, 'Quiet Update Advisory'), section(baseline, 'Quiet Update Advisory'));
+  assert.equal(section(agent, 'Documentation Lookup'), section(baseline, 'Documentation Lookup'));
+  assert.match(agent, /--docs "<resolved-docs-checkout>"/);
+  assert.match(agent, /requires a value, never a bare flag/);
+  assert.match(agent, /not just “retrieved successfully/);
+  const skillText = read('payload/.agents/skills/sn-doc-lookup/SKILL.md');
+  assert.match(skillText, /Prefer omitting `--index`/);
+  assert.match(skillText, /On ENOENT, run `paths`/);
+  assert.match(skillText, /Do not silently fall back to a bare Git cache/);
+  assert.match(skillText, /literal grep miss does not establish semantic absence/);
+  assert.match(skillText, /actual excerpts, exact identifiers, `source_rel`, `canonical_url`/);
+  const cases = JSON.parse(read('payload/.agents/skills/sn-doc-lookup/test/benchmarks.json'));
+  assert.ok(cases.some(tc => tc.expect.some(exp => exp.text_contains?.includes('ui_builder_admin'))));
+});
+
 test('overrides build outside defaults and explicit flags win', () => fixture(async (temp, env) => {
   const docs = path.join(temp, 'explicit docs');
   const index = path.join(temp, 'explicit index');

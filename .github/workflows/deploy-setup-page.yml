@@ -16,6 +16,11 @@ on:
       - tools/test/vscode-terminal.test.cjs
       - tools/test/windows-git-environment.test.cjs
       - tools/test/docs-paths.test.cjs
+      - tools/test/update-advisor.test.cjs
+      - lib/update-advisor.cjs
+      - payload/.agents/tools/sn-update-advisor.cjs
+      - payload/.agents/instructions/now-sdk-baseline.instructions.md
+      - payload/.copilot/agents/ServiceNow Fluent.agent.md
       - tools/test/setup-sdk-capture.test.cjs
       - lib/jsonc-settings.cjs
       - lib/vscode-terminal.cjs
@@ -45,7 +50,7 @@ jobs:
         with:
           node-version: '22'
       - name: Validate setup documents and worker checksum
-        run: node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs tools/test/jsonc-settings.test.cjs tools/test/vscode-terminal.test.cjs tools/test/windows-git-environment.test.cjs tools/test/docs-paths.test.cjs tools/test/setup-sdk-capture.test.cjs
+        run: node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs tools/test/jsonc-settings.test.cjs tools/test/vscode-terminal.test.cjs tools/test/windows-git-environment.test.cjs tools/test/docs-paths.test.cjs tools/test/setup-sdk-capture.test.cjs tools/test/update-advisor.test.cjs
       - name: Stage setup pages and bootstrap download
         run: node tools/stage-setup-pages.cjs
       - uses: actions/jekyll-build-pages@v1

@@ -35,9 +35,36 @@ if (!targetCommand || !cliPath || !fs.existsSync(cliPath)) {
   process.exit();
 }
 
-const result = spawnSync(process.execPath, [cliPath, targetCommand, ...argv.slice(1)], {
-  stdio: 'inherit',
-});
+const MAX_CHECK_OUTPUT = 64 * 1024;
+let result;
+try {
+  result = spawnSync(process.execPath, [cliPath, targetCommand, ...argv.slice(1)],
+    command === 'check'
+      ? { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: MAX_CHECK_OUTPUT }
+      : { stdio: 'inherit' });
+} catch (error) {
+  result = { error };
+}
+
+if (command === 'check') {
+  // Fail closed: diagnostics and partial/invalid responses are never notifications.
+  if (!result.error && result.status === 0 && !result.signal &&
+      typeof result.stdout === 'string' && Buffer.byteLength(result.stdout, 'utf8') <= MAX_CHECK_OUTPUT) {
+    try {
+      const payload = JSON.parse(result.stdout);
+      const updates = payload && payload.updates;
+      if (Array.isArray(updates) && updates.length && updates.every((update) =>
+        update && ['component', 'id', 'label', 'current', 'available'].every((field) =>
+          typeof update[field] === 'string' && update[field].trim().length > 0) &&
+        update.current !== update.available)) {
+        console.log(JSON.stringify({ updates }));
+      }
+    } catch {
+      // Empty, malformed or noisy stdout is not an actionable update response.
+    }
+  }
+  process.exit();
+}
 
 if (result.error) {
   if (command !== 'check') {
@@ -47,5 +74,4 @@ if (result.error) {
   process.exit();
 }
 
-if (command === 'check') process.exit();
-process.exitCode = result.status || 0;
+process.exitCode = result.signal ? 1 : (result.status ?? 1);

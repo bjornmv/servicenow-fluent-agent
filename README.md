@@ -6,7 +6,7 @@ The package is designed for locked-down Windows machines where Node, npm, and VS
 
 ## Agent-assisted setup
 
-Use the complete [release-specific 0.3.7 guide](https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.7/setup.txt), or read local [setup.md](setup.md) in full. Confirm its protocol version, all seven steps and end marker before changes. A successful web fetch can still return stale or excerpted instructions: do not execute those. The release directory includes the SDK worker and a SHA-256 manifest; publishing rejects mismatched release markers and worker versions.
+Use the complete [release-specific 0.3.8 guide](https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.8/setup.txt), or read local [setup.md](setup.md) in full. Confirm its protocol version, all seven steps and end marker before changes. A successful web fetch can still return stale or excerpted instructions: do not execute those. The release directory includes the SDK worker and a SHA-256 manifest; publishing rejects mismatched release markers and worker versions.
 
 The final step has the installing agent retire only its own idle setup shell after saving all results, then use `run_in_terminal` again to create a fresh SDK-profile terminal. It compares old/new PIDs and verifies Git, the `now-sdk` function and the payload without an extension or injected startup commands. This lifecycle is source-confirmed; a live Copilot run is still needed. If the handoff cannot be performed safely, report installation completion separately from pending terminal integration.
 
