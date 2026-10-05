@@ -8,7 +8,7 @@ permalink: /setup/
 SETUP_PROTOCOL_VERSION=0.3.8
 ```
 
-Give a new agent this stable, unversioned prompt:
+Give a new agent session this prompt to install this agent:
 
 ```text
 Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its instructions to perform the full ServiceNow Fluent agent setup.
