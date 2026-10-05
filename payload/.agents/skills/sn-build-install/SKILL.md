@@ -7,7 +7,17 @@ metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.11 documentation for choice compatibility (historical; not newly verified against another SDK version).
-Build, install, and verify the current now-sdk app against the detected auth alias and project scope. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). All install approvals and verification gates below still apply.
+Build, install, and verify the current now-sdk app against the detected auth alias and project scope. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). All install approvals and verification gates below still apply.
+
+## Automation ownership
+
+- Classify every Flow/Subflow/Action before editing or installing it, because transformed automation can carry instance-managed state.
+- Source under `src/fluent/generated/automation/flow/` or with matching `metadata/update/sys_hub_*.xml` is **Fluent-locked** after transformation.
+- Make runtime edits to those transformed records in Flow Designer rather than treating them as hand-authored Fluent.
+- Hand-authored automation outside those paths, with no matching transformed metadata, may be edited after checking its exact SDK API/guide.
+- Stop and ask if build output contains transformed automation not authored in the current session, because it expands the deployment beyond the reviewed change.
+- Obtain explicit approval before deleting generated source or its matching XML.
+- Apply the pre-install scan below even when the intended change does not concern automation, because the archive may still contain it.
 
 ## 1. Build
 Run `now-sdk build` — compiles `src/fluent/**/*.now.ts` → `dist/app`. Fast (~10s); install is the slow step, so iterate on build first.
@@ -34,7 +44,7 @@ Install only after the build is clean AND the pre-install flow/action scan below
 Before every install, scan source for `src/fluent/**/sys_hub_flow_*.now.ts` and `src/fluent/**/sys_hub_action_type_definition_*.now.ts`. If any are present:
 - These will be reset to `draft / active: false` on the instance and may need a manual Flow Designer re-publish after install.
 - Worse, the install may write an invalid `master_snapshot` pointer, breaking the flow with errors like "inputs incorrect" or `[<table> - null]`.
-- Classify per the agent's Flow guardrail: anything under `src/fluent/generated/automation/flow/` or with a matching `metadata/update/sys_hub_*.xml` is **Fluent-locked** (originated from `transform`). STOP and recommend removing those from source per the **sn-transform** skill. Don't proceed without explicit user confirmation.
+- Apply [Automation ownership](#automation-ownership) above. If Fluent-locked records are present, STOP and explain the removal/retention options in **sn-transform** before requesting explicit confirmation.
 - If the user must keep the transformed flows in source for this install, pass `--skip-flow-activation` to the install (`now-sdk install --auth <alias> --skip-flow-activation`). The records still upload but the post-install publish step is skipped, avoiding the draft-reset + bad `master_snapshot` failure mode. The flow stays in its current published state on the instance.
 - If you need to confirm what the build actually packaged, unzip `target/<app>.zip` and look for `sys_hub_flow_*.xml` / `sys_hub_action_type_definition_*.xml` entries.
 
@@ -42,7 +52,7 @@ After the scan:
 - If no transformed flow/action records are present, install with the normal command.
 - If transformed flow/action records remain only because the user explicitly approved keeping them for this install, install with `--skip-flow-activation`.
 
-**Capture exit code AND output — the install can silently fail.** The patterns below are for VS Code PowerShell. In Pi, use `now_sdk` and inspect its captured exit status/output; do not recreate the shell wrapper. A launcher failure is inconclusive even if an earlier command left a zero exit code. Normal pattern:
+**Capture exit code AND output — the install can silently fail.** The patterns below are for VS Code PowerShell. Require attributable native completion evidence; missing exit evidence or unrelated/delayed output makes completion UNKNOWN. Recover the original run's evidence before any retry. A launcher failure is inconclusive even if an earlier command left a zero exit code. Normal pattern:
 ```powershell
 $out = now-sdk install --auth <alias> 2>&1
 $commandOk = $?
@@ -69,6 +79,9 @@ Known failure modes that print mostly-success output but exit non-zero:
 ## 3. Verify on the instance
 Confirm the records actually landed (targets from the argument, if given).
 
+- Deleting local source is not proof that a live record was deleted, because source cleanup and instance deletion are separate operations.
+- Verify the live outcome of an approved record deletion through a narrow `sn-rest` read rather than inferring it from missing local files.
+
 **`sys_updated_on` / `sys_mod_count` are NOT proof of install for any record.** `now-sdk install` carries XML audit fields verbatim, so the on-instance timestamp can stay days old even after a successful write. Confirmed for `sys_hub_action_type_definition`, `sys_hub_flow`, `sp_widget`, `sp_ui_page`, `sp_css`, `sys_script_include`, and likely most platform tables.
 
 The ONLY reliable proof of install is to read the actual content field of the record and grep for a marker string you put into the new version:
@@ -91,7 +104,11 @@ For user-facing UI artifacts, browser checks do not replace content-marker verif
 ## 4. Source Control commit (if app is SC-bound)
 `now-sdk install` does NOT push to git. If the app on the instance is bound to a remote repo (`sys_repo_config` row exists for the scope), after a successful install + verify, **remind the user to run Studio → Source Control → Commit Changes** to push the new revision to the bound branch (typical naming: `sn_instances/<instance>`).
 
-Detect SC binding ONCE per project, then cache the result — do not re-query on every install. Check `/memories/repo/` first for a previously stored binding fact for this scope+instance; if present, use it. If absent, run the two REST calls below, then record the outcome (bound + branch URL, OR unbound) under `/memories/repo/` so subsequent installs skip the lookup. Re-check only when the user changes auth alias, instance, or scope.
+- Reuse a verified source-control binding fact for the same project, scope, instance and alias to avoid repeated discovery.
+- Use the workspace's available memory facility or existing evidence location; no specific memory tool or path is required.
+- If neither is available, retain the fact in the current conversation rather than creating an arbitrary memory directory.
+- When no applicable fact exists, run the bounded lookup below and record the observed binding, branch, target and date without credentials.
+- Recheck after a target/scope/alias change, a reported binding change or evidence that the cached result is stale.
 
 The lookup (two REST calls — the first resolves the `sys_app` row from the project scope in `now.config.json`):
 ```powershell
@@ -103,6 +120,6 @@ node "$SnRest" --alias <alias> --instance https://<instance>.service-now.com "/a
 ```
 Empty result on step 2 = unbound (no commit step). Row present = bound (mention commit step).
 
-SC is OUTBOUND from the instance — it does NOT block or alter `now-sdk install`. Do NOT chase install failures through the SC binding. See `~/.agents/reference/servicenow-source-control.md`.
+SC is OUTBOUND from the instance — it does NOT block or alter `now-sdk install`. Do NOT chase install failures through the SC binding. See the [source-control reference](../../reference/servicenow-source-control.md).
 
 Report build output, install output AND exit code, content-marker check, (if you exercised it) runtime evidence, AND if SC-bound, the commit-step reminder. Print each command before running it. Terse.

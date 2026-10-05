@@ -6,7 +6,7 @@ compatibility: Project-compatible now-sdk and Node; authorized instance and OAut
 metadata:
   version: '1'
 ---
-Bring an EXISTING instance application onto this machine as a now-sdk Fluent project, or refresh one you already have. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md), including package-manager launchers that preserve the project lockfile.
+Bring an EXISTING instance application onto this machine as a now-sdk Fluent project, or refresh one you already have. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md), including package-manager launchers that preserve the project lockfile.
 
 now-sdk has **no list-apps command**, so step 1 lists them over REST via the **sn-rest** skill helper.
 

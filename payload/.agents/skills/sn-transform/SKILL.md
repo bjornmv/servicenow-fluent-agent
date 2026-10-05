@@ -7,7 +7,7 @@ metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.11 documentation for --force; positional-ID behavior historically observed with SDK 4.7.x. Neither is newly verified against another SDK version.
-Adopt existing ServiceNow records into this now-sdk app by converting their XML into Fluent `.now.ts` source. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Adopt existing ServiceNow records into this now-sdk app by converting their XML into Fluent `.now.ts` source. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Run the transform
 1. From the instance (downloads + converts in one step):
@@ -45,7 +45,7 @@ Before using it, identify the requested table's parent and explain that the gene
 Use `dependencies --add` to type-reference an OOB Action / Trigger / ACL / table you don't own; use `transform` only when you need to OWN the record in this app.
 
 ## Review and clean — generated Fluent is NOT trusted
-Classify every generated file before generic cleanup:
+Classify every generated file before generic cleanup, using [Automation ownership](../sn-build-install/SKILL.md#automation-ownership) for flows and actions:
 
 - Transformed `Flow(...)`, `Subflow(...)`, or `Action(...)` under `src/fluent/generated/automation/flow/`: preserve SDK callback syntax and apply the deletion / `--skip-flow-activation` guardrail below.
 - `Test(...)`, `PlaybookDefinition(...)`, and `wfa.playbook.*`: preserve callbacks and helper assignments documented by their exact SDK API/guide; they are DSL construction syntax, not ordinary record script bodies.
@@ -68,7 +68,7 @@ Before fixing any record type, run `now-sdk explain <type>-api --format raw`; ad
 - All referenced `.js` files under the same `scripts/` folder
 - The matching XML files under `metadata/` (so a re-transform doesn't recreate them)
 
-These records stay on the instance only; edit them in Flow Designer. Only flows/actions hand-authored fresh in Fluent (never round-tripped through `transform`) are safe to install. If the user explicitly insists on keeping a transformed flow in source, warn loudly per the **Flow and Action Guardrail** (canonical in the ServiceNow Fluent agent / now-sdk baseline instructions), and install with `--skip-flow-activation` (`now-sdk install --auth <alias> --skip-flow-activation`) so the post-install publish step is skipped and the existing published flow on the instance is preserved.
+These records stay on the instance only; edit them in Flow Designer. Only flows/actions hand-authored fresh in Fluent (never round-tripped through `transform`) are safe to install. If the user explicitly insists on keeping a transformed flow in source, explain the risks in [the pre-install flow/action scan](../sn-build-install/SKILL.md#pre-install-flowaction-scan--required-before-command), and install with `--skip-flow-activation` (`now-sdk install --auth <alias> --skip-flow-activation`) so the post-install publish step is skipped and the existing published flow on the instance is preserved.
 
 ## Verify
 Run `now-sdk build` first. Before any install, use the **sn-build-install** pre-install flow/action scan. If transformed `sys_hub_flow_*` or `sys_hub_action_type_definition_*` source remains, do NOT run a plain install; either remove those generated records with explicit user confirmation, or, if the user explicitly keeps them for this install, run `now-sdk install --auth <alias> --skip-flow-activation`. Report build/install output + any rule violations you fixed.

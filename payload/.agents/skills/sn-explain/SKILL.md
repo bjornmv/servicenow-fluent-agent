@@ -6,7 +6,7 @@ compatibility: ServiceNow Fluent project and its installed SDK documentation; us
 metadata:
   version: '1'
 ---
-Look up the Fluent SDK docs for the requested type/topic and report how to author it correctly. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). The configured PowerShell function is not the blocked batch shim; do not replace it with per-command resolver scripts.
+Look up the Fluent SDK docs for the requested type/topic and report how to author it correctly. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). The configured PowerShell function is not the blocked batch shim; do not replace it with per-command resolver scripts.
 
 **Always pass `--format raw`** — `pretty` includes ANSI codes that waste tokens.
 
@@ -45,7 +45,8 @@ For authorized record creation, continue with [sn-add-record](../sn-add-record/S
 | Catalog item / variables | `catalogitem-api`, `*variable-api` | `service-catalog-guide`, `service-catalog-variables-guide` |
 
 ### Foundational topics — read ONCE per project
-Recur in every artifact, rarely change. Cache takeaways in `/memories/repo/`:
+These topics recur across artifacts. Cache verified takeaways with the project and SDK version in an available workspace memory/evidence facility, or keep them in the conversation if none exists. Recheck when the SDK version or relevant evidence changes:
+
 `fluent-overview`, `now-include-guide`, `now-ref-guide`, `now-attach-guide`, `keys-file`, `override-guide`, `data-helpers-guide`, `now-config-reference`.
 
 Then summarize from the ACTUAL output (do NOT invent fields):

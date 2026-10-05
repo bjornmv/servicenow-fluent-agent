@@ -68,7 +68,7 @@ The bundled `scripts/update-project-sdk.cjs` is a small **npm-only** worker, not
 node "<skill>\scripts\update-project-sdk.cjs" preflight --project "<absolute-project>" --from "<approved-current>" --to "<approved-version>" --npm-cli "<absolute-npm-bin\npm-cli.js>" --run-dir "<absolute-new-evidence-directory>"
 ```
 
-4. After approval and successful review, run the **same arguments** with `apply --approved` instead of `preflight`, ONCE, in the parent. In Pi use `win_process` with Node and an argument array; do not bypass a denied tool/approval through this worker. `--approved` is an assertion of already-obtained user approval, not authorization itself.
+4. After approval and successful review, run the **same arguments** with `apply --approved` instead of `preflight`, ONCE, in the parent. Use direct Node execution with the confirmed project cwd; do not bypass a denied tool/approval through this worker. `--approved` is an assertion of already-obtained user approval, not authorization itself.
 5. Regardless of the terminal's summary, read `request.json`, `npm.stdout.log`, `npm.stderr.log` and `result.json` from that exact directory using file tools. No result means UNKNOWN. The worker leaves `.sn-sdk-update.lock` on interruptions/failure; do not delete it or automatically rerun. Read-only recovery:
 
 ```powershell
@@ -78,7 +78,7 @@ node "<skill>\scripts\update-project-sdk.cjs" status --run-dir "<original-eviden
 Prefer file tools if the original terminal remains busy. `status` never installs, unlocks or rewrites results; missing/malformed/mismatched evidence is inconclusive, not permission to retry.
 
 6. Only `state: package-verified` with native exit 0, matching run/project/versions, and all four matching values (declaration, root lock declaration, resolved lock, installed package) proves the package update. Read warnings and review the diff: direct dependency changes other than SDK are unexpected; SDK transitive lock changes may be necessary and must be reviewed. Preserve production versus development dependency placement.
-7. Then run the focused build/typecheck **separately**, using the canonical [SDK command policy](../../reference/sdk-commands.md), with explicit project cwd and actual completion evidence. In Pi use `now_sdk`. If reliable capture is unavailable, report **package updated; build unverified** and stop. Never claim build success from this worker (`build` is always `not-run`).
+7. Then run the focused build/typecheck **separately**, using the canonical [SDK command policy](../../reference/sdk-commands.md), with explicit project cwd and actual completion evidence. Use `now-sdk` in VS Code PowerShell from the confirmed project directory. If reliable capture is unavailable, report **package updated; build unverified** and stop. Never claim build success from this worker (`build` is always `not-run`).
 
 The worker deliberately refuses linked paths, workspace projects, conflicting package managers, missing/mismatched local state, non-exact pins and a mismatched exact `.nvmrc`. Other project layouts/managers need a separately reviewed equivalent that preserves these cwd, backup, ownership and evidence safeguards; do not silently convert their lockfile or bypass the refusal. It is not a package-manager sandbox. Its lock only coordinates this worker; do not run other package managers concurrently. Failure recovery/lock removal requires review of the original operation and explicit authorization, not a new automatic retry.
 

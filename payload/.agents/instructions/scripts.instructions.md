@@ -22,7 +22,7 @@ Conventions:
 - One script file per record. Name it after the record it backs (e.g. `set_priority_on_insert.js`).
 - If a script needs to be shared, make it a Script Include and reference it — don't `Now.include` the same file into two records.
 
-Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw` and the matching `-guide`. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
+Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw` and the matching `-guide`. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
 
 ## Service Portal widget gotchas
 

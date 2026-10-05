@@ -9,7 +9,7 @@ metadata:
 Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Author a Fluent ATF suite with `TestSuite(...)`. This API creates `sys_atf_test_suite` and membership metadata; it does not run or schedule the suite.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Explain first
 

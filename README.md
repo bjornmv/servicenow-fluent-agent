@@ -68,6 +68,14 @@ Known legacy Git profile overrides/startup blocks are removed conservatively, wi
 
 Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 
+## Skills are instructions, not registered tools
+
+This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration.
+
+REST guidance includes bounded table reads, schema/inheritance discovery, pagination and contributor aggregates. The CLI does not automatically enforce schema validation, output budgets or interactive write approval: the skill explicitly requires those workflow gates and does not promise protections that only exist in another execution environment. Never expose tokens or reinterpret a missing tool-search result as an authentication failure.
+
+After replacing installed skills/instructions, start a **new agent chat** to avoid retained instructions. Updating these files does not reinstall Git/SDK, change project pins or prove live terminal/instance acceptance.
+
 ## SDK package versus terminal readiness
 
 The full setup guide uses the hash-verified `tools/Invoke-SdkSetup.ps1` saved worker in a child PowerShell process. It installs the SDK through Node's npm JavaScript entry, preserving separate stdout/stderr logs, an explicit exit code and `sdk.result.json`. Package installation is verified from metadata and the entry file; it does not require running a batch shim. Never paste the installer inline or append `exit` to the shared terminal command.
@@ -192,8 +200,37 @@ node bin/sn-fluent-agent.cjs uninstall
 - `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
 - `sn-doc-export` creates PDF/DOCX; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
 - `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums.
-- Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. Live REST tests/benchmarks are manual opt-in, not part of offline tests.
-- Edit the canonical `payload/.copilot/agents/ServiceNow Fluent.agent.md`, then run `node tools/generate-baseline.cjs` (`build:instructions`). The baseline contains only selected high-risk sections. CI and install preflight reject stale generated instructions; detailed workflows stay in skills/file-specific instructions.
+- Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. REST CLI tests use mocked transport and credentials, not live instance access.
+
+### Runtime prompt boundaries
+
+- `payload/.copilot/agents/ServiceNow Fluent.agent.md` owns identity, supported host, priority order, routing, cross-cutting invariants and approval gates. Target 600–700 whitespace-separated words including frontmatter and the routing table.
+- Give each actionable rule its own bullet or numbered item, with a short reason when its scope could be misunderstood.
+- Skills and task references own procedure details and incident-specific diagnostics. Verify the owning file before deleting a duplicate rule.
+- Keep maintenance commands here, not inside the runtime prompt: the repository's `tools/` directory is not installed with the agent.
+
+### Compact baseline generation
+
+- File instructions can load alongside the custom agent. The baseline is not restricted to non-agent chats by its description.
+- `tools/generate-baseline.cjs` generates a 100–150-word hard-stop summary and pointers, not copies of agent sections. Limited semantic overlap is intentional safety coverage; generation alone is not a deduplication measure.
+- The agent remains the workflow authority. The generator's short summary is a deliberately reviewed second form, with source-contract checks and regression tests; it is not an automatic semantic summarizer.
+- When changing safety policy, review both the agent and the generator summary, then run `node tools/generate-baseline.cjs` (`build:instructions`). Never hand-edit the generated baseline.
+- Run `node tools/generate-baseline.cjs --check` and `node --test tools/test/agent-policy.test.cjs` to check generation, ownership, word budgets, links, approval coverage and repeated blocks.
+- CI and install preflight reject stale generated output. Prompt tests check the written contract, not whether a live model will obey it.
+
+### Detail ownership
+
+| Detail | Owning skill/reference |
+| --- | --- |
+| Docs paths, escaped role identifiers and citations | `sn-doc-lookup` |
+| Update choices, scheduling and guarded package execution | `sn-update-advisor` |
+| Install errors, history, content proof and Studio commit reminder | `sn-build-install` |
+| Automation source/XML classification and deployment scan | `sn-build-install`, linked from `sn-transform` and Fluent file instructions |
+| OAuth inventory versus connectivity evidence | `sn-auth` |
+| Lux assets, tombstones and runtime checks | `sn-lux` / `sn-lux-build` |
+| React design and Vite compatibility | `sn-react-ui-design` / `sn-ui-page-vite` |
+| `move --ids` membership warning | `reference/sdk-commands.md` |
+| `transform --force` missing-parent meaning | `sn-transform` |
 
 ## Maintainer refresh
 

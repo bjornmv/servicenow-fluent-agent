@@ -165,17 +165,18 @@ test('prereleases use numeric SemVer ordering, not lexical order', () => {
   assert.equal(isNewerVersion('4.13.3-alpha.beta', '4.13.3-alpha.1'), true);
 });
 
-test('mirrored instructions skip docs-only checks and preserve UNKNOWN rather than success', () => {
+test('routing and owning skill preserve update scope and UNKNOWN without mirrored recipes', () => {
   const load = rel => fs.readFileSync(path.join(__dirname, '../../', rel), 'utf8');
   const agent = load('payload/.copilot/agents/ServiceNow Fluent.agent.md');
   const baseline = load('payload/.agents/instructions/now-sdk-baseline.instructions.md');
-  const section = (text, name) => text.split(`## ${name}\n`)[1].split('\n## ')[0].trim();
-  for (const name of ['Quiet Update Advisory', 'Documentation Lookup', 'Terminal Discipline']) assert.equal(section(agent, name), section(baseline, name));
-  assert.match(agent, /Skip all advisory checks for documentation-only questions/);
-  assert.match(agent, /--only sdk --project/);
-  assert.doesNotMatch(agent, /Sync commands return when/);
-  assert.match(agent, /make completion UNKNOWN/);
+  assert.match(agent, /limited-scope work, not authorization for advisory checks or maintenance/);
+  assert.match(agent, /`sn-update-advisor`/);
+  assert.doesNotMatch(agent + baseline, /## Quiet Update Advisory|## Documentation Lookup|Sync commands return when/);
+  assert.match(agent, /completion is \*\*UNKNOWN\*\*/);
+  assert.match(baseline, /UNKNOWN completion/);
   const skill = load('payload/.agents/skills/sn-update-advisor/SKILL.md');
+  assert.match(skill, /Skip all advisory checks for documentation-only questions/);
+  assert.match(skill, /--only sdk --project/);
   assert.match(skill, /package updated; build unverified/);
   assert.match(skill, /Recording \*\*Update\*\* records authorization, not installation/);
   assert.match(skill, /One owner per mutation/);

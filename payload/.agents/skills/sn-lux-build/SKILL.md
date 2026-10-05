@@ -12,6 +12,9 @@ For scaffolding/authoring, start with [sn-lux](../sn-lux/SKILL.md). Use [sn-buil
 
 Read [validation and troubleshooting](references/validation-and-troubleshooting.md) before changing the pipeline. This skill is not permission to deploy, reinstall, modify vendor apps, impersonate users or suppress security controls.
 
+- Do not patch vendor packages as speculative fixes, because that can change behavior beyond the approved application boundary.
+- Do not overwrite user preferences while diagnosing a failure, because a troubleshooting task does not authorize changing stored user behavior.
+
 ## 1. Establish the actual build state
 
 Read the project manifests, lockfile, scripts, output-directory settings and installed versions. Distinguish:
@@ -25,7 +28,7 @@ Read the project manifests, lockfile, scripts, output-directory settings and ins
 
 `Could not resolve aiux-sdk/build` normally means the declared project AIUX dependency has not been installed/resolved. Do not fabricate output, claim missing instance capability, or add guessed private fallback packages. Resolve dependencies through an allowed launcher with reviewed versions and lifecycle scripts disabled initially.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). Print commands before execution. From the app root, after dependencies exist:
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). Print commands before execution. From the app root, after dependencies exist:
 
 ```powershell
 now-sdk build

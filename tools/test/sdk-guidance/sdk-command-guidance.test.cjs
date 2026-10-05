@@ -14,8 +14,8 @@ const sdkSkills = [
 ];
 const agentFile = path.join(home, '.copilot/agents/ServiceNow Fluent.agent.md');
 const instructionFiles = ['fluent', 'scripts', 'now-sdk-baseline'].map(n => path.join(agents, 'instructions', n + '.instructions.md'));
-const sdkFiles = [agentFile, ...instructionFiles, ...sdkSkills.map(n => path.join(agents, 'skills', n, 'SKILL.md'))];
-const docs = [...sdkFiles, path.join(agents, 'skills/sn-doc-export/SKILL.md'), path.join(agents, 'skills/sn-doc-export/install.md')];
+const sdkFiles = [...instructionFiles.slice(0, 2), ...sdkSkills.map(n => path.join(agents, 'skills', n, 'SKILL.md'))];
+const docs = [agentFile, instructionFiles.at(-1), ...sdkFiles, path.join(agents, 'skills/sn-doc-export/SKILL.md'), path.join(agents, 'skills/sn-doc-export/install.md')];
 const read = f => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 const policyPath = path.join(agents, 'reference/sdk-commands.md');
 const policy = read(policyPath);
@@ -37,23 +37,25 @@ test('all edited documents link to the one existing command policy', () => {
   }
 });
 
-test('every SDK entry point explicitly distinguishes VS Code and Pi', () => {
+test('every SDK entry point uses VS Code PowerShell with confirmed project cwd', () => {
   for (const file of sdkFiles) {
     const text = read(file);
     assert.match(text, /VS Code/, file);
-    assert.match(text, /`now_sdk`(?: tool)?/, file);
-    assert.match(text, /project `cwd`/, file);
+    assert.match(text, /PowerShell/, file);
+    assert.match(text, /`now-sdk(?: build)?`/, file);
+    assert.match(text, /confirmed project directory \(project `cwd`\)/, file);
   }
 });
 
-test('agent and fallback baseline mirror launcher and upgrade rules', () => {
-  const agent = read(agentFile);
-  const baseline = read(instructionFiles.at(-1));
-  const launcher = s => s.split('\n').filter(l => /^- (In VS Code|For a simple command|Respect the project)/.test(l));
-  assert.equal(launcher(agent).length, 3);
-  assert.deepEqual(launcher(agent), launcher(baseline));
-  const upgrade = s => s.split('\n').find(l => l.startsWith('Project-local SDK wins.'));
-  assert.equal(upgrade(agent), upgrade(baseline));
+test('runtime prompts point to launcher policy instead of copying execution sections', () => {
+  const agent = read(agentFile), baseline = read(instructionFiles.at(-1));
+  for (const text of [agent, baseline]) {
+    assert.match(text, /reference\/sdk-commands.md/);
+    assert.doesNotMatch(text, /## SDK and REST Commands/);
+  }
+  assert.match(agent, /Supported host: \*\*VS Code Copilot\*\*/);
+  assert.match(agent, /PowerShell with now-sdk/);
+  assert.match(baseline, /load alongside/);
 });
 
 test('fallback is conditional, permission-aware and preserves local SDK precedence', () => {
@@ -68,7 +70,7 @@ test('fallback is conditional, permission-aware and preserves local SDK preceden
 test('package-manager guidance preserves lockfiles and upgrade authorization', () => {
   assert.match(policy, /Respect `packageManager` and the existing lockfile/);
   assert.match(policy, /not `npm\.cmd` \/ `npx\.cmd`/);
-  assert.match(policy, /win_process/);
+  assert.match(policy, /direct Node execution from the confirmed project directory/);
   assert.match(policy, /upgrade requires explicit scope\/version approval/);
   assert.match(skill('sn-new-app'), /Do not replace a pnpm lockfile with an npm lockfile/);
 });
@@ -102,6 +104,38 @@ test('CI/CD and headless mutation approvals remain explicit', () => {
   assert.match(text, /separate explicit approval immediately before rollback/);
   assert.match(text, /Confirm before running ATF/);
   assert.match(policy, /headless child cannot approve mutations/);
+});
+
+test('all payload Markdown has no distribution-incompatible tool guidance', () => {
+  const payload = home;
+  const forbidden = /\bPi\b|\.pi[\\/]|\b(?:now_sdk|win_process|win_exec|win_list_files|win_search_files|sn_rest|sn_schema|browser_\w+|run_pi_subagent|withNowSdk)\b/i;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (entry.isFile() && /\.md$/i.test(entry.name)) assert.doesNotMatch(read(file), forbidden, file);
+    }
+  }
+  walk(payload); // Includes hidden .agents and .copilot directories.
+  assert.doesNotMatch(policy, forbidden);
+});
+
+test('offline test command resolves to this repository-local suite', () => {
+  const command = policy.match(/`node --test ([^`]+)`/);
+  assert.ok(command, 'Missing offline test command');
+  assert.equal(command[1], 'tools/test/sdk-guidance/sdk-command-guidance.test.cjs');
+  assert.equal(path.resolve(__dirname, '../../..', command[1]), __filename);
+  assert.ok(fs.existsSync(path.resolve(__dirname, '../../..', command[1])));
+});
+
+test('canonical guidance retains completion and OAuth safety', () => {
+  const agent = read(agentFile);
+  assert.match(agent, /completion is \*\*UNKNOWN\*\*/);
+  assert.match(agent, /original run's evidence/);
+  assert.match(agent, /rather than exposing tokens or inspecting credential storage/);
+  assert.match(agent, /\| Schema, records, aggregates or REST verification \| `sn-rest`/);
+  assert.match(skill('sn-rest'), /invoke the bundled `sn-rest.js` CLI/);
+  assert.match(policy, /Authentication\/confirmation belongs in the interactive parent/);
 });
 
 test('skill and instruction frontmatter remains present', () => {

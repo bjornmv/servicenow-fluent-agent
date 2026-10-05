@@ -120,23 +120,23 @@ test('escaped UI Builder roles are found/read via defaults despite a legacy cach
   assert.equal(fs.readFileSync(path.join(legacy, 'manifest.json'), 'utf8'), 'historical cache - do not open');
 }));
 
-test('lookup and mirrored agent guidance prevent the observed path/advisor/evidence mistakes', () => {
+test('lookup routes to owning skills which retain path/advisor/evidence safeguards', () => {
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
   const agent = read('payload/.copilot/agents/ServiceNow Fluent.agent.md');
-  const baseline = read('payload/.agents/instructions/now-sdk-baseline.instructions.md');
-  const section = (text, heading) => text.split(`## ${heading}\n`)[1].split('\n## ')[0].trim();
-  assert.equal(section(agent, 'Quiet Update Advisory'), section(baseline, 'Quiet Update Advisory'));
-  assert.equal(section(agent, 'Documentation Lookup'), section(baseline, 'Documentation Lookup'));
-  assert.match(agent, /--docs "<resolved-docs-checkout>"/);
-  assert.match(agent, /requires a value, never a bare flag/);
-  assert.match(agent, /Preserve excerpts\/citations through delegation/);
-  assert.match(agent, /blank output is UNKNOWN, not zero hits/);
+  const advisor = read('payload/.agents/skills/sn-update-advisor/SKILL.md');
+  assert.match(agent, /\| Official product documentation \| `sn-doc-lookup`/);
+  assert.match(agent, /sn-update-advisor/);
+  assert.doesNotMatch(agent, /## Quiet Update Advisory|## Documentation Lookup|ui\\_builder/);
+  assert.match(advisor, /--docs "<resolved-docs-checkout>"/);
+  assert.match(advisor, /`--docs` requires a value/);
+  assert.match(agent, /actual excerpts and completion evidence/);
   const skillText = read('payload/.agents/skills/sn-doc-lookup/SKILL.md');
   assert.match(skillText, /Prefer omitting `--index`/);
   assert.match(skillText, /On ENOENT, run `paths`/);
   assert.match(skillText, /Do not silently fall back to a bare Git cache/);
   assert.match(skillText, /literal grep miss does not establish semantic absence/);
   assert.match(skillText, /actual excerpts, exact identifiers, `source_rel`, `canonical_url`/);
+  assert.match(skillText, /\*\*UNKNOWN\*\*, not an empty result set or native exit 0/);
   const cases = JSON.parse(read('payload/.agents/skills/sn-doc-lookup/test/benchmarks.json'));
   assert.ok(cases.some(tc => tc.expect.some(exp => exp.text_contains?.includes('ui_builder_admin'))));
 });

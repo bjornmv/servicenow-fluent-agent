@@ -21,11 +21,11 @@ These callbacks and SDK constructor/helper calls stay in `.now.ts`; do not move 
 
 `GraphQLApi(...)` has a different rule: resolver and type-resolver `script` values must be named functions imported from a server module (preferred) or `Now.include(...)`. Inline function expressions are a build error. `TestSuite(...)` and `GraphQLApi(...)` are function calls, never `new TestSuite(...)` or `new GraphQLApi(...)`.
 
-Transformed/generated `Flow(...)`, `Subflow(...)`, and `Action(...)` under `src/fluent/generated/automation/flow/` are governed by the **Flow and Action Guardrail** in the ServiceNow Fluent agent and now-sdk baseline. Do not edit-build-install those generated records as though they were hand-authored DSL.
+For transformed/generated `Flow(...)`, `Subflow(...)`, and `Action(...)`, follow [Automation ownership](../skills/sn-build-install/SKILL.md#automation-ownership) before editing or deploying. That skill owns source/XML classification and the pre-install scan, so generated records are not mistaken for hand-authored DSL.
 
 ## SDK commands
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.
 
 ## The 12 ordinary-record rules
 

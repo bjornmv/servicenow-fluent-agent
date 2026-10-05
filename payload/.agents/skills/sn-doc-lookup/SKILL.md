@@ -43,7 +43,7 @@ Current resolver output takes precedence over legacy cache/MCP memories. `%LOCAL
 
 ## Before searching
 
-Set paths in PowerShell style when invoking from a shell. In Pi tool calls, pass paths directly as arguments.
+Set paths in PowerShell style in the VS Code terminal. For direct Node execution, pass resolved paths as arguments.
 
 ```powershell
 $Skill = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-lookup'

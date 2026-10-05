@@ -9,7 +9,7 @@ metadata:
 Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Use `now-sdk cicd` for ATF gates and App Repo promotion. These commands call `sn_cicd` APIs and can execute tests or mutate application versions on instances.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). All approvals below still apply; headless children cannot authorize these operations.
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). All approvals below still apply; headless children cannot authorize these operations.
 
 ## Required preflight
 

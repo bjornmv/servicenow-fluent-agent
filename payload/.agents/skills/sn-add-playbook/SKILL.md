@@ -9,7 +9,7 @@ metadata:
 Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Author a Playbook with the documented `PlaybookDefinition(...)` and `wfa.playbook.*` DSL. Its callbacks are valid Fluent construction syntax; do not externalize them with `Now.include`.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Explain first
 

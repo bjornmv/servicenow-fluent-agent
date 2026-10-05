@@ -8,7 +8,7 @@ metadata:
 ---
 Verified against: now-sdk 4.11 authentication documentation (historical; not newly verified against another SDK version).
 
-Configure now-sdk authentication only for the user-confirmed instance and alias. Do not infer a target or use a placeholder URL as a default. Confirm the installed SDK's declared Node engine. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Configure now-sdk authentication only for the user-confirmed instance and alias. Do not infer a target or use a placeholder URL as a default. Confirm the installed SDK's declared Node engine. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 Use interactive OAuth for the confirmed ServiceNow instance, subject to its supported configuration and the user's authorization. Keep login and consent in the interactive parent/user terminal; authentication does not authorize deployment, role changes, or other instance writes.
 

@@ -6,7 +6,7 @@ compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; a
 metadata:
   version: '1'
 ---
-Diagnose and fix a build failure in this Fluent project. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Diagnose and fix a build failure in this Fluent project. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 Use the build error from the argument, or the last terminal output if none was pasted.
 

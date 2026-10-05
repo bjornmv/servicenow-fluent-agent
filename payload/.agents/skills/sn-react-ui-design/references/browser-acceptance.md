@@ -21,11 +21,11 @@ DPR changes and screenshot resizing are **not browser zoom**. Record the method 
 
 ## Browser procedure
 
-1. Use the available `pi-browser-harness` skill entry when using that harness; load it once, not an assumed installation path. If browser capability is unavailable, report the gap without installing/downloading tools automatically.
-2. Connect with `browser_setup` if needed; use an owned tab in the approved profile. Browser login is separate from SDK OAuth; let the user authenticate without collecting credentials. After navigation, wait for load **and meaningful data readiness**, not just a mounted root or arbitrary sleep.
-3. Use bounded `browser_snapshot` for structure/refs (roughly 300–800 nodes), then `browser_execute_js` for specific state/geometry. Use inspected selectors/stable attributes, not guessed CSS. Do not dump DOM or broad network payloads.
+1. Use browser capabilities actually exposed by VS Code, following their tool instructions. If browser capability is unavailable, report the gap without installing/downloading tools automatically.
+2. Open an agent-owned page in the approved browser context; preserve user tabs and sessions. Browser login is separate from SDK OAuth; let the user authenticate without collecting credentials. After navigation, wait for load **and meaningful data readiness**, not just a mounted root or arbitrary sleep.
+3. Use bounded accessibility-tree or DOM inspection for structure (roughly 300–800 nodes), then the available browser scripting/Playwright capability for specific state/geometry. Use inspected selectors/stable attributes, not guessed CSS. Do not dump DOM or broad network payloads.
 4. At initial scroll after data/fonts settle, measure first useful content, complete rows where applicable, usable viewport, overflow and primary-action position. Capture screenshots for actual visual hierarchy, legibility, spacing, colors and focus review, not data extraction.
-5. Exercise real controls. Keyboard evidence requires `browser_press_key` sequences; forced `.focus()`, synthetic events, direct handler calls, force-enabling controls or bulk filling cannot establish a keyboard-only task passed.
+5. Exercise real controls. Keyboard evidence requires actual browser keyboard-input sequences through the available automation tool; forced `.focus()`, synthetic events, direct handler calls, force-enabling controls or bulk filling cannot establish a keyboard-only task passed.
 6. Diagnose broken/silent actions with bounded console/network records; include response bodies only when necessary. For target runtime verification, check new uncaught errors during the tested flow and distinguish pre-existing errors.
 7. Save only approved/sanitized evidence in the project's existing location; record paths only when files exist. Keep private/transient artifacts out of source control as appropriate. Never send private screenshots, URLs, records or source to external design services.
 

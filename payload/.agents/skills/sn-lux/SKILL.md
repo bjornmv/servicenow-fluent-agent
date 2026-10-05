@@ -44,7 +44,7 @@ GET /api/now/appcreator/app/vendorprefix
 
 Validate the scope against that prefix and the SDK's length/naming rules (observed cap: 18 characters). Never reuse a sample vendor prefix. Verify scope/basename availability before deployment; a local generated scope ID is not evidence of reservation or installation.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md) for local SDK precedence, package-manager launchers and the permitted missing-function fallback. Print the command. Check version-specific help if flags differ:
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md) for local SDK precedence, package-manager launchers and the permitted missing-function fallback. Print the command. Check version-specific help if flags differ:
 
 ```powershell
 now-sdk init --template javascript.aiux --auth <confirmed-alias> --appName "<app name>" --packageName <package-name> --scopeName <validated-scope> --noUpdate

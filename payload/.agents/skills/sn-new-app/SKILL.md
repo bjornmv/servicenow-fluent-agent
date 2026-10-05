@@ -7,7 +7,7 @@ metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.11 scaffolding documentation (historical; not newly verified against another SDK version).
-Scaffold a new scoped ServiceNow Fluent app. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Scaffold a new scoped ServiceNow Fluent app. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 Collect: app name, scope (`x_<org>_<feature>`), short description — from the argument/conversation.
 

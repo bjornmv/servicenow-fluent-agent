@@ -44,7 +44,6 @@ The WAI Understanding pages and APG patterns explain implementation and interpre
 - [React UI Page / Vite](../../sn-ui-page-vite/SKILL.md): authoritative local routing for the official SDK integration and conditional target-runtime compatibility slice.
 - [Lux / AIUX](../../sn-lux/SKILL.md): use for actual Lux/AIUX (Lit) surfaces, not because a page has "Experience" in its name.
 - [Fluent explanation](../../sn-explain/SKILL.md) and [build/install](../../sn-build-install/SKILL.md): retain their authoring/deployment boundaries; this skill does not invent platform APIs.
-- Pi skills documentation was reviewed for metadata, discovery, explicit invocation and progressive disclosure. The local skill has a short entry and on-demand references/templates; no harness extension is necessary.
 
 ## Asset Experience case study
 

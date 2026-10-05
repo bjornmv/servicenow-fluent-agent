@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — focused agent and compact co-loaded baseline
+
+- Restructure the runtime agent around supported host, explicit precedence, one routing table, individual invariants with reasons, and approval gates. Move incident details and maintenance instructions to their owners.
+- Replace whole-section baseline copying with a 100–150-word hard-stop summary and pointers. Document simultaneous agent/file-instruction loading and intentional limited safety overlap.
+- Give automation ownership a skill-local home, preserve record-move/transform-force warnings, and remove assumed memory-tool paths. Add word-budget, duplication, ownership, link and approval regression checks.
+
+## Unreleased — VS Code-native skill guidance
+
+- Remove other-harness launcher/tool/reload guidance from all shipped instructions, skills and references. Keep SDK execution in VS Code PowerShell, regenerate the baseline and retain approval, project-directory and UNKNOWN-completion rules.
+- Make `sn-rest` explicitly a skill using its bundled Node CLI, not a registered tool. Add schema/inheritance, bounded table/pagination and Stats recipes; document actual CLI limits and explicit write approval instead of claiming nonexistent wrapper protections.
+- Add regression checks across hidden payload directories and offline CLI examples/envelopes. No authentication, SDK package or instance changes are required.
+
 ## Unreleased — stable setup entry point
 
 - Make the unversioned `/setup/` URL canonical in the setup prompt and README. Publish complete `/setup.txt` and `/setup-manifest.json` alongside the existing `/downloads/Invoke-SdkSetup.ps1`.

@@ -76,11 +76,12 @@ test('baseline is generated, has fewer words and cannot silently drift', () => {
   generate(root, true);
   const agent = read(agentPath), baseline = read(baselinePath);
   assert.equal(baseline, renderBaseline(agent));
-  const words = s => s.split(/\s+/).length;
-  assert.ok(words(baseline) < words(agent));
-  assert.ok(words(agent) + words(baseline) < 2600, 'Keep always-on instructions compact');
-  assert.doesNotMatch(baseline, /## Operating Loop|## UI and Connection Evidence/);
-  assert.throws(() => renderBaseline(agent.replace('## Terminal Discipline', '## Changed heading')), /Missing canonical section/);
+  const words = s => s.trim().split(/\s+/).length;
+  assert.ok(words(agent) >= 600 && words(agent) <= 700, 'Agent word budget');
+  assert.ok(words(baseline) >= 100 && words(baseline) <= 150, 'Baseline word budget');
+  assert.ok(words(agent) + words(baseline) <= 850, 'Budget includes both co-loaded prompts');
+  assert.doesNotMatch(baseline, /^## /m, 'No copied workflow sections');
+  assert.throws(() => renderBaseline(agent.replace('## Approval gates', '## Changed heading')), /Missing canonical section/);
   assert.match(baseline, /\.\.\/reference\/sdk-commands.md/);
 });
 

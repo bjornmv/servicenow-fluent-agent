@@ -10,7 +10,7 @@ Verified against: now-sdk 4.11 Vite documentation (historical; not newly verifie
 
 Use the official SDK Vite pattern for a React UI Page. Source of truth: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`.
 
-Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Required design companion
 
@@ -39,7 +39,7 @@ When the gate is required:
 2. Use the **final** UI Page record, endpoint, and client entry; do not create a throwaway page. Keep it minimal: a visible mount marker, one representative runtime-dependent component, and one read-only authenticated request when the planned app uses instance data. Do not perform mutations.
 3. Build and install that small slice once with **sn-build-install**, then test the real scoped `.do` endpoint. Confirm the root has rendered children, the marker is visible, the representative read succeeded, and no new uncaught console error occurred.
 4. If the slice fails, stop and resolve the runtime architecture before implementing the full UI. If it passes, evolve the same source and record into the finished application.
-5. Record the passing result in `docs/ui-runtime-compatibility.md`, resolved against the confirmed project root (or an existing documented project evidence location). Key it by instance/release when known, UI hosting type, now-sdk version, React/component-library versions, and tested component families; include the tested endpoint, date and evidence. Store no credentials or sensitive record data. Reuse it until one of those inputs changes. Do not assume an undefined `/memories/repo/` facility exists on Windows.
+5. Record the passing result in `docs/ui-runtime-compatibility.md`, resolved against the confirmed project root (or an existing documented project evidence location). Key it by instance/release when known, UI hosting type, now-sdk version, React/component-library versions, and tested component families; include the tested endpoint, date and evidence. Store no credentials or sensitive record data. Reuse it until one of those inputs changes.
 
 The slice adds one small install only when crossing an unvalidated target-runtime boundary. Do not add an upload merely because a UI file changed.
 

@@ -2,13 +2,14 @@
 
 Canonical launcher guidance for the ServiceNow agent, instructions and skills. Other files show short `now-sdk` examples and link here; do not duplicate resolver scripts. This policy changes command transport, not authorization or the workflow's build/install/verification gates.
 
-## Choose the host once
+## VS Code launcher
 
 - **VS Code PowerShell:** use the configured `now-sdk` function directly from the intended project directory. The `PowerShell with now-sdk` terminal profile defines it; it invokes Node with the project-local SDK first, then the installed global SDK. A function is not the blocked batch shim. Do not prepend a resolver to each command.
-- **Pi:** use the `now_sdk` tool for every SDK command, with an argument array and the project `cwd`. For example, `now-sdk explain table-api --format raw` means `now_sdk({args:["explain","table-api","--format","raw"],cwd:"<project-root>"})`. Do not launch PowerShell or call the SDK with a generic process tool. Authentication/confirmation belongs in the interactive parent; a headless child cannot approve mutations.
 - **Other terminals / function unavailable:** use the bounded fallback below only if permitted. Never interpret an explicit policy denial as permission to switch executables, shells or tools.
 
-Print shell commands before execution. Use the actual project directory so local SDK precedence remains correct. Resolve placeholders before running examples. Do not switch projects, SDK versions, auth aliases or package managers merely to make a command succeed.
+Authentication/confirmation belongs in the interactive parent; a headless child cannot approve mutations. Never expose OAuth tokens or inspect credential storage.
+
+Print shell commands before execution. Use the confirmed project directory (project `cwd`) so local SDK precedence remains correct. Resolve placeholders before running examples. Do not switch projects, SDK versions, auth aliases or package managers merely to make a command succeed.
 
 ## Normal VS Code commands
 
@@ -41,9 +42,36 @@ node "<resolved-npm-cli.js>" ci
 node "<resolved-npm-cli.js>" install
 ```
 
-Choose `ci` when the project has a valid npm lockfile; use `install` when appropriate to the authorized task. Do not run both. In Pi, run package-manager JavaScript entries through `win_process` with `program: "node"` and an argument array; SDK commands still use `now_sdk`.
+Choose `ci` when the project has a valid npm lockfile; use `install` when appropriate to the authorized task. Do not run both. Invoke the resolved package-manager JavaScript entry with direct Node execution from the confirmed project directory; SDK commands use the configured `now-sdk` function.
 
 Dependency installation/upgrades, global tool changes, lifecycle scripts and network access retain their normal approval requirements. Follow stronger skill-specific restrictions such as initial `--ignore-scripts` for Lux. Never use `audit fix --force` or upgrade to `latest` as a generic launcher repair.
+
+## Execution evidence and recovery
+
+- Require the actual command, project directory, attributable stdout/stderr and native exit status before claiming completion.
+- Treat generic tool status `ok`, a synchronous tool return and “Command produced no output” as insufficient evidence of native success.
+- Treat missing exit evidence, unrelated/delayed output, launcher errors and failed directory selection as UNKNOWN rather than success or an empty result.
+- Stop sending commands into a suspect terminal, because another command can obscure the original operation's result.
+- Recover the ORIGINAL run's logs/result through read-only file or execution-handle tools before deciding whether another operation is safe.
+- Keep UNKNOWN and report the gap when attributable evidence is unavailable rather than queueing a build or retrying a mutation.
+- Preserve the actual excerpts, stdout/stderr, exit/error evidence and saved-output paths when delegating an investigation.
+- Bind a mutation's working directory in the approved execution mechanism rather than delegation prose or a fallible `Set-Location ...; command` chain.
+- Preserve busy or user-owned terminals during recovery because closing them may lose work or interrupt an operation.
+
+## SDK query output
+
+- Confirm the installed SDK's query help before using version-specific flags.
+- Specify fields, an encoded query and a bounded limit when reading table data, normally with `--no-count` to avoid unnecessary total-count work.
+- `--select` selects the output envelope, not the table fields, so it does not replace a narrow field projection.
+- Use the `sn-rest` skill for the bundled REST helper's distinct CLI syntax rather than transferring SDK flags to it.
+
+## Record reassignment
+
+- `now-sdk move --ids` changes instance record membership between applications; it is not a local filesystem move.
+- Confirm the record IDs, source application, destination application and target instance before requesting approval.
+- Obtain explicit approval for that reassignment before execution, because it changes ownership beyond ordinary source authoring.
+- Consult the installed SDK's command help for the exact arguments before running the approved move.
+- Verify resulting membership with the `sn-rest` skill rather than inferring it from a successful launcher return.
 
 ## Version awareness
 
@@ -51,4 +79,4 @@ Use the actual project SDK's docs and engine requirements. An older SDK's minimu
 
 ## Offline guidance checks
 
-Run `node --test <agents-root>/tools/test/sdk-command-guidance.test.cjs` to check launcher consistency, links and retained safety gates. These are documentation checks, not proof that a particular VS Code terminal or instance works.
+From the distribution repository root, run `node --test tools/test/sdk-guidance/sdk-command-guidance.test.cjs` to check launcher consistency, links and retained safety gates. These are documentation checks, not proof that a particular VS Code terminal or instance works.
