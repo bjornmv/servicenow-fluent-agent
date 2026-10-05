@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * capture.js — automated Service Portal screenshot helper for sn-doc.
+ * capture.js — automated Service Portal screenshot helper for sn-doc-export.
  *
  * Reuses:
  *   - puppeteer (bundled inside md-to-pdf's node_modules)

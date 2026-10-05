@@ -2,7 +2,7 @@
 
 Each archetype controls the cover page, header, footer, and (eventually) TOC behavior. Pass via `--archetype <name>` to `render.py`. Required metadata is enforced at render time — missing fields emit warnings but the doc still renders.
 
-Source of truth: `C:\Personal\SNagent\tools\_doc_lib\archetypes\registry.py`.
+Source of truth: `tools/_doc_lib/archetypes/registry.py` under the explicitly configured absolute `SN_AGENT_HOME`. There is no default backend checkout; confirm the selected backend's registry before relying on these archetypes.
 
 | Archetype | Cover | Required metadata | Use for |
 |---|---|---|---|
@@ -17,9 +17,9 @@ Source of truth: `C:\Personal\SNagent\tools\_doc_lib\archetypes\registry.py`.
 
 ## Common metadata flags
 ```
---meta-title "Pelican Case Transfer — Technical Reference"
---meta-subtitle "TestApp001 v0.0.1"
---meta-author "Brad Velsrud"
+--meta-title "Example Case Transfer — Technical Reference"
+--meta-subtitle "Example App v0.0.1"
+--meta-author "Example Author"
 --meta-version "0.0.1"
 --meta-date "2026-06-04"
 --meta-audience "Platform admins"

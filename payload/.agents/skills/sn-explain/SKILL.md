@@ -1,7 +1,10 @@
 ---
 name: sn-explain
-description: Look up the exact Fluent API/guide docs for a now-sdk record type before authoring it, and summarize required/optional fields + a minimal correct snippet. Use whenever about to create or edit ANY Fluent record (table, business rule, ACL, catalog item, scripted REST, SP page, etc.) or when unsure of a record type's Fluent shape.
+description: Use when researching a Fluent record type before authoring or editing it; summarize exact documented fields and syntax without inventing API shapes.
 argument-hint: <record type or topic, e.g. businessrule, table, service-catalog>
+compatibility: ServiceNow Fluent project and its installed SDK documentation; use the approved SDK launcher only when execution is authorized.
+metadata:
+  version: '1'
 ---
 Look up the Fluent SDK docs for the requested type/topic and report how to author it correctly. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). The configured PowerShell function is not the blocked batch shim; do not replace it with per-command resolver scripts.
 
@@ -12,7 +15,9 @@ Look up the Fluent SDK docs for the requested type/topic and report how to autho
    - `now-sdk explain <topic> --peek --format raw` — one-line summary to pick among 2–3 candidates.
 2. **`-api` always** — `now-sdk explain <topic>-api --format raw`. This is the data shape.
 3. **`-guide` only when needed** — net-new records, complex composition (catalog items, flows, SP pages, scripted REST, security). Skip for "add another X to existing table" or simple edits.
-4. **For tables** — run `*column-api` ONLY for non-trivial column types: `choicecolumn-api`, `referencecolumn-api`, `conditionscolumn-api`, `slushbucketcolumn-api`, `recordscolumn-api`, `documentidcolumn-api`, `overridecolumn-api`. Skip for trivial types (`StringColumn`, `IntegerColumn`, `BooleanColumn`, `DateTimeColumn`, `DecimalColumn`, `FloatColumn`, `UrlColumn`, `EmailColumn`, `HtmlColumn`, `JsonColumn`) — shape is obvious from name.
+4. **For tables** — read `*column-api` for non-trivial column types: `choicecolumn-api`, `referencecolumn-api`, `conditionscolumn-api`, `slushbucketcolumn-api`, `recordscolumn-api`, `documentidcolumn-api`, `overridecolumn-api`. A separate lookup for a simple column is unnecessary only when the current `table-api` documentation already establishes its exact shape; never infer properties from a name.
+
+For authorized record creation, continue with [sn-add-record](../sn-add-record/SKILL.md), which owns the shared author/build workflow and table/business-rule traps. Keep GraphQL, Playbook and ATF suite authoring in their specialized skills. This lookup skill does not itself authorize source edits or deployment.
 
 ## Topic taxonomy
 

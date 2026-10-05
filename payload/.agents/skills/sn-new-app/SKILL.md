@@ -1,15 +1,19 @@
 ---
 name: sn-new-app
-description: Scaffold a new scoped ServiceNow Fluent app with now-sdk init. Use when starting a brand-new app in an empty workspace (no now.config.json), or when the user asks to create/scaffold a new scoped application.
+description: Use when scaffolding a new scoped ServiceNow Fluent application in an empty workspace with now-sdk init.
 argument-hint: <app name> (scope + short-desc collected interactively)
+compatibility: Project-compatible now-sdk and Node; empty target directory; authorized ServiceNow instance and OAuth alias.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 scaffolding documentation (historical; not newly verified against another SDK version).
 Scaffold a new scoped ServiceNow Fluent app. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
 
 Collect: app name, scope (`x_<org>_<feature>`), short description — from the argument/conversation.
 
 ## Prereqs
-- now-sdk 4.11 requires Node `>=20.18.0`; verify Node before running `init`.
-- OAuth must be configured first — `init` needs an authenticated instance to reserve the scope. If no alias exists, run the **sn-auth** skill (`now-sdk auth --add https://<instance>.service-now.com`, choose `oauth`, set an alias, browser login, Accept, paste code). Re-run `auth --add` once only after an SDK upgrade that crosses a keychain-library change (happened once, at 4.3; stable since — see **sn-auth**); if an SDK upgrade is approved and the workspace pins `node_modules/@servicenow/sdk`, update that local dependency with the permitted project package-manager launcher and agreed version. The command uses the project-local SDK before the global SDK; do not upgrade merely to repair a launcher.
+- Check the selected SDK's declared Node engine and template documentation before running `init`; an installed global SDK is not project/API verification.
+- OAuth must be configured first — `init` needs an authenticated instance to reserve the scope. If no alias exists, run the **sn-auth** skill (`now-sdk auth --add https://<instance>.service-now.com`, choose `oauth`, set an alias, browser login, Accept, paste code). Re-run `auth --add` once only after an SDK upgrade that crosses a keychain-library change (see **sn-auth**; do not infer a migration from a version change alone); if an SDK upgrade is approved and the workspace pins `node_modules/@servicenow/sdk`, update that local dependency with the permitted project package-manager launcher and agreed version. The command uses the project-local SDK before the global SDK; do not upgrade merely to repair a launcher.
 
 ## Steps
 1. Scope naming: enforce `x_<vendor_prefix>_<feature>` — lowercase, underscores only, no spaces. **The vendor prefix is instance-bound, NOT freely chosen** — on a PDI it is the numeric account code (e.g. `x_1535598_`). A wrong-prefix scope scaffolds AND builds fine, then fails much later at install with an obscure error ("application was null"). Resolve the prefix FIRST:
@@ -37,4 +41,4 @@ Collect: app name, scope (`x_<org>_<feature>`), short description — from the a
    - `src/fluent/` exists for `*.now.ts` declarative records (`javascript.basic`/`typescript.basic` templates; the `base` template creates config files only — no `src/` at all, which is normal for it).
    - NO template creates `src/scripts/` or `src/ui/` — their absence after `init` is NORMAL, not a failed scaffold. They are this bundle's convention for `Now.include`'d record scripts: create them on first use (`mkdir` when first externalizing a script). The SDK's own templates put example code in `src/server/` (and `src/client/` in the react/vue templates).
    - `node_modules/@servicenow/sdk/bin/index.js` exists (proves the install ran).
-6. Report `now.config.json` contents + the created `src/` layout. Do NOT author records yet—use the per-record skills. If the requested app is a Vite/HMR UI Page, use **sn-ui-page-vite** after scaffold; do not invent `vite.config.*` or assume a generic template includes the SDK 4.11 Vite integration.
+6. Report `now.config.json` contents + the created `src/` layout. Do NOT author records yet—use **sn-add-record** for ordinary records or the specialized GraphQL, Playbook and ATF suite skills. If the requested app is a Vite/HMR UI Page, use **sn-ui-page-vite** after scaffold; do not invent `vite.config.*` or assume a generic template includes the documented SDK Vite integration.

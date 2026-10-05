@@ -2,7 +2,7 @@
 
 ## Evidence boundary
 
-A small standalone, read-only incident demo was built and installed during 2026-09-08 using SDK 4.11.0, AIUX 22.42.3, Lit 3.3.2, npm 11.6.2 and Node 25.2.1. Forty-one project tests passed, and a signed-in session hydrated the page, loaded a bounded snapshot, filtered locally and refreshed through its UI handler. Those are historical results, not tests of a new app or this skill distribution.
+Verified against: SDK 4.11.0, AIUX 22.42.3, Lit 3.3.2, npm 11.6.2 and Node 25.2.1 in a small standalone, read-only incident demo built and installed during 2026-09-08 (historical evidence, not newly verified against another SDK version). Forty-one project tests passed, and a signed-in session hydrated the page, loaded a bounded snapshot, filtered locally and refreshed through its UI handler. Those are historical results, not tests of a new app or this skill distribution.
 
 Visible-window, physical keyboard, 320px reflow, high contrast, real failure/retry and unauthorized-user runtime acceptance were incomplete. The hidden-window 320px attempt measured a zero-width widget; do not reuse that result as responsive approval. No impersonation was performed.
 

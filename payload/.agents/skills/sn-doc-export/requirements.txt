@@ -1,5 +1,6 @@
 # sn-doc Python dependencies
-# Mirrors C:\Personal\SNagent\requirements-sn-doc.txt — pinned floors verified on Windows.
+# Mirrors requirements-sn-doc.txt from the explicitly configured SN_AGENT_HOME.
+# Dependency floors were historically verified on Windows; recheck the selected backend.
 
 docutils>=0.22
 myst-parser>=4.0

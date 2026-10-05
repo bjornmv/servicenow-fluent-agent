@@ -1,8 +1,12 @@
 ---
 name: sn-build-install
-description: Build, install, and verify a Fluent app on the instance — small build cycles, map build errors to Fluent rules, then install + verify records landed. Use when deploying authored changes to the PDI, or after editing any .now.ts.
-argument-hint: [optional: records/tables to verify]
+description: Use when building after Fluent edits or deploying authorized changes to a ServiceNow instance; verify installed content separately from build success.
+argument-hint: '[optional: records/tables to verify]'
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; installation requires an authorized target and OAuth alias.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation for choice compatibility (historical; not newly verified against another SDK version).
 Build, install, and verify the current now-sdk app against the detected auth alias and project scope. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). All install approvals and verification gates below still apply.
 
 ## 1. Build
@@ -20,8 +24,8 @@ For ordinary declarative records, map each error to [Fluent rules](../../instruc
 
 When unsure of shape, run `now-sdk explain <recordtype>-api --format raw` first; add `-guide` only for net-new or complex composition. ONE coherent fix → rebuild → repeat in small cycles until clean. Do not touch install until build passes.
 
-### SDK 4.11 choice compatibility
-Normal v4 build output uses additive `sys_choice_v2` merging. `now-sdk build --legacyChoices` restores v3 `sys_choice_set` wrapper behavior, which can destructively replace choices. Never use it as a generic parser/build fix. Use only for a confirmed legacy-choice migration requirement after showing the affected choice fields and obtaining explicit confirmation; report that compatibility mode was used.
+### Choice compatibility
+The historically documented build output uses additive `sys_choice_v2` merging. `now-sdk build --legacyChoices` restores legacy `sys_choice_set` wrapper behavior, which can destructively replace choices. Confirm support and behavior in the target project's SDK documentation. Never use it as a generic parser/build fix. Use only for a confirmed legacy-choice migration requirement after showing the affected choice fields and obtaining explicit confirmation; report that compatibility mode was used.
 
 ## 2. Install
 Install only after the build is clean AND the pre-install flow/action scan below is complete. Local `now-sdk install` is for development/test deployment; production promotion should use the App Repository workflow in **sn-cicd**, with target and version approvals. SLOW step (uploads + activates) — let it finish, don't retry on a hang. Install errors are instance-side (auth, scope conflict, activation), not Fluent syntax. Stale auth → re-run **sn-auth**. Do NOT use `--reinstall` (destructive) without confirming first.

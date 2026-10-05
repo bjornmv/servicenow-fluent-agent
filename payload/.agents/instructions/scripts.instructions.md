@@ -4,7 +4,7 @@ description: src/scripts, src/server, and src/ui are full TypeScript/JS/HTML/CSS
 ---
 # src/scripts/**, src/server/**, and src/ui/** — full code, not Fluent
 
-These files are not ordinary Fluent record declarations. They are TypeScript / JavaScript / HTML / CSS. Most record scripts are referenced from `.now.ts` with `Now.include`; API-specific modules can instead be imported as documented. In now-sdk 4.11, `GraphQLApi` prefers named resolver functions imported from `src/server`, while `Now.include` remains supported. Path depth by layout:
+These files are not ordinary Fluent record declarations. They are TypeScript / JavaScript / HTML / CSS. Most record scripts are referenced from `.now.ts` with `Now.include`; API-specific modules can instead be imported as documented. The documented `GraphQLApi` form prefers named resolver functions imported from `src/server`, while `Now.include` remains supported. Path depth by layout:
 
 - Directly under `src/fluent/` (e.g. `src/fluent/foo.now.ts`) → `../scripts/<file>.js` or `../ui/<file>.js`.
 - Under `src/fluent/<folder>/` (e.g. `src/fluent/admin/foo.now.ts`) → `../../scripts/<file>.js` or `../../ui/<file>.js`.

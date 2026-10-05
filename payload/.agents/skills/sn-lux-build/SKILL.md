@@ -1,7 +1,10 @@
 ---
 name: sn-lux-build
-description: "Build, deploy, verify and troubleshoot ServiceNow Lux (AIUX / AI-UX) apps on Windows. Use for the AIUX pipeline in aiux.json projects: dependency setup, asset URLs, gallery prefetch, full-payload deletion checks, OAuth-safe deployment and live browser verification."
+description: "Use when building, deploying, verifying or troubleshooting the ServiceNow Lux (AIUX) pipeline in aiux.json projects, including asset URLs, prefetch and deletion checks."
 argument-hint: "<Lux/AIUX build, deploy, verify or runtime problem>"
+compatibility: Windows-native AIUX project with compatible dependencies; authorized OAuth target and browser access for deployed verification.
+metadata:
+  version: '1'
 ---
 # Lux (AIUX) build and runtime workflow
 

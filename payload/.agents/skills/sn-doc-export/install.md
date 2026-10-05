@@ -1,4 +1,4 @@
-# sn-doc — install guide
+# sn-doc-export — install guide
 
 Two backends. Install whichever you need.
 
@@ -12,14 +12,14 @@ Two backends. Install whichever you need.
 Run the renderer directly from the user profile path:
 
 ```powershell
-$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'; node "$SnDoc" --check
+$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-export\render.js'; node "$SnDoc" --check
 ```
 
-For the Python backend only, set `SN_AGENT_HOME` when it is missing. Optional VS Code user setting:
+For the optional Python backend, explicitly select an existing SNagent checkout and set `SN_AGENT_HOME` to its absolute path. No personal, relative, current-directory or guessed default is used. Replace the placeholder below with the confirmed path; do not create or download a backend automatically. Optional VS Code user setting (only with approval):
 ```json
 {
   "terminal.integrated.env.windows": {
-    "SN_AGENT_HOME": "C:\\Personal\\SNagent"
+    "SN_AGENT_HOME": "<absolute-backend-checkout>"
   }
 }
 ```
@@ -27,7 +27,7 @@ Reload VS Code. New terminals see the Python backend home.
 
 If running without a workspace open, set them in the shell:
 ```powershell
-$env:SN_AGENT_HOME = "C:\Personal\SNagent"
+$env:SN_AGENT_HOME = "<absolute-backend-checkout>"
 ```
 
 ## 2. Node backend — required
@@ -44,16 +44,16 @@ $env:SN_DOC_BROWSER = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.
 ```
 Search order: `$env:SN_DOC_BROWSER` → `$env:PUPPETEER_EXECUTABLE_PATH` → standard Chrome/Edge install paths → puppeteer-bundled Chromium (fallback).
 
-Verify:
+Verify (using the renderer resolved above):
 ```powershell
-$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'; node "$SnDoc" --check
+node "$SnDoc" --check
 ```
 Expected: `Backend: node (READY)` with both packages and a `browser:` line.
 
 ### Smoke test (human-only file write)
 ```powershell
 "# Hello`r`n`r`nThis is a test.`r`n`r`n:::{tip}`r`nIt works.`r`n:::" | Set-Content hello.md
-$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'; node "$SnDoc" --in hello.md --out . --format pdf,docx --meta title=hello
+node "$SnDoc" --in hello.md --out . --format pdf,docx --meta title=hello
 ```
 This snippet is for a human running a one-off local smoke test. Agents should create `hello.md` with file-editing tools instead of shell write commands. The render should produce `hello.pdf` + `hello.docx` next to `hello.md`.
 
@@ -69,16 +69,16 @@ Re-open the terminal so `python` is on PATH.
 
 ### 3b. Python packages
 ```powershell
-python -m pip install -r "$env:USERPROFILE\.agents\skills\sn-doc\requirements.txt"
+python -m pip install -r "$env:USERPROFILE\.agents\skills\sn-doc-export\requirements.txt"
 ```
 Pulls `docutils`, `myst-parser`, `python-docx`, `lxml`, `weasyprint`, `premailer`.
 
-Prefer a venv? Create one in SNagent:
+Prefer a venv? After confirming the explicit backend directory and obtaining approval, create one there (stop on a failed directory change):
 ```powershell
-cd C:\Personal\SNagent
+Set-Location -LiteralPath $env:SN_AGENT_HOME -ErrorAction Stop
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r "$env:USERPROFILE\.agents\skills\sn-doc\requirements.txt"
+python -m pip install -r "$env:USERPROFILE\.agents\skills\sn-doc-export\requirements.txt"
 ```
 Activate it (`.\.venv\Scripts\Activate.ps1`) in any terminal that will render via the Python backend.
 
@@ -94,13 +94,13 @@ Fix — install GTK 3 runtime via MSYS2:
    pacman -S mingw-w64-x86_64-pango mingw-w64-x86_64-gtk3
    ```
 3. Add `C:\msys64\mingw64\bin` to your **user** PATH (System Properties → Environment Variables).
-4. Re-open the terminal and re-run `$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'; node "$SnDoc" --check`. The "WeasyPrint runtime" line should flip to OK.
+4. Re-open the terminal, resolve `$SnDoc` as in section 1 and re-run `node "$SnDoc" --check`. The "WeasyPrint runtime" line should flip to OK.
 
 Alternative: download GTK from <https://www.gtk.org/docs/installations/windows/> if you don't want MSYS2.
 
 ## 4. Verify both backends
 ```powershell
-$SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'; node "$SnDoc" --check
+node "$SnDoc" --check
 ```
 Expected sample output:
 ```
@@ -111,7 +111,7 @@ Backend: node (READY)
 
 Backend: python (READY)
   [OK ] python found: C:\Users\you\...\python.exe
-  [OK ] sn-doc preflight … READY — preflight passed.
+  [OK ] sn-doc-export preflight … READY — preflight passed.
 
 READY — node backend available.
 ```
@@ -126,10 +126,11 @@ python -m playwright install chromium
 ## Troubleshooting
 - `node` not on PATH → install Node from <https://nodejs.org> (LTS).
 - `[MISSING] md-to-pdf` after global install → re-open the terminal so `NODE_PATH` / global modules resolve. If needed, get the global module root with `node "<resolved-npm-cli.js>" root -g` and use that path for the current shell's `NODE_PATH`.
-- `md-to-pdf` Chromium download fails behind a corporate proxy → use the approved proxy configuration and, with installation approval, re-run `node "<resolved-npm-cli.js>" install -g md-to-pdf`. If the download itself is blocked, install Chrome/Edge instead — sn-doc will use them automatically.
+- `md-to-pdf` Chromium download fails behind a corporate proxy → use the approved proxy configuration and, with installation approval, re-run `node "<resolved-npm-cli.js>" install -g md-to-pdf`. If the download itself is blocked, install Chrome/Edge instead — sn-doc-export will use them automatically.
 - PDF render fails with `spawn UNKNOWN` → AV/AppLocker blocked the puppeteer-bundled Chromium under `%USERPROFILE%\.cache\puppeteer\`. Install Chrome or Edge, or set `$env:SN_DOC_BROWSER` to a chrome.exe / msedge.exe path. Preflight will report which browser is used.
 - `[MISSING] @adobe/helix-md2docx` → package name has the `@adobe/` scope; quote it in PowerShell: `"@adobe/helix-md2docx"`.
-- `Cannot import SNagent libs` → `SN_AGENT_HOME` is wrong. Confirm `C:\Personal\SNagent\tools\_doc_lib\parse.py` exists.
+- Missing/relative `SN_AGENT_HOME` → explicitly configure the user-selected absolute backend path; Node-only output does not require it.
+- `Cannot import SNagent libs` → confirm `tools\_doc_lib\parse.py` exists under the configured `SN_AGENT_HOME`. Do not search personal folders or substitute another checkout.
 - `[MISSING] myst_parser` after install → you're running a different Python than the one that installed packages. Run `python -m pip install -r ...`.
 - DOCX renders but PDF fails with Pango error → §3c above.
-- Long path errors on Windows → enable long paths via `gpedit` or set `LongPathsEnabled = 1` in `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`.
+- Long path errors on Windows → use an approved shorter project/output path; do not change machine registry or security policy.

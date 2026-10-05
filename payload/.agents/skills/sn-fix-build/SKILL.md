@@ -1,7 +1,10 @@
 ---
 name: sn-fix-build
-description: Diagnose a now-sdk build failure and apply the Fluent fix — maps each TS/parser error code to its Fluent cause + correction. Use whenever `now-sdk build` fails or a .now.ts compile error appears.
+description: Use when a now-sdk build fails or a Fluent compile error appears; classify the syntax and map the observed error to a documented correction.
 argument-hint: <paste the now-sdk build error, or leave blank to use the last terminal output>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; attributable build error evidence.
+metadata:
+  version: '1'
 ---
 Diagnose and fix a build failure in this Fluent project. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
 

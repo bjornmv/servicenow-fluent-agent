@@ -1,9 +1,10 @@
 ---
 name: sn-react-ui-design
-description: Design, implement, review or verify ServiceNow React UI Pages and custom React interfaces, including React-based Asset Experience. Use for JSX/TSX, CSS, copy, forms, tables and interaction changes. Not Lux/AIUX (Lit), Service Portal or UI Builder.
+description: Use when designing, implementing, reviewing or verifying ServiceNow React UI Pages and custom React interfaces, including JSX/TSX, CSS, copy and interactions; not Lux/AIUX, Portal or UI Builder.
+argument-hint: <React surface, operation, requested change and acceptance criteria>
 compatibility: Windows-native; existing project tooling. Rendered verification needs browser access. No installation required.
 metadata:
-  version: "1.1.0"
+  version: '1'
 ---
 # ServiceNow React UI design
 

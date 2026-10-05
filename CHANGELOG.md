@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — skill and packaging cleanup
+
+- Normalize version-neutral skill triggers and metadata; retain honest historical SDK verification in bodies. Remove personal backend paths/examples and configure optional document export explicitly.
+- Consolidate table/business-rule wrappers into `sn-add-record` with type references; retain specialized GraphQL/Playbook/ATF workflows. Rename `sn-doc` to `sn-doc-export` and narrow Git bootstrap to setup.
+- Move development tests out of the runtime payload and enforce exclusions in install/verify/refresh, preserving the docs setup acceptance harness. Retired managed files use the existing backup/conflict-preserving migration.
+- Generate a trimmed fallback baseline from the canonical agent and reject drift. Explain user-global discovery in README. Align distribution manifest version and include it in publication checks.
+
+## Unreleased — upgrade execution safeguards
+
+- Skip update checks for documentation-only/read-only tasks. Scope checks with `--only agent|sdk|docs`; identify the project path and declared-version source in SDK notices. Do not treat a range floor as an installed SDK version; compare prereleases correctly.
+- Replace cwd-dependent project npm instructions with a small guarded npm-only worker: explicit cwd/prefix, strict engine/config checks, manifest/lock backups, exclusive ownership, durable streams/native result, independent version/manifest verification and read-only recovery. Unsupported layouts stop; no SDK/instance/global install is performed by this worker.
+- Treat missing native completion, mixed output and terminal errors as UNKNOWN across mirrored agent/baseline/lookup instructions. No blind retries, follow-on build claims or corpus diagnoses from blank transcripts.
+- Add isolated regression coverage for wrong-root updates, interrupted/delayed output, duplicate runs, engine/manager/layout refusals, scoped checks and truthful recovery; wire it into existing test gates. Windows Copilot terminal end-to-end acceptance and a real approved package upgrade remain separate, untested acceptance steps.
+
 ## 0.3.8
 
 - Route documentation questions through the current lookup resolver/defaults, not historical cache/MCP memories or guessed index paths. Diagnose ENOENT before declaring an index missing; never silently switch corpora or rebuild for a lookup.

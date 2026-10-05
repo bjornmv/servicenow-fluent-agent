@@ -9,6 +9,8 @@ const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
 const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
 const { prepareTerminalSettings, writeTerminalSettings } = require('../lib/vscode-terminal.cjs');
 const { configureWindowsGit } = require('../lib/windows-git-environment.cjs');
+const { payloadFiles } = require('../lib/payload-files.cjs');
+const { generate: generateBaseline } = require('../tools/generate-baseline.cjs');
 
 const PACKAGE_NAME = 'servicenow-fluent-agent';
 const RECEIPT_NAME = '.servicenow-fluent-agent-install.json';
@@ -81,47 +83,6 @@ function readTextIfExists(file) {
 
 function readVersion() {
   return (readTextIfExists(path.join(repoRoot, 'VERSION')) || '0.0.0').trim();
-}
-
-function isIgnoredFile(file) {
-  const lower = file.toLowerCase();
-  return (
-    lower.endsWith('.pyc') ||
-    lower.endsWith('.pyo') ||
-    lower.endsWith('.tmp') ||
-    lower.endsWith('.bak') ||
-    lower.endsWith('.ds_store') ||
-    lower.endsWith('thumbs.db')
-  );
-}
-
-function isIgnoredDir(name) {
-  return name === '.git' || name === 'node_modules' || name === '__pycache__';
-}
-
-function walkFiles(root) {
-  const files = [];
-
-  function walk(current) {
-    const entries = fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => {
-      if (a.isDirectory() && !b.isDirectory()) return -1;
-      if (!a.isDirectory() && b.isDirectory()) return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    for (const entry of entries) {
-      if (entry.isDirectory() && isIgnoredDir(entry.name)) continue;
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (entry.isFile() && !isIgnoredFile(entry.name)) {
-        files.push(full);
-      }
-    }
-  }
-
-  if (fs.existsSync(root)) walk(root);
-  return files;
 }
 
 function payloadRel(sourceFile) {
@@ -313,10 +274,11 @@ function install() {
     return;
   }
 
+  generateBaseline(repoRoot, true); // fail before settings/PATH/payload writes on stale generated guidance
   const version = readVersion();
   const previousReceipt = loadReceipt();
   const backupRoot = path.join(backupRootBase, timestamp());
-  const sourceFiles = walkFiles(payloadRoot);
+  const sourceFiles = payloadFiles(payloadRoot);
   const payloadRels = new Set(sourceFiles.map(payloadRel));
   const summary = {
     command: 'install',
@@ -387,7 +349,10 @@ function verify() {
     return;
   }
 
-  const sourceFiles = walkFiles(payloadRoot);
+  generateBaseline(repoRoot, true);
+  const sourceFiles = payloadFiles(payloadRoot);
+  const sourceRels = new Set(sourceFiles.map(payloadRel));
+  const retainedObsolete = Object.keys(loadReceipt().files).filter(rel => !sourceRels.has(rel) && fs.existsSync(targetForRel(rel)));
   const missing = [];
   const mismatched = [];
   const ok = [];
@@ -411,6 +376,8 @@ function verify() {
   console.log(`ok: ${ok.length}`);
   console.log(`missing: ${missing.length}`);
   console.log(`mismatched: ${mismatched.length}`);
+  console.log(`retained obsolete managed files: ${retainedObsolete.length}`);
+  if (retainedObsolete.length) console.log('Review preserved local edits before removing retired skill/test files:\n' + retainedObsolete.join('\n'));
   console.log('Payload check only: separately verify bare git --version in fresh terminals across the hosts you use.');
 
   if (missing.length) {
@@ -423,7 +390,7 @@ function verify() {
     for (const rel of mismatched) console.log(`  ${rel}`);
   }
 
-  if (missing.length || mismatched.length) process.exitCode = 1;
+  if (missing.length || mismatched.length || retainedObsolete.length) process.exitCode = 1;
 }
 
 function uninstall() {
@@ -500,6 +467,7 @@ async function checkForUpdates() {
     projectPath: flagValue('--project'),
     docsPath: flagValue('--docs'),
     docsBranch: flagValue('--docs-branch'),
+    only: flagValue('--only'),
     force,
   });
   if (updates.length) console.log(JSON.stringify({ updates }));
@@ -563,7 +531,7 @@ function help() {
   node bin/sn-fluent-agent.cjs configure-terminal [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
-  node bin/sn-fluent-agent.cjs check-updates [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
+  node bin/sn-fluent-agent.cjs check-updates [--only <agent|sdk|docs>] [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
   node bin/sn-fluent-agent.cjs update-decision <update|remind|skip> --component <key> [...]
   node bin/sn-fluent-agent.cjs uninstall [--dry-run] [--force]
 

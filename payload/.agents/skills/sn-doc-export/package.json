@@ -1,0 +1,14 @@
+{
+  "name": "sn-doc-export",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Markdown to PDF/DOCX renderer for sn-doc-export. Peer dependencies require separately approved installation through a permitted package-manager launcher.",
+  "bin": {
+    "sn-doc-export": "./render.js"
+  },
+  "peerDependencies": {
+    "md-to-pdf": ">=5.0.0",
+    "@adobe/helix-md2docx": ">=2.0.0"
+  }
+}

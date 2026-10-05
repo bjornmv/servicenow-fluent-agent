@@ -1,8 +1,12 @@
 ---
 name: sn-add-playbook
-description: Author or enhance now-sdk 4.11 PlaybookDefinition DSL with triggers, lanes, permissions, optional/manual activities, outputs, and agentic controls.
+description: Use when authoring or enhancing Fluent PlaybookDefinition DSL with triggers, lanes, permissions, optional/manual activities, outputs, and agentic controls.
 argument-hint: <record-driven/on-demand playbook + stages/activities/permissions>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; target playbook capabilities must be confirmed.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Author a Playbook with the documented `PlaybookDefinition(...)` and `wfa.playbook.*` DSL. Its callbacks are valid Fluent construction syntax; do not externalize them with `Now.include`.
 
 Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
@@ -18,7 +22,7 @@ now-sdk explain --list playbook
 
 Typical guides: `playbook-guide`, `playbook-activities-guide`, `playbook-permissions-guide`, `playbook-triggers-guide`, lanes/patterns/anti-patterns guides. Inspect the specific built-in activity definition and its backing flow/action/activity type before setting inputs or experience properties; never infer one activity's fields from another.
 
-## SDK 4.11 guardrails
+## Playbook guardrails
 
 - Record-driven playbooks require the second argument with `triggers`, even when `{ triggers: [] }`.
 - On-demand playbooks use `executionType: 'on_demand'`: omit triggers entirely, omit `parentTable`, never use `params.parentRecord`, and grant `launch: true` to at least one permission set.

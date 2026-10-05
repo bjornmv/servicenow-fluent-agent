@@ -1,8 +1,12 @@
 ---
 name: sn-transform
-description: Pull existing instance (or local XML) records into Fluent .now.ts source via now-sdk transform, then clean the generated output to obey the Fluent rules. Use when adopting/converting records that already exist on the instance into editable Fluent — do NOT hand-write those.
+description: Use when adopting existing instance records or local XML into Fluent source with now-sdk transform; review generated syntax and preserve automation guardrails.
 argument-hint: <scope, --ids sys_ids, --table/--id, or local XML dir — e.g. x_acme_demo, --ids abc123, or ./xml>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized instance access unless using local XML.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation for --force; positional-ID behavior historically observed with SDK 4.7.x. Neither is newly verified against another SDK version.
 Adopt existing ServiceNow records into this now-sdk app by converting their XML into Fluent `.now.ts` source. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Run the transform
@@ -10,7 +14,7 @@ Adopt existing ServiceNow records into this now-sdk app by converting their XML 
    - `now-sdk transform --auth <alias>` — interactive; pick scope/records.
    - Or pass direct metadata sys_ids: `now-sdk transform --auth <alias> --ids <sys_id> <sys_id>`.
    - Or pass one record with its table context: `now-sdk transform --auth <alias> --table <table> --id <sys_id>`.
-   - Do not pass sys_ids as positional arguments; SDK 4.7.x ignores positional IDs for `transform`.
+   - Do not pass sys_ids as positional arguments; use the documented ID flags and confirm them against the project's SDK help.
 2. From local XML (no instance call): `now-sdk transform --from ./xml`. Use `--format=false` to skip auto-formatting if it mangles output.
 3. Output lands in `src/fluent/**/*.now.ts`; referenced scripts go under `src/scripts/` + `src/ui/`.
 
@@ -22,7 +26,7 @@ now-sdk transform --auth <alias> --table x_acme_demo_widget --id <sys_id>
 now-sdk transform --auth <alias> --table x_acme_demo_widget,x_acme_demo_settings
 ```
 
-### SDK 4.11 `--force` — descendant table without parent hierarchy
+### `--force` — descendant table without parent hierarchy
 `--force` is valid only with `--table`. It allows transformation of a descendant/extended table without also pulling its parent hierarchy. It is **not** an overwrite or re-transform flag.
 
 Before using it, identify the requested table's parent and explain that the generated source can depend on parent metadata/types not being adopted into this app. Prefer the complete hierarchy. Use `now-sdk transform --auth <alias> --table <descendant> --force` only after explicit confirmation.

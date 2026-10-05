@@ -6,7 +6,7 @@ description: Fluent .now.ts syntax rules, including documented callback-based SD
 
 `.now.ts` files are parsed by the Fluent compiler, not as unrestricted TypeScript. Apply the ordinary-record rules below to declarative record expressions and record script fields. Do not mechanically apply them to callback/helper positions that the exact SDK API documents as part of a Fluent DSL.
 
-BEFORE authoring or editing a record type, run `now-sdk explain <recordtype>-api --format raw` using the host routing below. Run the matching `-guide` for net-new records or complex composition. Treat the installed SDK 4.11+ explain output as authoritative; use `.d.ts` files only as a supplement.
+BEFORE authoring or editing a record type, run `now-sdk explain <recordtype>-api --format raw` using the host routing below. Run the matching `-guide` for net-new records or complex composition. Treat the project's installed SDK explain output as authoritative; use `.d.ts` files only as a supplement.
 
 ## Documented SDK DSL exceptions — classify first
 

@@ -48,7 +48,7 @@ The WAI Understanding pages and APG patterns explain implementation and interpre
 
 ## Asset Experience case study
 
-Authoring evidence: `C:\Users\bvelsrud\AssetApp\docs\asset-experience-ui-review.md` and its saved review screenshots from 2026-09-11. This is optional historical evidence, not a path future projects must read or a live state assertion.
+Authoring evidence: a private project UI review and saved screenshots from 2026-09-11 (not distributed). This is historical provenance, not publicly reproducible validation, a path future projects must read or a live state assertion.
 
 The inspected React page showed zero complete inventory rows in a 1366×768 compact view, long source/destination panels above transfer assets, repeated promotional text and selection invalidation on density changes. Those observations motivated the screen-space, plain-language, state-continuity and rendered-acceptance rules here.
 

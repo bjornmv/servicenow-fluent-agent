@@ -1,8 +1,12 @@
 ---
 name: sn-add-graphql-api
-description: Author and secure a now-sdk 4.11 GraphQLApi with SDL, imported server resolvers, type resolvers, and schema/field ACLs.
+description: Use when authoring or securing a Fluent GraphQLApi with SDL, imported server resolvers, type resolvers, and schema/field ACLs.
 argument-hint: <API name, namespace, schema fields, roles/security requirements>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized instance access for deployment.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Author a scripted ServiceNow GraphQL API with `GraphQLApi(...)`.
 
 Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
@@ -14,7 +18,7 @@ now-sdk explain graphqlapi-api --format raw
 now-sdk explain graphql-api-guide --format raw
 ```
 
-Read `security-guide` when adding ACLs. Use the installed now-sdk 4.11+ docs as authoritative.
+Read `security-guide` when adding ACLs. Use the target project's installed SDK docs as authoritative.
 
 ## Required design
 

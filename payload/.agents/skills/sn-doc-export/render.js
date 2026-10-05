@@ -1,21 +1,21 @@
 #!/usr/bin/env node
-// sn-doc render shim — Node backend (default).
+// sn-doc-export render shim — Node backend (default).
 //
 // Usage (from PowerShell, via the resolver):
-//   $SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc\render.js'
+//   $SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-export\render.js'
 //   node "$SnDoc" --check
 //   node "$SnDoc" --in body.md --format pdf,docx --out docs/dist/
 //   node "$SnDoc" --in body.md --backend python --archetype runbook --out docs/dist/
 //
 // Backends:
 //   node    (default) — md-to-pdf (PDF) + @adobe/helix-md2docx (DOCX). Plain archetype only.
-//   python  — calls render.py against C:\Personal\SNagent libs. Full archetype set.
+//   python  — calls render.py against explicitly configured SN_AGENT_HOME libs.
 //
 // Preflight is mandatory before render. Missing deps print the exact install command.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, basename, extname } from 'node:path';
+import { dirname, join, resolve, basename, extname, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -24,7 +24,7 @@ const __dirname = dirname(__filename);
 const require = createRequire(import.meta.url);
 
 const NODE_MIN = 18;
-const SN_AGENT_HOME = process.env.SN_AGENT_HOME || 'C:\\Personal\\SNagent';
+const SN_AGENT_HOME = process.env.SN_AGENT_HOME || '';
 const PY_SHIM = process.env.SN_DOC_PY_BIN || join(__dirname, 'render.py');
 
 // Archetypes the Python backend supports (mirrors SNagent registry).
@@ -98,7 +98,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`sn-doc — render MyST/Markdown to PDF + DOCX
+  console.log(`sn-doc-export — render MyST/Markdown to PDF + DOCX
 
 Usage:
   node render.js --check
@@ -110,7 +110,7 @@ Usage:
 Backends:
   node    md-to-pdf + @adobe/helix-md2docx. Fast, no Python.
           Supports archetype: plain only.
-  python  C:\\Personal\\SNagent libs (WeasyPrint + python-docx).
+  python  SNagent libs at explicit absolute SN_AGENT_HOME (no default).
           Supports all archetypes incl. runbook/compliance_report.
   auto    (default) picks node for plain and python for framed archetypes.
           Missing dependencies fail fast instead of switching backends.
@@ -278,8 +278,27 @@ function nodeReadyForFormats(status, formats) {
     (!formats.includes('docx') || status.docxOk);
 }
 
+function pythonHomeIssue() {
+  if (!SN_AGENT_HOME.trim()) return 'Set SN_AGENT_HOME to the explicit absolute path of your SNagent checkout; no default is used.';
+  if (!isAbsolute(SN_AGENT_HOME)) return 'SN_AGENT_HOME must be an explicit absolute path; relative paths are not accepted.';
+  try {
+    for (const dir of [SN_AGENT_HOME, join(SN_AGENT_HOME, 'tools'), join(SN_AGENT_HOME, 'tools', '_doc_lib')]) {
+      if (!statSync(dir).isDirectory()) return `SNagent backend directory not found: ${dir}`;
+    }
+  } catch {
+    return `SN_AGENT_HOME must contain a readable tools/_doc_lib directory: ${SN_AGENT_HOME}`;
+  }
+  return null;
+}
+
 function preflightPython() {
   const out = { backend: 'python', ok: true, lines: [], available: false };
+  const homeIssue = pythonHomeIssue();
+  if (homeIssue) {
+    out.lines.push([false, homeIssue]);
+    out.ok = false;
+    return out;
+  }
   const py = which('python') || which('python3');
   if (!py) {
     out.lines.push([false, 'python not on PATH']);
@@ -305,7 +324,7 @@ function preflightPython() {
 }
 
 function preflight() {
-  console.log('sn-doc preflight');
+  console.log('sn-doc-export preflight');
   console.log('='.repeat(60));
 
   const n = preflightNode();
@@ -698,6 +717,8 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
 // ---------------------------------------------------------------------------
 
 function renderPython(args) {
+  const homeIssue = pythonHomeIssue();
+  if (homeIssue) { console.error(homeIssue); return 2; }
   const py = which('python') || which('python3');
   if (!py) { console.error('python not on PATH'); return 2; }
   const passthrough = [

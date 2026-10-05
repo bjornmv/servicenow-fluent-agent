@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createSchemaService } = require('../schema.cjs');
+const { createSchemaService } = require('../../../payload/.agents/skills/sn-rest/schema.cjs');
 const tables = [
   ['sys_script','Business Rule','sys_metadata'], ['sys_metadata','Application File',''],
   ['sys_app','Custom Application','sys_scope'], ['sys_scope','Application','sys_package'], ['sys_package','Package','']

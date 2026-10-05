@@ -4,6 +4,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { excluded } = require('../lib/payload-files.cjs');
+const { generate } = require('./generate-baseline.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const payloadRoot = path.join(repoRoot, 'payload');
@@ -34,6 +36,7 @@ function copyDir(source, target) {
     if (entry.isFile() && isIgnoredFile(entry.name)) continue;
     const sourcePath = path.join(source, entry.name);
     const targetPath = path.join(target, entry.name);
+    if (excluded(path.relative(payloadRoot, targetPath), entry.isDirectory())) continue;
     if (entry.isDirectory()) copyDir(sourcePath, targetPath);
     else if (entry.isFile()) copyFile(sourcePath, targetPath);
   }
@@ -85,7 +88,8 @@ function main() {
   if (!fs.existsSync(skillsRoot)) throw new Error(`Skills directory not found: ${skillsRoot}`);
 
   const skillDirs = fs.readdirSync(skillsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith('sn-'))
+    .filter((entry) => entry.isDirectory() && (entry.name.startsWith('sn-') || entry.name === 'win-git-bootstrap') &&
+      !['sn-doc', 'sn-add-table', 'sn-add-business-rule'].includes(entry.name))
     .map((entry) => entry.name)
     .sort();
 
@@ -94,6 +98,7 @@ function main() {
     console.log(`copied .agents/skills/${skillDir}/ -> payload/.agents/skills/${skillDir}/`);
   }
 
+  generate(repoRoot);
   const total = countFiles(payloadRoot);
   console.log(`\nPayload refreshed: ${toSlash(payloadRoot)}`);
   console.log(`Files: ${total}`);

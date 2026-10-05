@@ -11,6 +11,7 @@ const {
   REMINDER_INTERVAL_MS,
   checkUpdates,
   keyFor,
+  isNewerVersion,
   recordDecision,
 } = require('../../lib/update-advisor.cjs');
 
@@ -105,9 +106,81 @@ test('decision mode preserves inherited output and truthful error/exit status', 
   assert.equal(runLauncher(['decision'], undefined, { missingCli: true }).status, 1);
 });
 
-function temporaryPath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'sn-fluent-agent-update-test-'));
+function temporaryPath(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sn-fluent-agent-update-test-'));
+  if (t) t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return root;
 }
+
+test('SDK notice names the absolute project and declaration source; SDK-only checks never invoke Git', async t => {
+  const root = temporaryPath(t);
+  const projectPath = path.join(root, 'lux-samples');
+  fs.mkdirSync(projectPath);
+  fs.writeFileSync(path.join(projectPath, 'package.json'), JSON.stringify({ devDependencies: { '@servicenow/sdk': '4.12.2' } }));
+  const updates = await checkUpdates({ only: 'sdk', repoRoot: root, docsPath: root, projectPath,
+    statePath: path.join(root, 'state.json'), run: () => assert.fail('Unrelated Git check'), getLatestSdkVersion: async () => '4.13.3' });
+  assert.equal(updates.length, 1);
+  assert.match(updates[0].label, /Project now-sdk \(lux-samples/);
+  assert.ok(updates[0].label.includes(projectPath));
+  assert.equal(updates[0].projectPath, projectPath);
+  assert.equal(updates[0].currentSource, 'package.json declaration');
+  assert.equal(updates[0].current, '4.12.2');
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'state.json')));
+  assert.deepEqual(Object.keys(state.components), [keyFor('sdk', projectPath)]);
+});
+
+test('explicit docs-only maintenance never checks the SDK registry or agent repository', async t => {
+  const root = temporaryPath(t);
+  const docsPath = path.join(root, 'docs'); fs.mkdirSync(docsPath);
+  const updates = await checkUpdates({ only: 'docs', repoRoot: root, projectPath: root, docsPath, docsBranch: 'australia',
+    statePath: path.join(root, 'state.json'), getLatestSdkVersion: () => assert.fail('Unrelated SDK lookup'),
+    run: (cmd, args, cwd) => { assert.equal(cwd, docsPath); return gitRunner('2222222222222222222222222222222222222222')(cmd, args); } });
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].component, keyFor('docs', docsPath));
+});
+
+test('invalid component filters/missing targets fail before state writes or discovery', async t => {
+  const root = temporaryPath(t); const statePath = path.join(root, 'state.json');
+  for (const options of [{ only: 'sdk' }, { only: 'docs' }, { only: 'typo' }]) {
+    await assert.rejects(checkUpdates({ ...options, statePath, run: () => assert.fail('Git'), getLatestSdkVersion: () => assert.fail('npm') }));
+    assert.equal(fs.existsSync(statePath), false);
+  }
+});
+
+test('range declarations are not misrepresented as an installed exact version', async t => {
+  const root = temporaryPath(t);
+  for (const declared of ['^4.12.2', '~4.12.2', '>=4.12.2', '4.12.2 || 4.13.3', 'latest', 'workspace:*']) {
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ devDependencies: { '@servicenow/sdk': declared } }));
+    assert.deepEqual(await checkUpdates({ only: 'sdk', projectPath: root, statePath: path.join(root, 'state.json'), force: true,
+      getLatestSdkVersion: () => assert.fail('Do not query registry for a non-exact pin') }), []);
+  }
+});
+
+test('prereleases use numeric SemVer ordering, not lexical order', () => {
+  assert.equal(isNewerVersion('4.13.3-rc.10', '4.13.3-rc.2'), true);
+  assert.equal(isNewerVersion('4.13.3-rc.2', '4.13.3-rc.10'), false);
+  assert.equal(isNewerVersion('4.13.3', '4.13.3-rc.10'), true);
+  assert.equal(isNewerVersion('4.13.3-rc.10', '4.13.3'), false);
+  assert.equal(isNewerVersion('4.13.3', '4.13.3'), false);
+  assert.equal(isNewerVersion('4.13.3-alpha.beta', '4.13.3-alpha.1'), true);
+});
+
+test('mirrored instructions skip docs-only checks and preserve UNKNOWN rather than success', () => {
+  const load = rel => fs.readFileSync(path.join(__dirname, '../../', rel), 'utf8');
+  const agent = load('payload/.copilot/agents/ServiceNow Fluent.agent.md');
+  const baseline = load('payload/.agents/instructions/now-sdk-baseline.instructions.md');
+  const section = (text, name) => text.split(`## ${name}\n`)[1].split('\n## ')[0].trim();
+  for (const name of ['Quiet Update Advisory', 'Documentation Lookup', 'Terminal Discipline']) assert.equal(section(agent, name), section(baseline, name));
+  assert.match(agent, /Skip all advisory checks for documentation-only questions/);
+  assert.match(agent, /--only sdk --project/);
+  assert.doesNotMatch(agent, /Sync commands return when/);
+  assert.match(agent, /make completion UNKNOWN/);
+  const skill = load('payload/.agents/skills/sn-update-advisor/SKILL.md');
+  assert.match(skill, /package updated; build unverified/);
+  assert.match(skill, /Recording \*\*Update\*\* records authorization, not installation/);
+  assert.match(skill, /One owner per mutation/);
+  assert.match(skill, /scripts\\update-project-sdk\.cjs/);
+});
 
 function gitRunner(remoteRevision) {
   return (_command, args) => {

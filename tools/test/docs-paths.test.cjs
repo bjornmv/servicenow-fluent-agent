@@ -129,7 +129,8 @@ test('lookup and mirrored agent guidance prevent the observed path/advisor/evide
   assert.equal(section(agent, 'Documentation Lookup'), section(baseline, 'Documentation Lookup'));
   assert.match(agent, /--docs "<resolved-docs-checkout>"/);
   assert.match(agent, /requires a value, never a bare flag/);
-  assert.match(agent, /not just “retrieved successfully/);
+  assert.match(agent, /Preserve excerpts\/citations through delegation/);
+  assert.match(agent, /blank output is UNKNOWN, not zero hits/);
   const skillText = read('payload/.agents/skills/sn-doc-lookup/SKILL.md');
   assert.match(skillText, /Prefer omitting `--index`/);
   assert.match(skillText, /On ENOENT, run `paths`/);

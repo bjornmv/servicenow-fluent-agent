@@ -1,7 +1,10 @@
 ---
 name: sn-lux
-description: "Create, extend or review ServiceNow Lux (AIUX) experiences, Lit pages and server-backed widgets. Use for Lux, AIUX, AI-UX or AI Experience requests, or the AIUX surface of an aiux.json project. Routes to official project-local AIUX skills; not the React UI Page workflow."
+description: "Use when creating, extending or reviewing ServiceNow Lux (AIUX) experiences, Lit pages and widgets; route to official project-local AIUX skills, not the React UI Page workflow."
 argument-hint: "<Lux/AIUX experience, page, widget or extension request>"
+compatibility: AIUX project with matching official project-local reference packs and compatible toolchain; authorized instance for runtime work.
+metadata:
+  version: '1'
 ---
 # Lux (AIUX) entry workflow
 
@@ -25,7 +28,7 @@ Keep work proportional: for an existing app, inspect only the manifests and file
 ## 2. Capability and toolchain preflight
 
 - Confirm the target instance/alias with the user; use `sn-auth` and `sn-rest` without printing tokens. Pass the confirmed alias and instance explicitly on REST checks; do not assume a default profile targets the intended PDI/vendor instance. Browser login is separate from SDK OAuth.
-- Recheck current [Lux prerequisites](https://www.servicenow.com/docs/r/application-development/configuring-servicenow-ai-experience-lab-for-vs-code.html). The documented baseline checked on 2026-09-20 was SDK 4.10+ and Australia Patch 5+ or Zurich Patch 12+. Check AI Experience Framework (`sn_aixf`) and Framework Builder (`sn_aiux_builder`) installation/version separately; these checks do not establish entitlement or full compatibility.
+- Recheck current [Lux prerequisites](https://www.servicenow.com/docs/r/application-development/configuring-servicenow-ai-experience-lab-for-vs-code.html). Verified against: prerequisite documentation checked on 2026-09-20 listing SDK 4.10+ and Australia Patch 5+ or Zurich Patch 12+ (historical documentation baseline, not current compatibility certification). Check AI Experience Framework (`sn_aixf`) and Framework Builder (`sn_aiux_builder`) installation/version separately; these checks do not establish entitlement or full compatibility.
 - Check the actual build (for example `glide.war`), not just the release-family label. `sys_scope` can identify framework versions when Store application inventory is ACL-restricted. AIX tables are global `sys_aix_*`; experiences/pages use `title`. ACL denial or an empty plugin-view query is not proof of absence. Use narrow fields/limits; do not dump plugin or user tables.
 - Report platform version, framework presence, readable runtime records, deployment permissions and browser runtime as separate findings. Read-only checks do not prove write/deploy permission. A replacement PDI is not guaranteed to receive a newer patch; never release/reset an instance merely to satisfy prerequisites without explicit approval.
 - Read declared Node/package-manager engines. The observed AIUX 22.42.3 requirement is Node >=24.14.1; Node 24 LTS >=24.15.0 is recommended for that stack. Do not impose this on all Fluent projects, silently upgrade global Node/SDK, or claim an untested version is validated.

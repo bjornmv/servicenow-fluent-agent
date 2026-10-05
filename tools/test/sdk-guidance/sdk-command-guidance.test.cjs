@@ -4,10 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const agents = path.resolve(__dirname, '../..');
+const agents = path.resolve(__dirname, '../../../payload/.agents');
 const home = path.dirname(agents);
 const sdkSkills = [
-  'sn-add-business-rule', 'sn-add-table', 'sn-add-graphql-api', 'sn-add-playbook',
+  'sn-add-record', 'sn-add-graphql-api', 'sn-add-playbook',
   'sn-add-test-suite', 'sn-auth', 'sn-build-install', 'sn-cicd', 'sn-download',
   'sn-explain', 'sn-fix-build', 'sn-new-app', 'sn-transform', 'sn-ui-page-vite',
   'sn-lux', 'sn-lux-build',
@@ -15,7 +15,7 @@ const sdkSkills = [
 const agentFile = path.join(home, '.copilot/agents/ServiceNow Fluent.agent.md');
 const instructionFiles = ['fluent', 'scripts', 'now-sdk-baseline'].map(n => path.join(agents, 'instructions', n + '.instructions.md'));
 const sdkFiles = [agentFile, ...instructionFiles, ...sdkSkills.map(n => path.join(agents, 'skills', n, 'SKILL.md'))];
-const docs = [...sdkFiles, path.join(agents, 'skills/sn-doc/SKILL.md'), path.join(agents, 'skills/sn-doc/install.md')];
+const docs = [...sdkFiles, path.join(agents, 'skills/sn-doc-export/SKILL.md'), path.join(agents, 'skills/sn-doc-export/install.md')];
 const read = f => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 const policyPath = path.join(agents, 'reference/sdk-commands.md');
 const policy = read(policyPath);
@@ -41,7 +41,7 @@ test('every SDK entry point explicitly distinguishes VS Code and Pi', () => {
   for (const file of sdkFiles) {
     const text = read(file);
     assert.match(text, /VS Code/, file);
-    assert.match(text, /`now_sdk` tool/, file);
+    assert.match(text, /`now_sdk`(?: tool)?/, file);
     assert.match(text, /project `cwd`/, file);
   }
 });

@@ -1,6 +1,10 @@
 ---
 name: sn-rest
-description: Discover ServiceNow tables and inherited fields, then run small schema-validated reads or grouped aggregates with the existing SDK OAuth token. Use for instance inventory, contributor evidence, sys_id lookup and record verification. Writes require interactive confirmation.
+description: Use when discovering ServiceNow schemas, reading bounded records or aggregates, or verifying instance content with existing OAuth; writes require interactive confirmation.
+argument-hint: <confirmed instance, table or API, fields, filters and read/write intent>
+compatibility: Existing SDK OAuth alias and authorized instance; Pi sn_schema/sn_rest tools or the approved bundled REST helper.
+metadata:
+  version: '1'
 ---
 # ServiceNow schema and REST
 

@@ -47,7 +47,7 @@ Dependency installation/upgrades, global tool changes, lifecycle scripts and net
 
 ## Version awareness
 
-Use the actual project SDK's docs and engine requirements. SDK 4.11's Node >=20.18.0 baseline is not sufficient for every later SDK or Lux dependency. Check versions when relevant to setup or a compatibility failure, not on every command. An upgrade requires explicit scope/version approval; a global SDK upgrade does not update a project pin. Ordinary SDK upgrades do not automatically require reauthentication; use the connection-evidence rules and `sn-auth` for a demonstrated auth issue.
+Use the actual project SDK's docs and engine requirements. An older SDK's minimum Node version is not necessarily sufficient for the current SDK or Lux dependencies. Check versions when relevant to setup or a compatibility failure, not on every command. An upgrade requires explicit scope/version approval; a global SDK upgrade does not update a project pin. Ordinary SDK upgrades do not automatically require reauthentication; use the connection-evidence rules and `sn-auth` for a demonstrated auth issue.
 
 ## Offline guidance checks
 

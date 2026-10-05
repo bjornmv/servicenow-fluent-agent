@@ -112,21 +112,25 @@ node bin/sn-fluent-agent.cjs verify
 
 ## Update Advisor
 
-The installed agent makes one lightweight update check on the first eligible session at most every 48 hours. It is silent when no action is available. When an update exists, it offers only **Update**, **Remind me in 7 days**, or **Skip this release**.
+The installed agent skips advisory checks for documentation-only questions, read-only reviews and simple/time-sensitive command requests. Before substantive implementation/build work it checks only the identified project's SDK, at most every 48 hours. Checks remain quiet and nonblocking. Notices identify the absolute target and version source, offering only **Update**, **Remind me in 7 days**, or **Skip this release**.
 
-The agent distribution is checked from this repository. A project's `@servicenow/sdk` is checked only while that project is active. A ServiceNowDocs checkout is checked only for documentation work or a manual request. No check installs packages, updates Git working copies, rebuilds indexes, changes authentication, or deploys anything.
+Use `--only sdk --project "<absolute-root>"`, `--only agent`, or `--only docs --docs "<checkout>"` to limit discovery. Docs maintenance must be requested; answering a docs question is not maintenance. SDK notices compare exact project declarations, not global installs or range lower bounds. No check installs packages, pulls repositories, rebuilds indexes, changes authentication or deploys anything.
+
+Approved standalone-npm SDK upgrades use the skill's `scripts/update-project-sdk.cjs` worker: explicit cwd and npm prefix, disabled lifecycle scripts, strict engines/no force, manifest/lock backups, separate logs, atomic result and per-project duplicate-run lock. Run `preflight` first; `apply --approved` requires prior human approval and review. `status` is read-only recovery of the original run. Missing, delayed or misattributed output means UNKNOWN, never success or permission to retry. Workspace/linked/unsupported layouts stop for review. Package verification and build acceptance are separate; the worker never runs the SDK. See the installed **sn-update-advisor** skill for the complete contract.
 
 Run an explicit agent-package check with VS Code task **Check ServiceNow Fluent Agent Updates**, or from a terminal:
 
 ```text
-node bin/sn-fluent-agent.cjs check-updates --force
+node bin/sn-fluent-agent.cjs check-updates --only agent --force
 ```
 
 The advisor records its non-sensitive timing and decision state in `%USERPROFILE%\.agents\.servicenow-fluent-agent-update.json`.
 
 ## Installed locations
 
-The installer copies files from `payload/` into the current user's profile:
+Installation is user-global: skill descriptions are discoverable in every workspace, including non-ServiceNow workspaces—an intentional convenience/context-cost trade-off.
+
+The installer copies runtime files from `payload/` into the current user's profile:
 
 ```text
 %USERPROFILE%\.copilot\agents\ServiceNow Fluent.agent.md
@@ -176,15 +180,24 @@ node bin/sn-fluent-agent.cjs uninstall
 - Obsolete managed files are removed only when unchanged from the last installed version.
 - Install metadata is stored at `%USERPROFILE%\.agents\.servicenow-fluent-agent-install.json`.
 
+## Skill and instruction maintenance
+
+- Descriptions are version-neutral, explicit **Use when** triggers. `argument-hint`, `compatibility`, and `metadata.version: '1'` are consistent; the latter identifies the skill format, not the distribution or SDK version. Body **Verified against** lines record historical evidence, not runtime pins or newly tested compatibility. Respect each project's SDK and engines.
+- `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
+- `sn-doc-export` creates PDF/DOCX; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
+- `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums.
+- Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. Live REST tests/benchmarks are manual opt-in, not part of offline tests.
+- Edit the canonical `payload/.copilot/agents/ServiceNow Fluent.agent.md`, then run `node tools/generate-baseline.cjs` (`build:instructions`). The baseline contains only selected high-risk sections. CI and install preflight reject stale generated instructions; detailed workflows stay in skills/file-specific instructions.
+
 ## Maintainer refresh
 
-On the maintainer machine, after editing the live files under `%USERPROFILE%`, refresh the payload:
+Prefer editing the source payload directly. Only when deliberately importing reviewed installed customizations, refresh from `%USERPROFILE%` (this replaces the source payload and regenerates the baseline):
 
 ```text
 node tools/refresh-payload.cjs
 ```
 
-Then review the diff, update `VERSION` / `package.json`, commit, and push.
+Then review the diff and run `test:setup`. Before a release, align `VERSION`, `package.json`, `manifest.json`, setup guide markers/URLs and SDK worker version/digest; the Pages gate rejects drift. Commit/publish only after approval and verification.
 
 ## Per-user ServiceNow auth
 

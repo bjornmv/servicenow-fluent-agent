@@ -25,7 +25,7 @@ function withTemp(fn) {
 
 function sourceFixture(directory) {
   const source = path.join(directory, 'source');
-  for (const file of ['setup.md', 'git-setup.md', 'VERSION', 'package.json', workerRelativePath, sdkWorkerRelativePath]) {
+  for (const file of ['setup.md', 'git-setup.md', 'VERSION', 'package.json', 'manifest.json', workerRelativePath, sdkWorkerRelativePath]) {
     const destination = path.join(source, file);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(path.join(root, file), destination);
@@ -212,6 +212,16 @@ test('release version mismatch blocks publication before writing files', () => w
   fs.writeFileSync(path.join(source, 'VERSION'), '0.0.0\n');
   const output = path.join(directory, 'pages');
   assert.throws(() => stageSetupPages(output, source), /release versions disagree/);
+  assert.equal(fs.existsSync(output), false);
+}));
+
+test('distribution manifest version drift blocks publication before writing output', () => withTemp(dir => {
+  const source = sourceFixture(dir);
+  const file = path.join(source, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(file)); manifest.version = '0.3.0';
+  fs.writeFileSync(file, JSON.stringify(manifest));
+  const output = path.join(dir, 'output');
+  assert.throws(() => stageSetupPages(output, source), /versions disagree/);
   assert.equal(fs.existsSync(output), false);
 }));
 

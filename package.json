@@ -8,11 +8,14 @@
     "sn-fluent-agent": "bin/sn-fluent-agent.cjs"
   },
   "scripts": {
+    "build:instructions": "node tools/generate-baseline.cjs",
+    "check:instructions": "node tools/generate-baseline.cjs --check",
+    "test:skills": "node --test tools/test/skill-payload.test.cjs tools/test/sdk-guidance/sdk-command-guidance.test.cjs tools/test/doc-export/python-home.test.cjs tools/test/sn-rest/schema.test.cjs tools/test/sn-rest/output.test.cjs",
     "install-agent": "node bin/sn-fluent-agent.cjs install",
     "verify-agent": "node bin/sn-fluent-agent.cjs verify",
     "refresh-payload": "node tools/refresh-payload.cjs",
-    "test:update-advisor": "node --test tools/test/update-advisor.test.cjs",
-    "test:setup": "node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs tools/test/jsonc-settings.test.cjs tools/test/vscode-terminal.test.cjs tools/test/windows-git-environment.test.cjs tools/test/docs-paths.test.cjs tools/test/setup-sdk-capture.test.cjs tools/test/update-advisor.test.cjs"
+    "test:update-advisor": "node --test tools/test/update-advisor.test.cjs tools/test/project-sdk-update.test.cjs",
+    "test:setup": "node --test tools/test/setup-pages.test.cjs tools/test/mingit-ssh-probe.test.cjs tools/test/jsonc-settings.test.cjs tools/test/vscode-terminal.test.cjs tools/test/windows-git-environment.test.cjs tools/test/docs-paths.test.cjs tools/test/setup-sdk-capture.test.cjs tools/test/update-advisor.test.cjs tools/test/project-sdk-update.test.cjs tools/test/skill-payload.test.cjs tools/test/sdk-guidance/sdk-command-guidance.test.cjs tools/test/doc-export/python-home.test.cjs tools/test/sn-rest/schema.test.cjs tools/test/sn-rest/output.test.cjs"
   },
   "engines": {
     "node": ">=18"

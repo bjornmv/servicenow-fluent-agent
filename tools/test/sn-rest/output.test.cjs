@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { preview, createOutputBudget } = require('../output.cjs');
+const { preview, createOutputBudget } = require('../../../payload/.agents/skills/sn-rest/output.cjs');
 const rows=Array.from({length:200},(_,i)=>({sys_id:String(i),name:'x'.repeat(2000),script:'code'.repeat(5000)}));
 test('whole JSON stays bounded with row/value omissions',()=>{
   const p=preview({ok:true,mode:'table',count:200,offset:0,hasMore:false,records:rows});

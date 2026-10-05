@@ -1,7 +1,10 @@
 ---
 name: sn-download
-description: Adopt or refresh an EXISTING instance app as a local Fluent project. Lists instance apps over REST (now-sdk has no list-apps command), then scaffolds via init --from or refreshes via download. Use when bringing an app that already lives on the instance onto this machine, or pulling the latest metadata for the current project.
+description: Use when adopting an existing ServiceNow instance app locally or refreshing its metadata; discover apps via REST, then use init --from or download.
 argument-hint: <app scope or sys_id — leave blank to list and pick>
+compatibility: Project-compatible now-sdk and Node; authorized instance and OAuth alias; empty folder for adoption.
+metadata:
+  version: '1'
 ---
 Bring an EXISTING instance application onto this machine as a now-sdk Fluent project, or refresh one you already have. Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md), including package-manager launchers that preserve the project lockfile.
 

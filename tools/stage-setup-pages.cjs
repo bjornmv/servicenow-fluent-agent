@@ -39,15 +39,16 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
   const sdkSha256 = validateSdkSetupHash(sourceRoot);
   const version = fs.readFileSync(path.join(sourceRoot, 'VERSION'), 'utf8').trim();
   const packageVersion = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'package.json'), 'utf8')).version;
+  const distributionVersion = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'manifest.json'), 'utf8')).version;
   const setup = fs.readFileSync(path.join(sourceRoot, 'setup.md'), 'utf8');
   const sdk = fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath), 'utf8');
-  if (!/^\d+\.\d+\.\d+$/.test(version) || version !== packageVersion ||
+  if (!/^\d+\.\d+\.\d+$/.test(version) || version !== packageVersion || version !== distributionVersion ||
       setup.match(/^SETUP_PROTOCOL_VERSION=(.+)$/m)?.[1] !== version ||
       setup.match(/^SETUP_GUIDE_END=(.+)$/m)?.[1] !== version ||
       !setup.includes(`/releases/${version}/setup.txt`) ||
       !setup.includes(`/releases/${version}/Invoke-SdkSetup.ps1`) ||
       !sdk.includes(`$WorkerVersion = '${version}'`)) {
-    throw new Error('Setup release versions disagree: VERSION, package, guide markers/URLs and SDK worker must match.');
+    throw new Error('Setup release versions disagree: VERSION, package, manifest, guide markers/URLs and SDK worker must match.');
   }
   const releaseRoot = `releases/${version}`;
   const files = [

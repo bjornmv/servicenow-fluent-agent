@@ -1,8 +1,12 @@
 ---
 name: sn-add-test-suite
-description: Author an ATF TestSuite in Fluent using now-sdk 4.11, with ordered membership, nesting, and safe separation between authoring and execution.
+description: Use when authoring a Fluent ATF TestSuite with ordered membership and nesting; keep authoring separate from test execution.
 argument-hint: <suite name + tests/filter + optional parent>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; ATF execution requires separate target authorization.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Author a Fluent ATF suite with `TestSuite(...)`. This API creates `sys_atf_test_suite` and membership metadata; it does not run or schedule the suite.
 
 Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
@@ -13,7 +17,7 @@ Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with 
 now-sdk explain testsuite-api --format raw
 ```
 
-If creating or editing tests too, also read `test-api`. Use the installed now-sdk 4.11+ output as authoritative.
+If creating or editing tests too, also read `test-api`. Use the target project's installed SDK output as authoritative.
 
 ## Authoring rules
 

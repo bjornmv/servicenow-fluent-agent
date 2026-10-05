@@ -1,7 +1,10 @@
 ---
 name: sn-doc-lookup
-description: Markdown-native lookup for the official ServiceNowDocs GitHub corpus. Use when answering ServiceNow product documentation questions, finding official docs/citations, researching API/platform behavior, or checking lookup quality/latency. Runs local deterministic search over a prebuilt index; no PDF conversion, vector DB, or web access required.
+description: Use when answering ServiceNow product documentation questions or finding official citations through the local Markdown corpus and prebuilt index; no web access or SDK maintenance required.
 argument-hint: <ServiceNow docs question or search terms>
+compatibility: Node.js and an existing ServiceNowDocs corpus/index; explicit paths required outside the Windows default layout.
+metadata:
+  version: '1'
 ---
 
 # ServiceNow Markdown Doc Lookup
@@ -58,6 +61,8 @@ Rebuilding an existing recognized index requires explicit `--force`. Never delet
 
 ## Search workflow
 
+Documentation-only questions skip all update-advisor checks, SDK upgrades and builds. Start with the existing index; a lookup is not authorization for maintenance.
+
 1. Start with a direct search using the user's natural question plus high-signal keywords.
 2. If results look broad/noisy, run a second targeted search with better keywords.
 3. Read only the few top source paths/chunks needed for citations.
@@ -94,6 +99,8 @@ Drop generic words like `how`, `what`, `best`, `use`, `between` unless they are 
 ## Fast path vs subagent
 
 Prefer a direct CLI lookup when the harness permits it. It typically returns in a few hundred milliseconds once indexed. If the harness requires an execution subagent, preserve the same lookup/read commands and require its response to include the actual excerpts, exact identifiers, `source_rel`, `canonical_url`, observed exit/error evidence and any saved-output path. “Files retrieved successfully” is not sufficient. Read a saved result if provided; do not answer without the evidence or invent a failure/exit code from missing output.
+
+Blank stdout or “Command produced no output” is **UNKNOWN**, not an empty result set or native exit 0. Search --json must return valid JSON with a results array, even for zero hits. On missing/misattributed output, stop sending commands into that suspect terminal. Read saved output or use editor file tools on the verified corpus; do not broaden queries, infer absent roles/corpus, rebuild the index or retry a mutation to compensate for an execution-channel failure.
 
 Use a documentation subagent only when:
 

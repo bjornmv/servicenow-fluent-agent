@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""sn-doc render shim — preflight + render MyST markdown to PDF/DOCX.
+"""sn-doc-export render shim — preflight + render MyST markdown to PDF/DOCX.
 
-Reuses the SNagent (C:\\Personal\\SNagent) render libraries directly so we
+Reuses render libraries from the explicitly configured SN_AGENT_HOME so we
 don't need the SN-Agent REPL running. Honors the same MyST flavor, the same
 archetype registry, and the same image_map convention as sn_doc_compose /
 sn_doc_export.
@@ -26,22 +26,28 @@ from pathlib import Path
 # Locate the SNagent libs and inject onto sys.path BEFORE any SNagent import.
 # ---------------------------------------------------------------------------
 
-SN_AGENT_HOME = os.environ.get("SN_AGENT_HOME", r"C:\Personal\SNagent")
-_LIB = Path(SN_AGENT_HOME) / "tools" / "_doc_lib"
-_TOOLS = Path(SN_AGENT_HOME) / "tools"
+SN_AGENT_HOME = os.environ.get("SN_AGENT_HOME", "")
 
 
 def _inject_paths() -> list[str]:
-    """Add SNagent paths to sys.path. Returns list of issues found."""
+    """Validate the explicit backend home before adding any import paths."""
+    if not SN_AGENT_HOME.strip():
+        return ["Set SN_AGENT_HOME to the explicit absolute path of your SNagent checkout; no default is used."]
+    home = Path(SN_AGENT_HOME)
+    if not home.is_absolute():
+        return ["SN_AGENT_HOME must be an explicit absolute path; relative paths are not accepted."]
+    if not home.is_dir():
+        return [f"SN_AGENT_HOME does not exist or is not a directory: {SN_AGENT_HOME}"]
+    lib = home / "tools" / "_doc_lib"
+    tools = home / "tools"
     issues = []
-    if not Path(SN_AGENT_HOME).is_dir():
-        issues.append(f"SN_AGENT_HOME does not exist: {SN_AGENT_HOME}")
+    if not lib.is_dir():
+        issues.append(f"SNagent _doc_lib not found at: {lib}")
+    if not tools.is_dir():
+        issues.append(f"SNagent tools not found at: {tools}")
+    if issues:
         return issues
-    if not _LIB.is_dir():
-        issues.append(f"SNagent _doc_lib not found at: {_LIB}")
-    if not _TOOLS.is_dir():
-        issues.append(f"SNagent tools not found at: {_TOOLS}")
-    for p in (_LIB, _TOOLS):
+    for p in (lib, tools):
         s = str(p)
         if s not in sys.path:
             sys.path.insert(0, s)
@@ -105,7 +111,7 @@ def _check_weasyprint_runtime() -> tuple[bool, str]:
 
 
 def preflight(verbose: bool = True) -> bool:
-    print("sn-doc preflight")
+    print("sn-doc-export preflight")
     print("=" * 60)
     all_ok = True
 
@@ -280,7 +286,7 @@ def render(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="sn-doc — render MyST markdown to PDF/DOCX via SNagent libs.")
+    ap = argparse.ArgumentParser(description="sn-doc-export — render MyST markdown to PDF/DOCX via SNagent libs.")
     ap.add_argument("--check", action="store_true",
                     help="Run preflight and exit (no render).")
     ap.add_argument("--in", dest="in_path",

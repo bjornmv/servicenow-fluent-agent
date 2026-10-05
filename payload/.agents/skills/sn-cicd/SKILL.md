@@ -1,15 +1,19 @@
 ---
 name: sn-cicd
-description: Run now-sdk 4.11 CI/CD operations safely—ATF test/testsuite gates plus Application Repository publish, install, and rollback. Use for pipeline promotion or ATF execution, not ordinary local dev installs.
+description: Use when running ATF gates or Application Repository publish, install, and rollback through now-sdk CI/CD; not for ordinary local development installs.
 argument-hint: <test/testsuite/publish/install/rollback + confirmed target alias and version>
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized CI/CD targets and protected credentials.
+metadata:
+  version: '1'
 ---
+Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
 Use `now-sdk cicd` for ATF gates and App Repo promotion. These commands call `sn_cicd` APIs and can execute tests or mutate application versions on instances.
 
 Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md). All approvals below still apply; headless children cannot authorize these operations.
 
 ## Required preflight
 
-1. Require Node `>=20.18.0` and now-sdk `>=4.11.0`.
+1. Confirm the project's SDK supports the requested CI/CD commands using its local documentation/help, and check its declared Node engine. Do not upgrade merely to satisfy this skill.
 2. Read `now.config.json` and `package.json`; report scope, `scopeId`, package version, and the exact auth alias/instance.
 3. Confirm before running ATF on an instance: ATF steps can create/update/delete test data.
 4. Stop and obtain explicit approval before every `cicd publish`, `cicd install`, or `cicd rollback`. State the source/target instance, app sys_id or scope, current/target version, and expected rollback version.

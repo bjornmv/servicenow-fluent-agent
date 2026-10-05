@@ -1,9 +1,14 @@
 ---
 name: sn-ui-page-vite
-description: Build a now-sdk 4.11 React UI Page with the official Vite/HMR integration using now.dev.mjs, now.prebuild.mjs, and ServiceNow Vite plugins.
+description: Use when scaffolding or adapting a React UI Page with the official SDK Vite/HMR integration, now.dev.mjs, now.prebuild.mjs, and ServiceNow Vite plugins.
 argument-hint: <new/adapt existing UI Page + endpoint and client entry>
+compatibility: ServiceNow Fluent React UI Page project; compatible SDK, Node and Vite dependencies; browser access for runtime verification.
+metadata:
+  version: '1'
 ---
-Use the official SDK 4.11 Vite pattern for a React UI Page. Source of truth: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`.
+Verified against: now-sdk 4.11 Vite documentation (historical; not newly verified against another SDK version).
+
+Use the official SDK Vite pattern for a React UI Page. Source of truth: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`.
 
 Use `now-sdk` directly in VS Code PowerShell; in Pi use the `now_sdk` tool with arguments and project `cwd`. See the [SDK command policy](../../reference/sdk-commands.md).
 
@@ -13,7 +18,7 @@ For a new page or any user-visible layout, copy or interaction change, load [sn-
 
 ## Preflight
 
-- Require Node `>=20.18.0` and now-sdk `>=4.11.0`.
+- Confirm Vite integration support in the project's SDK documentation and check the SDK/sample's declared Node and dependency engines. Do not upgrade merely to satisfy this skill.
 - Read `uipage-api` and `ui-page-guide` with `explain --format raw`.
 - Inspect the official sample's `README.md`, `package.json`, `now.dev.mjs`, `now.prebuild.mjs`, and UI Page record before adapting it. Do not invent plugin APIs or copy stale versions blindly.
 

@@ -1,12 +1,15 @@
 ---
 name: win-git-bootstrap
-description: Check Git during Windows agent setup or before Git-dependent work. If genuinely absent, silently install pinned MinGit 2.54.0.windows.1 with SHA-256 verification and pre-extraction exclusions for blocked Unix find.exe/sort.exe. Preserve existing installations and stop on policy blocks.
+description: Use when performing authorized Windows agent setup or explicit Git bootstrap troubleshooting; preserve existing Git and install genuinely missing Git only through the pinned MinGit 2.54.0.windows.1 worker.
+argument-hint: <authorized setup or explicit bootstrap problem and observed evidence>
 compatibility: Windows x64, non-elevated user, Windows PowerShell 5.1, Windows tar.exe and Windows OpenSSH. No Node dependency for deployment.
+metadata:
+  version: '1'
 ---
 
 # Windows Git bootstrap
 
-Use this skill during Windows agent setup or when a task needs Git and it is missing. Do not probe/install on unrelated turns. This is the user-approved missing-Git setup method, not permission to replace existing software or bypass corporate controls.
+Use this skill only during authorized Windows agent setup or explicit Git bootstrap troubleshooting. Routine Git-dependent work does not trigger this skill or authorize bootstrap probes/installations. Do not probe/install on unrelated turns. This is the user-approved missing-Git setup method, not permission to replace existing software or bypass corporate controls.
 
 ## Decision rule
 
