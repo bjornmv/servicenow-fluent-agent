@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — stable setup entry point
+
+- Make the unversioned `/setup/` URL canonical in the setup prompt and README. Publish complete `/setup.txt` and `/setup-manifest.json` alongside the existing `/downloads/Invoke-SdkSetup.ps1`.
+- Keep guide completeness, protocol-version and SHA-256 checks; stale/mixed content must stop. Versioned copies remain reference artifacts, not the default setup route. Worker behavior and package versions are unchanged.
+
 ## Unreleased — skill and packaging cleanup
 
 - Normalize version-neutral skill triggers and metadata; retain honest historical SDK verification in bodies. Remove personal backend paths/examples and configure optional document export explicitly.

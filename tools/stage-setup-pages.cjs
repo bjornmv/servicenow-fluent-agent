@@ -45,8 +45,9 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
   if (!/^\d+\.\d+\.\d+$/.test(version) || version !== packageVersion || version !== distributionVersion ||
       setup.match(/^SETUP_PROTOCOL_VERSION=(.+)$/m)?.[1] !== version ||
       setup.match(/^SETUP_GUIDE_END=(.+)$/m)?.[1] !== version ||
-      !setup.includes(`/releases/${version}/setup.txt`) ||
-      !setup.includes(`/releases/${version}/Invoke-SdkSetup.ps1`) ||
+      !setup.includes('Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its instructions') ||
+      !setup.includes('https://bjornmv.github.io/servicenow-fluent-agent/setup.txt') ||
+      !setup.includes('https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1') ||
       !sdk.includes(`$WorkerVersion = '${version}'`)) {
     throw new Error('Setup release versions disagree: VERSION, package, manifest, guide markers/URLs and SDK worker must match.');
   }
@@ -62,15 +63,18 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
     destination,
     bytes: fs.readFileSync(path.join(sourceRoot, source)),
   }));
-  // Plain text has no Jekyll front matter, so it is copied rather than rendered
-  // or redirected to the unversioned page. Release URLs avoid stale extraction keys.
+  // Complete plain text is available at a stable URL, not an HTML redirect.
+  // The matching manifest detects stale/mixed guide and worker content.
   const text = Buffer.from(setup.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''));
   const manifest = {
     version,
     setup: { file: 'setup.txt', sha256: crypto.createHash('sha256').update(text).digest('hex') },
     sdkWorker: { file: 'Invoke-SdkSetup.ps1', sha256: sdkSha256 },
   };
+  const currentManifest = { ...manifest, sdkWorker: { file: sdkDownloadRelativePath, sha256: sdkSha256 } };
   inputs.push(
+    { destination: 'setup.txt', bytes: text },
+    { destination: 'setup-manifest.json', bytes: Buffer.from(JSON.stringify(currentManifest, null, 2) + '\n') },
     { destination: `${releaseRoot}/setup.txt`, bytes: text },
     { destination: `${releaseRoot}/Invoke-SdkSetup.ps1`, bytes: fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath)) },
     { destination: `${releaseRoot}/manifest.json`, bytes: Buffer.from(JSON.stringify(manifest, null, 2) + '\n') },

@@ -8,13 +8,13 @@ permalink: /setup/
 SETUP_PROTOCOL_VERSION=0.3.8
 ```
 
-Give a new agent this release-specific prompt (not the unversioned `/setup/` URL):
+Give a new agent this stable, unversioned prompt:
 
 ```text
-Read https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.8/setup.txt and follow its instructions to perform the full ServiceNow Fluent agent setup.
+Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its instructions to perform the full ServiceNow Fluent agent setup.
 ```
 
-If web extraction is incomplete, download that exact text file over HTTPS and read the saved file in bounded ranges, or read this file from a reviewed local repository. Do not require a Git clone to install missing Git. A policy denial is a stop condition, not a reason to change transport. A version mismatch or missing content must be resolved before executing anything.
+If web extraction is incomplete, download the complete [unversioned plain-text guide](https://bjornmv.github.io/servicenow-fluent-agent/setup.txt) over HTTPS and read the saved file in bounded ranges, or read this file from a reviewed local repository. Do not require a Git clone to install missing Git. A policy denial is a stop condition, not a reason to change transport. A version mismatch or missing content must be resolved before executing anything.
 
 ## Instructions for the Agent
 
@@ -22,9 +22,9 @@ Set up the ServiceNow Fluent agent on this Windows machine. Work through the ste
 
 ### 0. Confirm the guide before execution
 
-Report the guide source and protocol version, and read through its final end marker. Require version **0.3.8**, all steps 1–7, the saved `Invoke-SdkSetup.ps1` launch and the `-WaitSeconds` recovery option. A web tool's “relevant context” response containing omitted sections or ellipses is NOT the complete guide. In a local checkout, compare `VERSION` with the guide before proceeding. If versions differ, stop and obtain the intended complete release; never reconstruct missing commands from memory or blend releases.
+Report the guide source and protocol version, and read through its final end marker. Require matching `SETUP_PROTOCOL_VERSION` and `SETUP_GUIDE_END`, all steps 1–7, the saved `Invoke-SdkSetup.ps1` launch and the `-WaitSeconds` recovery option. A web tool's “relevant context” response containing omitted sections or ellipses is NOT the complete guide. In a local checkout, compare `VERSION` with the guide before proceeding. Never reconstruct missing commands from memory or blend guide revisions.
 
-The release-specific text and worker are published together under `/releases/0.3.8/`, with a `manifest.json` containing their SHA-256 digests. The unversioned page is for discovery; a successful fetch alone does not establish freshness. If the requested release is unavailable, stop and report it rather than silently using another one.
+The canonical entry point is the unversioned `/setup/` page. The same publication provides `/setup.txt`, the [current checksum manifest](https://bjornmv.github.io/servicenow-fluent-agent/setup-manifest.json) and `/downloads/Invoke-SdkSetup.ps1`. Before execution, download the complete text and manifest from those stable URLs; compare the text file's SHA-256 with `manifest.setup.sha256`, its protocol markers with `manifest.version`, and the saved worker's SHA-256 with `manifest.sdkWorker.sha256` and the expected digest in step 2. A successful fetch alone does not establish freshness or completeness. If cached or concurrently updated files disagree, stop and obtain a matching current set; do not execute mixed content. Protocol versions identify compatible guide/worker content, not a pinned SDK package version. Versioned artifacts remain available for reference, but are not the default setup route.
 
 ### Execution discipline
 
@@ -56,7 +56,7 @@ Wait for completion and verify the result before continuing to step 2. Record th
 
 This step installs the **package**, not the VS Code shell function. Do not run bare `now-sdk` yet: the installer creates the **PowerShell with now-sdk** profile in step 5, and its function is available only in newly created terminals using that profile. CLI acceptance belongs to step 7, not this step.
 
-Use the canonical [saved SDK worker](https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.8/Invoke-SdkSetup.ps1) (`tools/Invoke-SdkSetup.ps1` in this repository), not an improvised multiline terminal command. It runs Node's `npm-cli.js` with separate stdout/stderr files and records `npm.exit-code.txt` plus `sdk.result.json` after package verification. A child script ends without closing the calling terminal.
+Use the canonical [saved SDK worker](https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1) (`tools/Invoke-SdkSetup.ps1` in this repository), not an improvised multiline terminal command. It runs Node's `npm-cli.js` with separate stdout/stderr files and records `npm.exit-code.txt` plus `sdk.result.json` after package verification. A child script ends without closing the calling terminal.
 
 Download and hash-check **without executing**, then read the saved file using a file-reading tool:
 
@@ -67,7 +67,7 @@ $SdkRunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $SdkWorkerDir = Join-Path $env:LOCALAPPDATA "SNSetup\workers\$SdkRunId"
 New-Item -ItemType Directory -Path $SdkWorkerDir -ErrorAction Stop | Out-Null
 $SdkWorker = Join-Path $SdkWorkerDir 'Invoke-SdkSetup.ps1'
-Invoke-WebRequest -Uri 'https://bjornmv.github.io/servicenow-fluent-agent/releases/0.3.8/Invoke-SdkSetup.ps1' -OutFile $SdkWorker -UseBasicParsing -TimeoutSec 120
+Invoke-WebRequest -Uri 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Invoke-SdkSetup.ps1' -OutFile $SdkWorker -UseBasicParsing -TimeoutSec 120
 if ((Get-FileHash -LiteralPath $SdkWorker -Algorithm SHA256).Hash -ne $ExpectedSdkSetupSha256) { throw 'SDK worker hash mismatch; do not execute.' }
 $SdkLogDir = Join-Path $env:LOCALAPPDATA "SNSetup\$SdkRunId"
 Write-Output "SDK_LOG_DIR=$SdkLogDir"

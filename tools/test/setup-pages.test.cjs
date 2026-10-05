@@ -96,7 +96,10 @@ test('agent terminal handoff is the final step and the launch prompt stays short
   assert.match(headings.at(-1)[2], /Open a fresh agent terminal and verify \(final step\)/);
   assert.ok(setup.indexOf('SETUP_TERMINAL_PID=') > setup.indexOf('### 6. Build and verify'));
   const prompt = setup.match(/Give a new agent[\s\S]*?```text\n([^`]+)```/)[1].trim();
-  assert.equal(prompt, `Read https://bjornmv.github.io/servicenow-fluent-agent/releases/${read('VERSION').trim()}/setup.txt and follow its instructions to perform the full ServiceNow Fluent agent setup.`);
+  assert.equal(prompt, 'Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its instructions to perform the full ServiceNow Fluent agent setup.');
+  assert.ok(read('README.md').includes(prompt));
+  assert.doesNotMatch(setup, /not the unversioned|unversioned page is for discovery|\/releases\/\d+\.\d+\.\d+\//);
+  assert.match(setup, /compare the text file's SHA-256 with `manifest.setup.sha256`/);
 });
 
 test('terminal retirement is one standalone exit after saved completion, never an installer suffix', () => {
@@ -154,7 +157,7 @@ test('Pages staging copies both documents and download byte-for-byte', () => wit
   const output = path.join(directory, 'pages');
   const result = stageSetupPages(output);
   const version = read('VERSION').trim();
-  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath, `releases/${version}/setup.txt`, `releases/${version}/Invoke-SdkSetup.ps1`, `releases/${version}/manifest.json`]);
+  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath, 'setup.txt', 'setup-manifest.json', `releases/${version}/setup.txt`, `releases/${version}/Invoke-SdkSetup.ps1`, `releases/${version}/manifest.json`]);
   const release = path.join(output, 'releases', version);
   const text = fs.readFileSync(path.join(release, 'setup.txt'), 'utf8');
   assert.doesNotMatch(text, /^---/);
@@ -165,6 +168,14 @@ test('Pages staging copies both documents and download byte-for-byte', () => wit
   assert.equal(manifest.version, version);
   assert.equal(manifest.setup.sha256, crypto.createHash('sha256').update(text).digest('hex'));
   assert.equal(manifest.sdkWorker.sha256, validateSdkSetupHash());
+  const current = JSON.parse(fs.readFileSync(path.join(output, 'setup-manifest.json'), 'utf8'));
+  assert.equal(current.version, version);
+  assert.equal(current.setup.file, 'setup.txt');
+  assert.equal(current.sdkWorker.file, sdkDownloadRelativePath);
+  assert.equal(current.setup.sha256, manifest.setup.sha256);
+  assert.equal(current.sdkWorker.sha256, manifest.sdkWorker.sha256);
+  assert.equal(fs.readFileSync(path.join(output, current.setup.file), 'utf8'), text);
+  assert.deepEqual(fs.readFileSync(path.join(output, current.sdkWorker.file)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.deepEqual(fs.readFileSync(path.join(release, manifest.sdkWorker.file)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.deepEqual(fs.readFileSync(path.join(output, sdkDownloadRelativePath)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.equal(result.sdkSetupSha256, validateSdkSetupHash());
