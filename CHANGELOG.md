@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7
+
+- Make fresh-terminal verification the installing agent's final step: save completed results, retire only its own idle setup shell in a separate call, then let the next synchronous terminal call create a new shell.
+- Require different old/new PIDs, the configured SDK profile, correct Git path/version, working SDK function/version and payload verification. No extension, added task, injected PATH/function or forced application restart.
+- Retain the prohibition on appending exit to installation commands; explicitly separate installation success from pending/failed terminal integration. The lifecycle is source-confirmed; live Copilot acceptance remains to be tested.
+- Keep the launch prompt short and add offline regressions for the final-step order, safe handoff and honest acceptance reporting. SDK worker behavior is unchanged apart from its release stamp.
+
 ## 0.3.6
 
 - Publish release-specific full-text setup instructions, SDK worker and a checksum manifest; gate execution on guide version/completeness instead of trusting stale web-extraction results.

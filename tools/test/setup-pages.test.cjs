@@ -83,11 +83,58 @@ test('setup configures Windows user PATH, not a shell profile, and requires actu
   assert.match(setup, /SN_FLUENT_ENV_REFRESH/);
   assert.match(setup, /PATH itself is never passed through `setx`/);
   assert.doesNotMatch(setup, /\$env:Path =/);
-  assert.match(setup, /Get-Command git\ngit --version/);
+  assert.match(setup, /\$GitCommand = Get-Command git -ErrorAction Stop/);
   assert.match(setup, /not a restored\/reconnected terminal/);
-  assert.match(setup, /unverified step, not setup complete/);
+  assert.match(setup, /Installation complete; fresh-terminal integration check pending/);
   assert.match(setup, /independently of shell type/);
   assert.match(setup, /npm-cli\.js/);
+});
+
+test('agent terminal handoff is the final step and the launch prompt stays short', () => {
+  const headings = [...setup.matchAll(/^### (\d+)\. (.+)$/gm)];
+  assert.deepEqual(headings.map(m => Number(m[1])), [0, 1, 2, 3, 4, 5, 6, 7]);
+  assert.match(headings.at(-1)[2], /Open a fresh agent terminal and verify \(final step\)/);
+  assert.ok(setup.indexOf('SETUP_TERMINAL_PID=') > setup.indexOf('### 6. Build and verify'));
+  const prompt = setup.match(/Give a new agent[\s\S]*?```text\n([^`]+)```/)[1].trim();
+  assert.equal(prompt, `Read https://bjornmv.github.io/servicenow-fluent-agent/releases/${read('VERSION').trim()}/setup.txt and follow its instructions to perform the full ServiceNow Fluent agent setup.`);
+});
+
+test('terminal retirement is one standalone exit after saved completion, never an installer suffix', () => {
+  const final = setup.split('### 7.')[1];
+  const blocks = [...setup.matchAll(/```powershell\n([\s\S]*?)```/g)].map(m => m[1].trim());
+  assert.deepEqual(blocks.filter(block => /(?:^|[;\r\n])\s*exit\b/.test(block)), ['exit']);
+  assert.match(setup, /Never append `exit` to a command in a shared interactive terminal/);
+  assert.match(final, /confirmed completion of every installation\/clone\/index operation and save their results/);
+  assert.match(final, /No pending\/background operations, running jobs or unresolved completion/);
+  assert.match(final, /agent's own idle, disposable setup terminal/);
+  assert.match(final, /Do not close a user\/shared terminal, lose user work or interrupt any process/);
+  assert.match(final, /If ownership, idleness or profile selection is uncertain, stop/);
+  assert.match(final, /own separate.*run_in_terminal/);
+  assert.match(final, /does not invalidate the already-saved installation results/);
+  assert.match(final, /not background mode/);
+  assert.ok(final.indexOf('SETUP_TERMINAL_PID=') < final.indexOf('\nexit\n'));
+  assert.ok(final.indexOf('\nexit\n') < final.indexOf('VERIFICATION_TERMINAL_PID='));
+  assert.ok(final.indexOf('VERIFICATION_TERMINAL_PID=') < final.indexOf('$SdkCommand = Get-Command'));
+});
+
+test('fresh terminal acceptance cannot be replaced by configuration or a simulated shell', () => {
+  const final = setup.split('### 7.')[1];
+  assert.match(final, /do not install an extension, add a task or simulate a terminal with a child PowerShell process/);
+  assert.match(final, /Require a different PID/);
+  assert.match(final, /missing\/unchanged PID is not fresh-terminal evidence/);
+  assert.match(final, /chat\.tools\.terminal\.terminalProfile\.windows/);
+  assert.match(final, /rather than silently replacing it/);
+  assert.match(final, /Set-Location -LiteralPath/);
+  assert.match(final, /Do not assume `\$GitExe`/);
+  assert.match(final, /Do not define `now-sdk`, inject PATH or copy startup commands/);
+  assert.match(final, /CommandType -ne 'Application'/);
+  assert.match(final, /CommandType -ne 'Function'/);
+  assert.match(final, /path\/version to match the recorded step-1 values/);
+  assert.match(final, /SDK version to match the verified global package/);
+  assert.match(final, /source-confirmed, not yet end-to-end tested in Copilot/);
+  assert.match(final, /Installation complete; fresh-terminal integration check pending/);
+  assert.match(final, /does not certify every terminal/);
+  assert.doesNotMatch(final, /\[pscustomobject\]|ExecutionPolicy\s+Bypass|skipCheck|Stop-Process/i);
 });
 
 test('fresh MinGit installation registers and publishes user environment before SUCCESS', () => {
