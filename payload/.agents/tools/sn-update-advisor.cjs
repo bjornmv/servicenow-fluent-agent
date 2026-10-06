@@ -11,6 +11,34 @@ const receiptPath = path.join(home, '.agents', '.servicenow-fluent-agent-install
 const argv = process.argv.slice(2);
 const command = argv[0] || 'check';
 
+// Local session gate only: no receipt, repository, network or decision-state access.
+// The agent invokes the skill AFTER a due result. The mtime records an attempt.
+if (command === 'session-start') {
+  try {
+    const stamp = path.join(home, '.agents', '.servicenow-fluent-agent-update-check.stamp');
+    const now = Date.now();
+    let stat;
+    try { stat = fs.lstatSync(stamp); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (stat && (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1)) {
+      throw new Error('Update-check stamp must be an ordinary unlinked file.');
+    }
+    const due = !stat || now - stat.mtimeMs > 48 * 60 * 60 * 1000;
+    if (due) {
+      if (!stat) {
+        fs.mkdirSync(path.dirname(stamp), { recursive: true });
+        fs.writeFileSync(stamp, '', { flag: 'wx' });
+      }
+      fs.utimesSync(stamp, stat ? stat.atimeMs / 1000 : now / 1000, now / 1000);
+    }
+    console.log(JSON.stringify({ due, stamp }));
+  } catch (error) {
+    console.error(`Session update check failed: ${error.message}`);
+    process.exitCode = 1;
+  }
+  process.exit();
+}
+
 function loadReceipt() {
   try {
     return JSON.parse(fs.readFileSync(receiptPath, 'utf8'));

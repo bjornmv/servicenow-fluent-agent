@@ -128,9 +128,11 @@ node bin/sn-fluent-agent.cjs verify
 
 ## Update Advisor
 
-The installed agent skips advisory checks for documentation-only questions, read-only reviews and simple/time-sensitive command requests. Before substantive implementation/build work it checks only the identified project's SDK, at most every 48 hours. Checks remain quiet and nonblocking. Notices identify the absolute target and version source, offering only **Update**, **Remind me in 7 days**, or **Skip this release**.
+At the start of every new custom-agent session, the first workflow instruction calls the installed launcher with `session-start`. It inspects `%USERPROFILE%\.agents\.servicenow-fluent-agent-update-check.stamp`: missing or modified **more than 48 hours ago** means create/touch it before following `sn-update-advisor`; a fresh stamp is left unchanged and no remote check starts. This is instruction-driven, not an extension or guaranteed host event.
 
-Use `--only sdk --project "<absolute-root>"`, `--only agent`, or `--only docs --docs "<checkout>"` to limit discovery. Docs maintenance must be requested; answering a docs question is not maintenance. SDK notices compare exact project declarations, not global installs or range lower bounds. No check installs packages, pulls repositories, rebuilds indexes, changes authentication or deploys anything.
+A due session checks the agent repository, the already identified ServiceNow project's SDK (if any), and the configured existing ServiceNowDocs checkout. The stamp is shared across projects and records an **attempt**, not success. It is separate from the reminder/skip state. Report failures without blocking unrelated work; explicit checks remain available between due sessions. Do not reset state or run an update merely to test the startup instruction.
+
+Use `--only sdk --project "<absolute-root>"`, `--only agent`, or `--only docs --docs "<checkout>"` for those resolved targets, without forcing startup checks. Existing component intervals and reminder/skip decisions remain enforced. SDK notices compare exact project declarations, not global installs or range lower bounds; skip when no project is identified. Notices offer only **Update**, **Remind me in 7 days**, or **Skip this release**. Checks never authorize installation, repository pulls, index rebuilds, authentication or deployment. Ordinary task work outside the startup gate does not trigger extra checks.
 
 Approved standalone-npm SDK upgrades use the skill's `scripts/update-project-sdk.cjs` worker: explicit cwd and npm prefix, disabled lifecycle scripts, strict engines/no force, manifest/lock backups, separate logs, atomic result and per-project duplicate-run lock. Run `preflight` first; `apply --approved` requires prior human approval and review. `status` is read-only recovery of the original run. Missing, delayed or misattributed output means UNKNOWN, never success or permission to retry. Workspace/linked/unsupported layouts stop for review. Package verification and build acceptance are separate; the worker never runs the SDK. See the installed **sn-update-advisor** skill for the complete contract.
 
@@ -141,6 +143,18 @@ node bin/sn-fluent-agent.cjs check-updates --only agent --force
 ```
 
 The advisor records its non-sensitive timing and decision state in `%USERPROFILE%\.agents\.servicenow-fluent-agent-update.json`.
+
+### Test agent updates without changing your installation
+
+```text
+node --test tools/test/update-advisor.test.cjs tools/test/agent-update-integration.test.cjs
+```
+
+Requires an existing Git executable; never bootstraps Git. The integration test creates a local bare remote with two revisions at the same package version, an older checkout, and temporary home/receipt/advisor state. It exercises production detection, approval recording, a test-driver fast-forward, and production payload installation/verification; it checks backups and preserved local edits. All test directories are removed afterward. Reminder timing is simulated, not a seven-day wait.
+
+Windows/VS Code configuration is explicitly blocked in the installer test host. Every Git subprocess uses fixture-only configuration/home, an environment allowlist and file-only transport; inherited tracing, helpers and URL rewrites are excluded. No live installation, reminder state, SDK, docs or external remote is touched. This is **not** proof of a Copilot prompt, its execution tools, profile updates or fresh-session loading; those still need a separate live acceptance test.
+
+Two boundaries matter: the advisor compares **checkout HEAD**, not installed-file hashes; and an installer can exit 0 while preserving conflicts. Always run `verify` after applying an update. Quiet check output can also mean failure—inspect `lastCheckFailedAt` in the selected test state rather than treating silence as success.
 
 ## Installed locations
 

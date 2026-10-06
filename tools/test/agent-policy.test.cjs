@@ -18,7 +18,7 @@ const normalize = text => body(text).replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').toL
 const grams = (tokens, n) => new Set(tokens.slice(0, Math.max(0, tokens.length - n + 1)).map((_, i) => tokens.slice(i, i + n).join(' ')));
 
 test('runtime agent has one host declaration and explicit safety-first precedence', () => {
-  assert.deepEqual([...agent.matchAll(/^## (.+)$/gm)].map(m => m[1]), ['Priority order', 'Routing', 'Invariants', 'Approval gates']);
+  assert.deepEqual([...agent.matchAll(/^## (.+)$/gm)].map(m => m[1]), ['Session start', 'Priority order', 'Routing', 'Invariants', 'Approval gates']);
   assert.equal((agent.match(/Supported host:/g) || []).length, 1);
   assert.match(agent, /Supported host: \*\*VS Code Copilot\*\*/);
   assert.match(agent, /Skills supply instructions and helpers, not registered tools/);
@@ -29,6 +29,23 @@ test('runtime agent has one host declaration and explicit safety-first precedenc
   assert.match(priority, /3\. Honor the user's confirmed scope and current project constraints/);
   assert.match(priority, /without relaxing the preceding constraints/);
   assert.match(priority, /instructions still conflict.*stop and ask/);
+});
+
+test('first-session instruction gates the skill on the shared stamp rather than task type', () => {
+  const startup = section(agent, 'Session start');
+  assert.ok(agent.indexOf('## Session start') < agent.indexOf('## Routing'));
+  assert.match(startup, /Before task work in every new session/);
+  assert.match(startup, /sn-update-advisor.cjs" session-start/);
+  assert.match(startup, /only when missing or older than 48 hours/);
+  assert.match(startup, /If `due: true`, follow `sn-update-advisor` for all applicable components/);
+  assert.match(startup, /Otherwise continue/);
+  assert.match(startup, /attempt, not success/);
+  assert.match(startup, /Updates still require approval/);
+  const owner = skill('sn-update-advisor');
+  for (const term of ['.servicenow-fluent-agent-update-check.stamp', '**before** invoking this skill', 'Do not touch a fresh stamp', 'one shared gate across projects', 'reminder/skip decisions', '**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**', 'without `--force`', 'lastCheckFailedAt']) assert.ok(owner.includes(term), term);
+  assert.match(owner, /No ancestor guessing or global-SDK substitution/);
+  assert.match(owner, /report a missing checkout without cloning or rebuilding/);
+  assert.match(skill('sn-doc-lookup'), /Outside the agent's shared session-start gate/);
 });
 
 test('invariants and approval gates are short individual bullets, not semicolon-packed prose', () => {
@@ -101,7 +118,7 @@ test('automation guardrail is independently usable from skills and file instruct
 test('approval categories, UNKNOWN recovery and evidence boundaries survive shortening', () => {
   const gates = section(agent, 'Approval gates');
   for (const phrase of ['explicit approval', 'exact target and change', 'headless delegate cannot grant', 'Installing or deploying', 'Destructive reinstalls', 'legacy choice replacement', 'descendant table', 'Deleting source or live records', 'reassigning records', 'authentication alias', 'access permissions', 'Running ATF', 'execution target confirmed', 'App Repository version', 'tool/dependency versions']) assert.ok(gates.includes(phrase), phrase);
-  for (const phrase of ['absolute project directory', 'native completion', '**UNKNOWN**', "original run's evidence", 'package, build, installation, content and rendered-runtime', 'one execution owner', 'actual excerpts and completion evidence', 'not authorization for advisory checks or maintenance']) assert.ok(agent.includes(phrase), phrase);
+  for (const phrase of ['absolute project directory', 'native completion', '**UNKNOWN**', "original run's evidence", 'package, build, installation, content and rendered-runtime', 'one execution owner', 'actual excerpts and completion evidence', 'session-start gate authorizes advisory checks only, not maintenance']) assert.ok(agent.includes(phrase), phrase);
   assert.match(baseline, /required approval before mutations/);
   assert.match(baseline, /operation-specific target/);
   assert.doesNotMatch(baseline, /Confirm the project, instance.*before mutations/);
@@ -127,7 +144,7 @@ test('routing names and local prompt links resolve without loading whole workflo
 });
 
 test('maintenance instructions stay in README and memory is capability-neutral', () => {
-  assert.doesNotMatch(agent + baseline, /generate-baseline|tools\/|do not edit|canonical source/i);
+  assert.doesNotMatch(agent + baseline, /generate-baseline|node tools\/|do not edit|canonical source/i);
   const readme = read('README.md');
   assert.match(readme, /node tools\/generate-baseline.cjs/);
   assert.match(readme, /not restricted to non-agent chats/);

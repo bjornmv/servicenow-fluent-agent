@@ -61,7 +61,7 @@ Rebuilding an existing recognized index requires explicit `--force`. Never delet
 
 ## Search workflow
 
-Documentation-only questions skip all update-advisor checks, SDK upgrades and builds. Start with the existing index; a lookup is not authorization for maintenance.
+Outside the agent's shared session-start gate, documentation-only questions skip update-advisor checks. A startup notice or lookup never authorizes SDK upgrades, builds or documentation maintenance. Start with the existing index.
 
 1. Start with a direct search using the user's natural question plus high-signal keywords.
 2. If results look broad/noisy, run a second targeted search with better keywords.

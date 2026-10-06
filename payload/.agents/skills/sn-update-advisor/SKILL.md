@@ -1,6 +1,6 @@
 ---
 name: sn-update-advisor
-description: Use when explicitly checking updates, applying an approved advisor choice, or beginning substantive project implementation; skip documentation-only, read-only, simple/version and time-sensitive tasks.
+description: Use when the shared session-start stamp is due, explicitly checking updates, or applying an approved advisor choice; checks never authorize installation.
 argument-hint: <component, absolute project/checkout path, and check or approved update intent>
 compatibility: Node.js and installed advisor launcher; approved package-manager/Git tooling only for the requested component; interactive parent owns mutations.
 metadata:
@@ -9,7 +9,21 @@ metadata:
 
 # Quiet Update Advisor
 
-Use for explicit update requests, approved advisor choices, or once before substantive implementation/build work on an identified project. **Skip all advisory checks for documentation-only questions, read-only reviews, simple command/version checks and time-sensitive requests.** A docs question is not documentation maintenance. Do not turn it into an SDK upgrade, build or index refresh.
+Use after a due session-start stamp, for explicit update requests, or approved advisor choices. The session gate is independent of task type; outside it, ordinary task work does not trigger extra checks. A docs question never authorizes a pull, SDK upgrade, build or index refresh.
+
+## Session-start check
+
+The agent first runs `node "$env:USERPROFILE\.agents\tools\sn-update-advisor.cjs" session-start` once per new session. This local-only command checks `%USERPROFILE%\.agents\.servicenow-fluent-agent-update-check.stamp` by modified time. Missing or **older than 48 hours** means create/touch the stamp **before** invoking this skill; `due: false` means continue without loading the workflow. Do not touch a fresh stamp. This is one shared gate across projects, not a per-project marker. A later project may therefore wait until the next due session unless the user requests a check.
+
+The stamp records an attempt, not successful remote discovery. It is separate from `.servicenow-fluent-agent-update.json`; preserve that file's reminder/skip decisions. Gate errors or missing/malformed gate output are not a fresh-stamp result: report the limitation and continue unrelated work. Never delete/reset either file just to force a notice. There is no extension, scheduler or guaranteed host event; the custom agent instructions initiate this check.
+
+When due, resolve these targets without mutations:
+
+1. **Agent:** read the install receipt and use its absolute `repoRoot`; report a missing/unusable receipt instead of guessing a checkout.
+2. **now-sdk:** include only an already identified, absolute ServiceNow project root (`now.config.json` or `aiux.json`). No ancestor guessing or global-SDK substitution; omit this target if none is identified.
+3. **ServiceNowDocs:** use the installed lookup CLI's read-only `paths` command to resolve the configured/default checkout. Include an existing checkout and preserve its current release branch; report a missing checkout without cloning or rebuilding it.
+
+If existing decision-state JSON or its component map is unreadable/malformed, report it and stop this advisory pass without resetting it. Run the checks below once for each resolved component, without `--force`. Honor the existing per-component check intervals and reminder/skip choices. Read the selected components' recorded `lastCheckedAt` / `lastCheckFailedAt` before and after checking; report newly recorded failures. Quiet output alone does not certify a successful check. If launcher execution cannot be established, report that gap. Keep the attempt stamp; retry only on explicit request, not in a session loop.
 
 ## Check Contract
 
@@ -21,7 +35,7 @@ node "$Advisor" check --only agent
 node "$Advisor" check --only docs --docs "<resolved-docs-checkout>"
 ```
 
-Use the requested component's `--only` filter; for ordinary project implementation use `--only sdk`. Agent/docs checks are for their own maintenance or an explicit all-component check. Resolve an explicitly requested docs-maintenance checkout with `sn-doc-md.js paths`; `--docs` requires a value. Never check updates merely to answer a documentation question.
+Use each resolved component's `--only` filter for due startup checks; explicit requests check only the requested components. Resolve docs paths with `sn-doc-md.js paths`; `--docs` requires a value. Outside the session gate, documentation-only questions skip update checks and maintenance.
 
 - Checks are quiet and nonblocking. A component is contacted no more often than every 48 hours unless the user explicitly requests `--force`.
 - Empty output from this **quiet check only** means no notice to present. This is NOT an exit-code assertion or permission to treat blank search/build/install output as success.
@@ -84,7 +98,7 @@ The worker deliberately refuses linked paths, workspace projects, conflicting pa
 
 ### ServiceNowDocs
 
-Only for an approved documentation-maintenance request, not a failed lookup:
+Applying a docs update requires an approved documentation-maintenance request, not merely a startup check or failed lookup:
 
 1. Confirm the displayed checkout/release branch are clean. Bind Git cwd explicitly.
 2. Run `git -C "<checkout>" pull --ff-only`; require real completion evidence.

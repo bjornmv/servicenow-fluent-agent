@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — shared session-start update stamp
+
+- Make the custom agent's first workflow action a local `session-start` check. Missing or older-than-48-hour user-level stamp is created/touched before invoking the advisor; fresh stamps are not refreshed. The stamp records an attempt and is separate from reminder/skip state.
+- Route due startup checks to the agent repository, identified project SDK and configured existing docs checkout. Preserve scoped targets, component intervals, reminder/skip choices and approval before applying updates; remove contradictory task-type exclusions for this gate.
+- Add isolated tests for stamp creation, freshness boundaries, stale touch, shared-session behavior, state preservation, unexpected file types and errors. No extension or background trigger; live new-session adherence requires separate Copilot verification.
+
+## Unreleased — isolated agent-update integration test
+
+- Exercise production advisor detection against a real local Git remote and an older fixture checkout at the same package version. Require recorded approval in the test driver before a fast-forward, then run the production payload installer/verifier against a temporary home with host configuration blocked.
+- Verify backups, receipt hashes, current-state silence, 48-hour checks, seven-day reminders, skipped revisions, dirty checkout suppression, failed-check evidence and preservation of customized installed files. Document that a current checkout or installer exit 0 alone does not prove payload verification.
+- Add the offline integration test to advisor/full/CI suites. No runtime updater changes; live Copilot prompting and Windows/profile integration remain separate acceptance work.
+
 ## Unreleased — concise setup action cards
 
 - Restructure setup into Pre / Run / Expect / If–then cards, with linked executable, recovery and rationale appendices in the same checksum-protected complete guide. Preserve all 20 PowerShell blocks and both workers unchanged.

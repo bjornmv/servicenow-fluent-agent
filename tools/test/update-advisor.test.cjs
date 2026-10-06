@@ -23,7 +23,8 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
   const calls = [];
   const stdout = [];
   const stderr = [];
-  const fakeHome = path.resolve(os.tmpdir(), 'advisor-vm-home');
+  const fakeHome = options.home || path.resolve(os.tmpdir(), 'advisor-vm-home');
+  const fsReads = [];
   const fakeRepo = path.join(fakeHome, 'repo');
   const proc = {
     argv: ['node', 'launcher.cjs', ...args], execPath: 'fixture-node', exitCode: 0,
@@ -32,10 +33,12 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
   const mocks = {
     'node:fs': {
       readFileSync(file) {
+        fsReads.push(file);
         assert.equal(file, path.join(fakeHome, '.agents', '.servicenow-fluent-agent-install.json'));
         return options.badReceipt ? '{' : JSON.stringify({ repoRoot: fakeRepo });
       },
       existsSync(file) { assert.equal(file, path.join(fakeRepo, 'bin', 'sn-fluent-agent.cjs')); return !options.missingCli; },
+      ...options.gateFs,
     },
     'node:os': { homedir: () => fakeHome },
     'node:path': path,
@@ -44,11 +47,11 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
   try {
     vm.runInNewContext(launcher, {
       require(name) { assert.ok(mocks[name], name); return mocks[name]; },
-      process: proc, Buffer,
+      process: proc, Buffer, Date: { now: () => options.now ?? Date.now() },
       console: { log: value => stdout.push(String(value)), error: value => stderr.push(String(value)) },
     }, { timeout: 1000 });
   } catch (error) { if (error !== stop) throw error; }
-  return { status: proc.exitCode, stdout, stderr, calls };
+  return { status: proc.exitCode, stdout, stderr, calls, fsReads };
 }
 const notification = { component: 'agent', id: '222222222222', label: 'ServiceNow Fluent Agent', current: '111111111111', available: '222222222222' };
 
@@ -112,6 +115,86 @@ function temporaryPath(t) {
   return root;
 }
 
+function gateFixture(t) {
+  const home = temporaryPath(t);
+  const agents = path.join(home, '.agents');
+  fs.mkdirSync(agents);
+  const stamp = path.join(agents, '.servicenow-fluent-agent-update-check.stamp');
+  const decisionFile = path.join(agents, '.servicenow-fluent-agent-update.json');
+  const decisionBytes = '{"version":1,"components":{"agent":{"lastDecision":"skip"}}}\n';
+  fs.writeFileSync(decisionFile, decisionBytes);
+  const decisionMtime = fs.statSync(decisionFile).mtimeMs;
+  const gateFs = {};
+  for (const method of ['lstatSync', 'writeFileSync', 'utimesSync', 'mkdirSync']) {
+    gateFs[method] = (file, ...args) => {
+      assert.equal(file, method === 'mkdirSync' ? agents : stamp, 'gate may access only its stamp');
+      return fs[method](file, ...args);
+    };
+  }
+  const run = (now, overrides = {}) => {
+    const r = runLauncher(['session-start'], undefined, { home, now, gateFs: { ...gateFs, ...overrides } });
+    assert.deepEqual(r.calls, [], 'gate must not launch any child/repository/network check');
+    assert.deepEqual(r.fsReads, [], 'gate must not read receipt or decision state');
+    assert.equal(fs.readFileSync(decisionFile, 'utf8'), decisionBytes);
+    assert.equal(fs.statSync(decisionFile).mtimeMs, decisionMtime, 'decision mtime is not the startup gate');
+    return r;
+  };
+  return { home, stamp, run };
+}
+
+const gateNow = Date.UTC(2026, 0, 10);
+test('session gate creates a missing stamp before returning due, without receipt or child calls', t => {
+  const f = gateFixture(t);
+  const result = f.run(gateNow);
+  assert.equal(result.status, 0);
+  assert.deepEqual(JSON.parse(result.stdout[0]), { due: true, stamp: f.stamp });
+  assert.equal(fs.statSync(f.stamp).mtimeMs, gateNow);
+  assert.equal(fs.readFileSync(f.stamp, 'utf8'), '');
+  assert.deepEqual(result.stderr, []);
+});
+
+test('fresh and exactly-48-hour stamps stay unchanged; a later due session touches only mtime', t => {
+  const f = gateFixture(t);
+  fs.writeFileSync(f.stamp, 'keep existing stamp contents');
+  fs.utimesSync(f.stamp, gateNow / 1000, gateNow / 1000);
+  for (const elapsed of [0, 24 * 3600000, CHECK_INTERVAL_MS]) {
+    const result = f.run(gateNow + elapsed);
+    assert.equal(result.status, 0);
+    assert.equal(JSON.parse(result.stdout[0]).due, false);
+    assert.equal(fs.statSync(f.stamp).mtimeMs, gateNow, 'fresh sessions must not postpone the next check');
+  }
+  const staleNow = gateNow + CHECK_INTERVAL_MS + 1000;
+  const stale = f.run(staleNow);
+  assert.equal(stale.status, 0);
+  assert.equal(JSON.parse(stale.stdout[0]).due, true);
+  assert.equal(fs.statSync(f.stamp).mtimeMs, staleNow);
+  assert.equal(fs.readFileSync(f.stamp, 'utf8'), 'keep existing stamp contents');
+  assert.equal(JSON.parse(f.run(staleNow).stdout[0]).due, false, 'next session shares the same gate');
+});
+
+for (const phase of ['lstatSync', 'mkdirSync', 'writeFileSync', 'utimesSync']) {
+  test(`session gate reports ${phase} failure instead of claiming a fresh or successful check`, t => {
+    const f = gateFixture(t);
+    const result = f.run(gateNow, { [phase]: () => { throw Object.assign(new Error('fixture permission denial'), { code: 'EACCES' }); } });
+    assert.equal(result.status, 1);
+    assert.deepEqual(result.stdout, []);
+    assert.match(result.stderr.join('\n'), /Session update check failed: fixture permission denial/);
+  });
+}
+
+for (const kind of ['directory', 'symlink', 'hardlink']) {
+  test(`session gate refuses an unexpected ${kind} stamp without writing`, t => {
+    const f = gateFixture(t);
+    const result = f.run(gateNow, {
+      lstatSync: () => ({ isFile: () => kind !== 'directory', isSymbolicLink: () => kind === 'symlink', nlink: kind === 'hardlink' ? 2 : 1 }),
+      writeFileSync: () => assert.fail('unexpected write'), utimesSync: () => assert.fail('unexpected touch'),
+    });
+    assert.equal(result.status, 1);
+    assert.deepEqual(result.stdout, []);
+    assert.match(result.stderr.join('\n'), /ordinary unlinked file/);
+  });
+}
+
 test('SDK notice names the absolute project and declaration source; SDK-only checks never invoke Git', async t => {
   const root = temporaryPath(t);
   const projectPath = path.join(root, 'lux-samples');
@@ -169,13 +252,15 @@ test('routing and owning skill preserve update scope and UNKNOWN without mirrore
   const load = rel => fs.readFileSync(path.join(__dirname, '../../', rel), 'utf8');
   const agent = load('payload/.copilot/agents/ServiceNow Fluent.agent.md');
   const baseline = load('payload/.agents/instructions/now-sdk-baseline.instructions.md');
-  assert.match(agent, /limited-scope work, not authorization for advisory checks or maintenance/);
+  assert.match(agent, /session-start gate authorizes advisory checks only, not maintenance/);
   assert.match(agent, /`sn-update-advisor`/);
   assert.doesNotMatch(agent + baseline, /## Quiet Update Advisory|## Documentation Lookup|Sync commands return when/);
   assert.match(agent, /completion is \*\*UNKNOWN\*\*/);
   assert.match(baseline, /UNKNOWN completion/);
   const skill = load('payload/.agents/skills/sn-update-advisor/SKILL.md');
-  assert.match(skill, /Skip all advisory checks for documentation-only questions/);
+  assert.match(skill, /Outside the session gate, documentation-only questions skip update checks and maintenance/);
+  assert.match(skill, /Run the checks below once for each resolved component, without `--force`/);
+  for (const target of ['**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**']) assert.ok(skill.includes(target));
   assert.match(skill, /--only sdk --project/);
   assert.match(skill, /package updated; build unverified/);
   assert.match(skill, /Recording \*\*Update\*\* records authorization, not installation/);
