@@ -10,7 +10,21 @@ const os = require('node:os');
 const { spawnSync, spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const setup = fs.readFileSync(path.join(root, 'setup.md'), 'utf8');
-const section = setup.split('### 2. Install now-sdk')[1].split('### 3.')[0];
+function block(id) {
+  const matches = [...setup.matchAll(new RegExp(`<!-- setup-block:${id} -->\\s*\\x60{3}powershell\\r?\\n([\\s\\S]*?)\\x60{3}`, 'g'))];
+  assert.equal(matches.length, 1, `one PowerShell block: ${id}`);
+  return matches[0][1];
+}
+function appendix(id) {
+  const match = setup.match(new RegExp(`<a id="${id}"></a>([\\s\\S]*?)(?=<a id=|$)`));
+  assert.ok(match, `appendix anchor: ${id}`);
+  return match[1];
+}
+function contract(text, patterns) {
+  for (const pattern of patterns) assert.match(text, pattern);
+}
+const recovery = appendix('sdk-recovery');
+const evidence = appendix('sdk-evidence');
 const worker = fs.readFileSync(path.join(root, 'tools/Invoke-SdkSetup.ps1'), 'utf8');
 const windows = { skip: process.platform !== 'win32' };
 const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
@@ -93,87 +107,120 @@ if(args[0]==='prefix') {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
-test('SDK setup uses a reviewed saved worker and read-only recovery, never inline exit', () => {
-  assert.match(section, /Do not run bare `now-sdk` yet/);
+test('SDK launch uses the reviewed hash-verified worker and guarded prefix, not inline installation', () => {
   assert.doesNotMatch(worker, /now-sdk(?:\.cmd|\.ps1)?\s+--version|\*>\s*\$null|2>&1|\[pscustomobject\]|SilentlyContinue|^\s*exit\b/im);
   assert.match(worker, /-RedirectStandardOutput \$SdkStdout -RedirectStandardError \$SdkStderr/);
-  const blocks = [...section.matchAll(/```powershell\n([\s\S]*?)```/g)].map(x => x[1]);
-  assert.match(blocks[0], /Get-FileHash -LiteralPath \$SdkWorker/);
-  assert.doesNotMatch(blocks[0], /-File \$SdkWorker/);
-  assert.match(blocks[1], /-File \$SdkWorker -RunDirectory \$SdkLogDir -Install/);
-  assert.match(blocks[2], /-File \$SdkWorker -RunDirectory \$SdkLogDir -WaitSeconds 180\n/);
-  assert.match(section, /same still-busy terminal/);
-  assert.match(section, /Re-read at the end of the wait budget/);
-  assert.doesNotMatch(blocks.join('\n'), /\bexit\b|ExecutionPolicy|\[pscustomobject\]|SilentlyContinue/);
-  assert.match(section, /continuing at step 3/);
-  assert.match(setup, /do not delegate installation or recovery to an execution subagent/);
-  const acceptance = setup.split('### 7.')[1];
-  assert.match(acceptance, /Create New Terminal \(With Profile\)/);
-  assert.ok(acceptance.indexOf("$SdkCommand.CommandType -ne 'Function'") < acceptance.indexOf('\nnow-sdk --version'));
-});
-
-// Documentation contract regressions for the early-return incident. These do
-// not simulate Copilot or establish live notification/terminal acceptance.
-test('early tool returns stay pending and cannot stand in for an elapsed recovery wait', () => {
-  assert.match(setup, /missing exit status remains UNKNOWN/);
-  assert.match(setup, /tool's `ok`, `mode: sync`, or “Command produced no output” is not a native exit status/);
-  assert.match(section, /launch time and any returned operation ID/);
-  assert.match(section, /do not reset it to not-started/);
-  assert.match(section, /measured from the recorded install launch time/);
-  assert.match(section, /13-second early return is not a completed 180-second recovery wait/);
-  assert.match(section, /Record actual elapsed time and completion evidence/);
-  assert.match(section, /Immediately before any unresolved handoff, make one final independent reread/);
-  assert.match(section, /If evidence cannot be read, report that limitation/);
-  assert.doesNotMatch(setup, /genuine launch failures, missing exit status and policy blocks remain failures/);
-});
-
-test('setup respects notification-only hosts rather than polling or queuing into a busy terminal', () => {
-  assert.match(setup, /do not force async, issue sleep commands, or poll when the host forbids them/);
-  assert.match(section, /identify the host's documented completion mechanism/);
-  assert.match(section, /Do not send recovery, `Get-Process`, echo\/probe or other diagnostic commands into that same still-busy terminal/);
-  assert.match(section, /new tool-call ID does not prove a new idle terminal/);
-  assert.match(section, /tool explicitly reports background execution, timeout or input-needed/);
-  assert.match(section, /notification-driven hosts, yield and wait for the completion notification; do not poll/);
-  assert.match(section, /Do not invent an ID or call `get_terminal_output` after an ordinary sync result/);
-  assert.match(section, /Repeated timed file checks are polling too/);
-  assert.match(section, /Positive `-WaitSeconds` internally polls with `Start-Sleep`/);
-  assert.match(section, /`-WaitSeconds 0` is a one-shot read-only check/);
-  assert.doesNotMatch(section, /Poll the original tool operation, or use file-reading tools/);
-  assert.doesNotMatch(section, /every 10–15 seconds/);
-});
-
-test('original durable success can resume setup without an unnecessary recovery launch', () => {
-  const durable = section.split('- **Original durable result:**')[1].split('- **Completed read-only recovery:**')[0];
-  for (const term of ['`npm.exit-code.txt` as exactly `0`', 'both saved logs', '`sdk.result.json`', '`schemaVersion: 1`', '`state: package-verified`', '`npmExitCode: 0`', 'expected worker version', 'exact recorded `runDirectory`', '`packagePath`', '`@servicenow/sdk`', '`packageVersion`', '`bin/index.js` exists']) {
-    assert.ok(durable.includes(term), term);
+  const download = block('sdk-download');
+  contract(download, [/Get-FileHash -LiteralPath \$SdkWorker/, /\$Manifest.sdkWorker.sha256 -ne \$ExpectedSdkSetupSha256/, /\.Hash -ne \$ExpectedSdkSetupSha256/]);
+  assert.doesNotMatch(download, /-File \$SdkWorker/);
+  assert.match(block('sdk-install'), /-File \$SdkWorker -RunDirectory \$SdkLogDir -Install/);
+  assert.match(block('sdk-recovery'), /-File \$SdkWorker -RunDirectory \$SdkLogDir -WaitSeconds 180\r?\n/);
+  assert.doesNotMatch(block('sdk-recovery'), /\s-Install\b/);
+  for (const id of ['sdk-download', 'sdk-install', 'sdk-recovery']) {
+    assert.doesNotMatch(block(id), /\bexit\b|ExecutionPolicy|\[pscustomobject\]|SilentlyContinue/);
   }
-  assert.match(durable, /Do not launch recovery merely to print another success marker/);
-  assert.match(section, /resume at step 3 without another installation approval/);
-  assert.match(section, /Completion of the package does not prove the original terminal is idle/);
-  assert.match(section, /Fresh-terminal CLI acceptance remains step 7/);
+  contract(appendix('sdk-download'), [
+    /Download without executing; read the saved script/, /local copy must pass the same hash gate/,
+    /Hash\/signing\/policy failure stops/, /no zone-marker removal or alternate interpreter/,
+    /exact saved worker.*not an inline rewrite/, /rejects a custom global prefix/,
+    /npm-prefix.stdout.log/, /npm-prefix.stderr.log/, /Failed\/missing prefix verification prevents installation/,
+    /No `--force`, suppressed lifecycle scripts or elevation/,
+  ]);
+  contract(setup, [/Keep mutations in the parent agent/, /one owner per operation/, /checks\/pins `%APPDATA%\\npm`/, /Package verification is separate from the profile Function\/CLI check in step 7/]);
 });
 
-test('recovery cannot hide conflicting results or turn its own nonzero exit into npm failure', () => {
-  assert.match(section, /nonzero recovery exit can mean missing evidence or wait-budget expiry/);
-  assert.match(section, /not\*\* by itself a nonzero npm exit/);
-  assert.match(section, /Resolve `\$PowerShellExe`, `\$SdkWorker` and `\$SdkLogDir` from their recorded absolute paths/);
-  assert.match(section, /reduce `-WaitSeconds` accordingly/);
-  assert.match(section, /does \*\*not\*\* validate an existing `sdk.result.json`/);
-  assert.match(section, /independently apply the same identity\/version\/metadata consistency checks/);
-  assert.match(section, /malformed or conflicting existing result cannot be ignored/);
-  assert.match(section, /attributable native recovery exit 0/);
-  assert.match(section, /Native npm exit is nonzero, or a launch\/policy failure is confirmed/);
+// Safety-decision contracts include the appendices. These are offline guide
+// regressions, not live Copilot notification or terminal acceptance evidence.
+test('early return stays unknown with measured budget and final independent evidence reread', () => {
+  contract(setup, [/tool's `ok`, `mode: sync` or blank output is not native completion/, /missing exit evidence is \*\*UNKNOWN\*\*, not failure or permission to retry/, /Record absolute targets, start time, operation ID and native stdout\/stderr\/exit evidence/]);
+  contract(recovery, [
+    /original operation in progress/, /\*\*5 minutes\*\*, measured from original launch/,
+    /Record actual elapsed time/, /requested waits are not elapsed waits/,
+    /Limit recovery to the remaining budget/, /Before an unresolved handoff.*final independent reread if permitted/,
+    /classify current evidence/, /report unavailable access honestly/,
+    /still-unknown result preserves the original checkpoint/, /does not authorize reinstall/,
+  ]);
 });
 
-test('unresolved host limitations preserve a resumable checkpoint without claiming installation failure', () => {
-  assert.match(section, /Setup pending — terminal completion unavailable/);
-  assert.match(section, /Do not call this an installer failure or an expired wait/);
-  assert.match(section, /Do not ask the user to run recovery while a supported automatic route remains available/);
-  assert.match(section, /instructions alone cannot repair a terminal/);
-  assert.match(section, /SDK package verified; remaining setup pending terminal availability/);
-  assert.match(section, /Setup pending — SDK completion still unknown/);
-  assert.match(section, /recover that same run first and continue from step 3 on success/);
-  assert.match(section, /never restart step 2 just because the chat or terminal changed/);
+test('host notification and status rules prohibit polling loopholes and busy-terminal recovery', () => {
+  contract(setup, [/host's actual sync\/status\/notification contract/, /No forced async, sleeps or polling where forbidden/, /Recovery needs independent file access or a confirmed separate idle execution context/]);
+  contract(recovery, [
+    /different tool-call ID does not establish an independent idle terminal/,
+    /Explicit background, timeout or input-needed result[^\n]*Use the returned ID.*documented status\/input tool/,
+    /Notification-driven host[^\n]*Yield for completion notification; no polling/,
+    /Early sync return[^\n]*exact run's durable files independently; missing files are UNKNOWN/,
+    /Separate idle terminal or approved direct-process tool, with waiting permitted/,
+    /Never queue recovery, process probes or diagnostics into a potentially busy terminal/,
+    /`get_terminal_output` after ordinary sync output.*only if the host contract permits/,
+    /Repeated timed file checks and positive `-WaitSeconds`.*`Start-Sleep`.*polling too/,
+    /completion files already exist, `-WaitSeconds 0` is a one-shot check, not a polling loop/,
+  ]);
+});
+
+test('durable success requires exact run, worker, package identity and complete stderr engine review', () => {
+  const durable = evidence.match(/^\| Original durable result \| ([^\n]+)$/m)?.[1];
+  assert.ok(durable, 'original evidence route');
+  contract(durable, [
+    /`npm.exit-code.txt` exactly `0`/, /both install logs/, /valid `sdk.result.json`/,
+    /`schemaVersion: 1`/, /`state: package-verified`/, /`npmExitCode: 0`/, /expected worker version/,
+    /exact recorded `runDirectory`/, /expected `packagePath`/, /metadata name `@servicenow\/sdk`/,
+    /version equal to `packageVersion`/, /`bin\/index.js` exists/,
+  ]);
+  contract(evidence, [
+    /%APPDATA%\\npm\\node_modules\\@servicenow\\sdk\\package.json/,
+    /For both: scan \*\*complete stderr\*\* for `EBADENGINE`, not only the tail/,
+    /engine warnings require compatibility review even with npm exit 0/,
+    /deprecations\/optional-add-on failures separately.*do not themselves prove npm failed or affected features work/,
+    /not automatic build-tool installation or Node changes/,
+    /Consistent success[^\n]*step 3; skip redundant recovery/, /Package presence alone is insufficient/,
+    /Package success does not establish terminal idleness/, /queued commands or use a confirmed independent context/,
+    /CLI acceptance remains step 7/,
+  ]);
+  assert.match(setup, /`EBADENGINE` \/ `SDK_ENGINE_WARNING=true`[^\n]*compatibility review, even with npm exit 0/);
+});
+
+test('read-only recovery cannot override conflicting JSON or invent npm failure from its own exit', () => {
+  const route = evidence.match(/^\| Completed read-only recovery \| ([^\n]+)$/m)?.[1];
+  assert.ok(route, 'completed recovery route');
+  contract(route, [
+    /Attributable native exit 0/, /SDK_PACKAGE_VERIFIED=true/,
+    /expected worker \(`SDK_WORKER_VERSION=0\.3\.8`\) and exact run/,
+    /Independently validate any existing `sdk.result.json`.*same identity\/version\/metadata checks/,
+    /worker does not validate that file/, /Legacy result-less exit\/log evidence.*0\.3\.4 logs/,
+    /conflicting existing JSON is not ignored/,
+  ]);
+  contract(evidence, [/For either evidence path, reject malformed\/conflicting records/, /Proven nonzero npm exit or launch\/policy failure[^\n]*report failure/, /Missing evidence[^\n]*UNKNOWN; conflict[^\n]*review/]);
+  contract(recovery, [
+    /recorded absolute paths and operation ID, not the newest directory or inherited shell variables/,
+    /same worker\/run \*\*without `-Install`\*\*/, /within the remaining budget/,
+    /nonzero recovery exit can mean missing evidence or budget expiry, not npm failure/,
+    /Save the true outputs\/errors; never hide them in an empty catch or `SilentlyContinue`/,
+  ]);
+  for (const variable of ['$PowerShellExe', '$SdkWorker', '$SdkLogDir']) {
+    assert.ok(block('sdk-recovery').includes(variable + " = '<recorded absolute"), variable);
+  }
+  assert.match(block('sdk-recovery'), /Fill the original recorded paths before recovery/);
+});
+
+test('same-operation resumption and actionable outcomes preserve truthful unknown and completed work', () => {
+  contract(setup, [
+    /Recover any recorded SDK run first using \[C\]\(#sdk-recovery\)/,
+    /Use absolute recorded paths if the shell changed/,
+    /Verified original package result[^\n]*Continue at step 3 without reinstall or unnecessary recovery/,
+    /Early\/blank return or incomplete evidence[^\n]*Recover the same operation.*no duplicate install/,
+    /recover recorded operations before starting replacements/,
+  ]);
+  contract(appendix('outcome'), [
+    /\*\*Complete\*\*[^\n]*Installation and required live checks passed/,
+    /\*\*Action needed\*\*[^\n]*concrete question with a recommended choice/,
+    /\*\*Could not complete\*\*[^\n]*confirmed failure or host limitation/,
+    /UNKNOWN completion is not an npm failure/, /Use supported automatic recovery first/,
+    /verified \/ missing \/ not checked/, /one next action/, /checkpoint/,
+    /Authentication and instance connectivity are not tested/,
+  ]);
+  contract(recovery, [/No supported route[^\n]*final permitted evidence snapshot.*specific access\/terminal action needed/, /original checkpoint/]);
+  assert.match(appendix('rationale'), /Instructions cannot repair a lost host completion signal/);
+  assert.match(setup, /Keep installation, environment registration and terminal acceptance separate/);
 });
 
 test('npm warning survives strict PS 5.1, saves durable result, returns to caller and recovers without reinstall', windows, () => {

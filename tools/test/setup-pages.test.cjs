@@ -10,6 +10,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const vm = require('node:vm');
+const { measureGuide } = require('../setup-guide-metrics.cjs');
 const { stageSetupPages, validateBootstrapHash, validateSdkSetupHash, workerRelativePath, downloadRelativePath, sdkWorkerRelativePath, sdkDownloadRelativePath } = require('../stage-setup-pages.cjs');
 
 const root = path.resolve(__dirname, '../..');
@@ -36,7 +37,19 @@ function sourceFixture(directory) {
   return source;
 }
 
-const psBlocks = [...setup.matchAll(/```powershell\n([\s\S]*?)```/g)].map(m => m[1]);
+function psBlock(id) {
+  const matches = [...setup.matchAll(new RegExp(`<!-- setup-block:${id} -->\\s*\\x60{3}powershell\\r?\\n([\\s\\S]*?)\\x60{3}`, 'g'))];
+  assert.equal(matches.length, 1, `one PowerShell block: ${id}`);
+  return matches[0][1];
+}
+function appendix(id) {
+  const match = setup.match(new RegExp(`<a id="${id}"></a>([\\s\\S]*?)(?=<a id=|$)`));
+  assert.ok(match, `appendix anchor: ${id}`);
+  return match[1];
+}
+function contract(text, patterns) {
+  for (const pattern of patterns) assert.match(text, pattern);
+}
 const windows = { skip: process.platform !== 'win32' };
 const psQuote = s => "'" + s.replaceAll("'", "''") + "'";
 function runSnippet(directory, block, prelude = '') {
@@ -50,25 +63,64 @@ function runSnippet(directory, block, prelude = '') {
   return r;
 }
 
-test('setup declares its host, runtime minimum, recovery bindings and resumable report', () => {
-  assert.match(setup, /Target: Windows x64, VS Code, GitHub Copilot agent mode/);
-  assert.match(setup, /another harness[\s\S]*report step 7 as pending/);
+test('guide declares supported scope, runtime and resumable evidence', () => {
+  contract(setup, [/Windows x64, VS Code, GitHub Copilot agent mode/, /Another harness[\s\S]*step 7 requires real VS Code terminal evidence/, /`latest` dist-tag/, /Only the current versioned reference copy is published/]);
   assert.equal(JSON.parse(read('package.json')).engines.node, '>=20.18.0');
-  assert.match(setup, /latest` dist-tag\*\*, not `next`/);
-  assert.match(setup, /SDK_ENGINE_WARNING=true/);
-  assert.match(setup, /scan complete stderr for `EBADENGINE`, not just its tail/);
-  const recovery = psBlocks.find(b => b.includes('-WaitSeconds 180'));
+  const recovery = psBlock('sdk-recovery');
   for (const variable of ['$PowerShellExe', '$SdkWorker', '$SdkLogDir']) assert.ok(recovery.includes(variable + " = '<recorded absolute"));
   assert.match(recovery, /Fill the original recorded paths/);
-  assert.match(setup, /Only the current versioned reference copy is published/);
-  assert.doesNotMatch(setup, /Versioned artifacts remain available/);
   for (const field of ['NODE_VERSION', 'SDK_STATUS', 'DOCS_FAMILY_SOURCE', 'DOCS_GIT_HEAD', 'INDEX_PROVENANCE', 'PAYLOAD_VERIFY', 'TERMINAL_CHECK', 'NEXT_STEP']) {
     assert.ok(setup.includes('\n' + field + '='), field);
   }
 });
 
+test('all eight decision cards have Pre, Run, Expect and If–then', () => {
+  const main = setup.split(/^## Outcome:/m)[0];
+  const cards = [...main.matchAll(/^### (\d+)\. ([^\n]+)\r?\n([\s\S]*?)(?=^### \d+\.|(?![\s\S]))/gm)];
+  assert.deepEqual(cards.map(m => Number(m[1])), [0, 1, 2, 3, 4, 5, 6, 7]);
+  for (const [, number, , body] of cards) {
+    for (const label of ['Pre', 'Run', 'Expect', 'If–then']) {
+      assert.match(body, new RegExp(`\\*\\*${label}:\\*\\*\\s*\\S`), `card ${number}: ${label}`);
+    }
+  }
+});
+
+test('internal appendix links resolve and executable block IDs are unique and complete', () => {
+  const anchors = [...setup.matchAll(/<a id="([^"]+)"><\/a>/g)].map(m => m[1]);
+  assert.equal(new Set(anchors).size, anchors.length, 'unique explicit anchors');
+  const links = [...setup.matchAll(/\]\(#([^)]+)\)/g)].map(m => m[1]);
+  assert.ok(links.length > 0);
+  for (const target of links) assert.ok(anchors.includes(target), `unresolved #${target}`);
+  for (const target of ['guide-download', 'git-download', 'sdk-download', 'prerequisites', 'sdk-recovery', 'sdk-evidence', 'docs-checkout', 'agent-checkout', 'terminal-check', 'rationale']) {
+    assert.ok(links.includes(target), `reachable appendix: ${target}`);
+  }
+  const ids = [...setup.matchAll(/<!-- setup-block:([^\s]+) -->/g)].map(m => m[1]);
+  assert.ok(ids.length > 0);
+  assert.equal(new Set(ids).size, ids.length, 'unique block IDs');
+  const tagged = [...setup.matchAll(/<!-- setup-block:([^\s]+) -->\s*```(powershell|text)\r?\n/g)];
+  assert.equal(tagged.length, ids.length, 'every ID labels a fenced block');
+  assert.equal(tagged.filter(m => m[2] === 'powershell').length, [...setup.matchAll(/^```powershell\r?$/gm)].length, 'every PowerShell block has an ID');
+});
+
+test('editorial budget counts the whole guide, not just the main path', () => {
+  const metrics = measureGuide(setup);
+  for (const [key, maximum] of Object.entries({ totalProseWords: 2700, mainProseWords: 1300, sdkStepProseWords: 180 })) {
+    assert.ok(metrics[key] > 0 && metrics[key] <= maximum, `${key}=${metrics[key]}, budget=${maximum}`);
+  }
+  assert.ok(metrics.appendixProseWords > 0, 'appendices must count');
+  assert.equal(metrics.totalProseWords, metrics.mainProseWords + metrics.appendixProseWords);
+  // Counting convention: omit frontmatter, fences, comments, HTML and link URLs;
+  // count whitespace tokens with letters/digits, retaining inline code/link labels.
+  const sample = '---\nignored: metadata\n---\n# Heading\n[link label](https://ignored.invalid) `inline` / ** --\n<!-- hidden words -->\n<a id="ignored"></a>\n```text\nignored code\n```\n';
+  assert.equal(measureGuide(sample).totalProseWords, 4);
+  const main = 'alpha beta\n## Appendices:\ngamma delta\n';
+  const moved = 'alpha\n## Appendices:\nbeta gamma delta\n';
+  assert.equal(measureGuide(main).totalProseWords, measureGuide(moved).totalProseWords, 'moving prose alone cannot reduce total');
+  assert.equal(measureGuide(setup + '\nappendix sentinel\n').totalProseWords, metrics.totalProseWords + 2, 'whole-document counting includes trailing appendix prose');
+});
+
 test('documented Node gate rejects below 20.18 while permitting the minimum and newer majors', () => {
-  const expression = psBlocks.find(b => b.includes('process.versions.node')).match(/node\.exe -e "([^"\n]+)"/)[1];
+  const expression = psBlock('node-check').match(/node\.exe -e "([^"\n]+)"/)[1];
   for (const [version, expected] of [['18.20.0', 1], ['20.17.9', 1], ['20.18.0', 0], ['22.0.0', 0], ['25.2.1', 0]]) {
     let result;
     vm.runInNewContext(expression, { process: { versions: { node: version }, exit: code => { result = code; } } });
@@ -92,7 +144,7 @@ for (const mode of ['valid', 'hash', 'protocol', 'missing-end', 'duplicate-end']
     }
     fs.writeFileSync(manifestPath, JSON.stringify(manifest));
     const prelude = `function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing,$TimeoutSec)\n if ($Uri -notin @('https://bjornmv.github.io/servicenow-fluent-agent/setup.txt','https://bjornmv.github.io/servicenow-fluent-agent/setup-manifest.json')) { throw 'Unexpected fixture URL' }\n Copy-Item -LiteralPath (Join-Path $FixtureRoot ('published\\'+($Uri -split '/')[-1])) -Destination $OutFile\n}`;
-    const r = runSnippet(directory, psBlocks.find(b => b.includes('$GuideDir =')), prelude);
+    const r = runSnippet(directory, psBlock('guide-download'), prelude);
     assert.equal(r.status, mode === 'valid' ? 0 : 11, r.stdout + r.stderr);
     if (mode === 'valid') assert.match(r.stdout, /GUIDE_VERSION=0\.3\.8/);
     else assert.doesNotMatch(r.stdout, /GUIDE_VERSION=|FIXTURE_COMPLETE/);
@@ -102,7 +154,7 @@ for (const mode of ['valid', 'hash', 'protocol', 'missing-end', 'duplicate-end']
 for (const mode of ['path', 'standard', 'old', 'blocked', 'prerelease', 'absent', 'registered', 'directory', 'denied']) {
   test('Git discovery block uses fixture evidence: ' + mode, windows, () => withTemp(directory => {
     const prelude = `$Mode=${psQuote(mode)}\nfunction Get-Command { param($Name,$CommandType,$ErrorAction) if ($Mode -in @('path','old','blocked','prerelease')) { return @{Source='Invoke-FixtureGit'} } }\nfunction Test-Path { param($LiteralPath,$PathType,$ErrorAction)\n if ($LiteralPath -like '*Git_is1') { if ($Mode -eq 'denied') { throw 'Registry unreadable' }; return ($Mode -eq 'registered') }\n if ($LiteralPath -like '*cmd\\git.exe') { return ($Mode -eq 'standard') }\n return ($Mode -eq 'directory')\n}\nfunction Get-ItemProperty { param($LiteralPath,$ErrorAction) return @{InstallLocation='C:\\fixture-git'} }\nfunction Resolve-Path { param($LiteralPath) return @{Path='Invoke-FixtureGit'} }\nfunction Invoke-FixtureGit { $global:LASTEXITCODE=0; if ($Mode -eq 'blocked') { $global:LASTEXITCODE=23; return }; if ($Mode -eq 'old') { 'git version 2.53.0.windows.1' } elseif ($Mode -eq 'prerelease') { 'git version 2.55.0.rc1' } else { 'git version 2.54.0.windows.1' } }`;
-    const r = runSnippet(directory, psBlocks.find(b => b.includes('$GitRoots =')), prelude);
+    const r = runSnippet(directory, psBlock('git-check'), prelude);
     assert.equal(r.status, ['path', 'standard', 'absent'].includes(mode) ? 0 : 11, r.stdout + r.stderr);
     if (mode === 'absent') assert.match(r.stdout, /GIT_EXE=absent/);
     else assert.doesNotMatch(r.stdout, /GIT_EXE=absent/);
@@ -114,7 +166,7 @@ for (const mode of ['success', 'failed', 'leftover', 'collision']) {
     const docs = path.join(directory, 'docs');
     if (mode === 'leftover') fs.mkdirSync(docs + '.incoming-old');
     const prelude = `$Docs=${psQuote(docs)}\n$Mode=${psQuote(mode)}\n$Family='australia'\n$DocsUrl='https://github.com/ServiceNow/ServiceNowDocs.git'\n$GitExe='Invoke-FixtureGit'\nfunction Invoke-FixtureGit {\n if ($args[0] -ne 'clone') { throw 'Not a clone' }\n New-Item -ItemType Directory -Path $args[-1] | Out-Null\n Set-Content -LiteralPath (Join-Path $FixtureRoot 'clone.calls') -Value ($args -join '|')\n $global:LASTEXITCODE=0\n if ($Mode -eq 'failed') { $global:LASTEXITCODE=23 }\n if ($Mode -eq 'collision') { New-Item -ItemType Directory -Path $Docs | Out-Null }\n}`;
-    const r = runSnippet(directory, psBlocks.find(b => b.includes('$DocsRunId =')), prelude);
+    const r = runSnippet(directory, psBlock('docs-clone'), prelude);
     assert.equal(r.status, mode === 'success' ? 0 : 11, r.stdout + r.stderr);
     const incoming = fs.readdirSync(directory).filter(n => n.startsWith('docs.incoming-'));
     assert.equal(incoming.length, mode === 'success' ? 0 : 1);
@@ -133,8 +185,8 @@ for (const target of ['docs', 'agent']) {
       const branch = target === 'docs' ? 'australia' : 'main';
       const prelude = `$Mode=${psQuote(mode)}\n$ExpectedUrl=${psQuote(expectedUrl)}\n$ExpectedBranch=${psQuote(branch)}\n$Docs=${psQuote(repo)}\n$DocsUrl=$ExpectedUrl\n$Family=$ExpectedBranch\n$GitExe='Invoke-FixtureGit'\nfunction Invoke-FixtureGit {\n Add-Content -LiteralPath (Join-Path $FixtureRoot 'git.calls') -Value ($args -join '|')\n $global:LASTEXITCODE=0\n if ($args[2] -eq 'rev-parse') {\n   if ($Mode -eq 'native-failure') { $global:LASTEXITCODE=23; return }\n   if ($args[3] -eq '--show-toplevel') { if ($Mode -eq 'root') { $FixtureRoot } else { $args[1] }; return }\n   'abcdef0123456789'; return\n }\n if ($args[2] -eq 'remote') { if ($Mode -eq 'origin') { 'https://example.invalid/unapproved.git' } else { $ExpectedUrl }; return }\n if ($args[2] -eq 'branch') { if ($Mode -eq 'branch') { 'other' } else { $ExpectedBranch }; return }\n if ($args[2] -eq 'status') { if ($Mode -eq 'dirty') { ' M README.md' }; return }\n if ($args[2] -eq 'pull') { if ($args[4] -ne 'origin' -or $args[5] -ne $ExpectedBranch) { throw 'Pull must name verified remote/branch, not the configured upstream' }; return }\n throw 'Unexpected fixture command'\n}`;
       const block = target === 'docs'
-        ? psBlocks.find(b => b.includes('$DocsTop =')) + '\n' + psBlocks.find(b => b.includes('-C "$Docs" pull'))
-        : psBlocks.find(b => b.includes('$AgentRepo =')).replace("$AgentRepo = Join-Path $HOME 'source\\servicenow-fluent-agent'", "$AgentRepo = Join-Path $FixtureRoot 'agent'");
+        ? psBlock('docs-verify') + '\n' + psBlock('docs-pull')
+        : psBlock('agent-checkout').replace("$AgentRepo = Join-Path $HOME 'source\\servicenow-fluent-agent'", "$AgentRepo = Join-Path $FixtureRoot 'agent'");
       if (target === 'agent') assert.ok(block.includes("Join-Path $FixtureRoot 'agent'"), 'fixture must never use real HOME');
       const r = runSnippet(directory, block, prelude);
       assert.equal(r.status, mode === 'success' ? 0 : 11, r.stdout + r.stderr);
@@ -145,41 +197,40 @@ for (const target of ['docs', 'agent']) {
   }
 }
 
-test('checkout and index instructions verify identities without automatic migration or rebuild', () => {
-  const docs = psBlocks.find(b => b.includes('$DocsTop ='));
-  const agent = psBlocks.find(b => b.includes('$AgentRepo ='));
-  for (const b of [docs, agent]) {
-    for (const command of ['rev-parse --show-toplevel', 'remote get-url origin', 'branch --show-current', 'status --porcelain']) assert.ok(b.includes(command), command);
-    assert.match(b, /\$LASTEXITCODE -ne 0/);
+test('checkout identity and index provenance gate reuse, pulls and approved rebuilds', () => {
+  for (const id of ['docs-verify', 'agent-checkout']) {
+    const text = psBlock(id);
+    for (const command of ['rev-parse --show-toplevel', 'remote get-url origin', 'branch --show-current', 'status --porcelain']) assert.ok(text.includes(command), command);
+    assert.match(text, /\$LASTEXITCODE -ne 0/);
   }
-  assert.match(agent, /\$AgentRepo = Join-Path \$HOME 'source\\servicenow-fluent-agent'/);
-  assert.match(agent, /Set-Location -LiteralPath \$AgentRepo -ErrorAction Stop/);
-  assert.match(setup, /Opening this folder in VS Code is optional/);
-  assert.match(setup, /Join-Path \$Index 'manifest.json'/);
-  for (const field of ['schema_version', 'generator', 'family', 'docs_root', 'git_head']) assert.ok(setup.includes('`' + field + '`'));
-  assert.match(setup, /empty value is unknown provenance, not a match/);
-  assert.match(setup, /not automatic permission to replace an existing index/);
+  contract(psBlock('agent-checkout'), [/\$AgentRepo = Join-Path \$HOME 'source\\servicenow-fluent-agent'/, /Set-Location -LiteralPath \$AgentRepo -ErrorAction Stop/]);
+  assert.match(psBlock('index-inspect'), /Join-Path \$Index 'manifest.json'/);
+  contract(setup, [
+    /Existing-index replacement and corpus changes require separate approval/,
+    /schema_version: 1/, /generator` starting `sn-doc-md@/, /matching `family` and resolved `docs_root`/,
+    /`git_head` with `\$DocsHead`.*empty means unknown, not current/,
+    /Recognized and current[^\n]*Reuse; skip build/,
+    /outdated\/unknown revision[^\n]*Ask: reuse with that limitation[^\n]*approve rebuild/,
+    /Unexpected identity or unreadable manifest[^\n]*Stop for review; preserve/,
+    /approved recognized-index rebuild adds `--force`/, /never delete a directory/,
+    /no automatic rebuild or alternate corpus/, /Native exit 0 and all benchmark cases pass/,
+  ]);
+  assert.doesNotMatch(psBlock('index-build'), /--force/);
   assert.doesNotMatch(setup, /remote set-branches|git switch|--force.*--family/);
 });
 
-test('setup scopes approved changes and ensures Git before SDK or clone steps', () => {
-  assert.match(setup, /Node\.js must already be installed/);
-  assert.match(setup, /global SDK package install\/update/);
-  assert.match(setup, /If Node\.js is missing or fails, report it and stop/);
-  assert.match(setup, /https:\/\/bjornmv\.github\.io\/servicenow-fluent-agent\/git-setup\//);
-  assert.match(setup, /-InstallIfMissing/);
-  assert.ok(setup.indexOf('git-setup/') < setup.indexOf('### 2. Install now-sdk'));
-  assert.match(setup, /Do not require a Git clone to install missing Git/);
-  assert.doesNotMatch(setup, /If either command is missing or fails/);
-  assert.doesNotMatch(setup, /Do not install missing prerequisites,/);
-});
-
-test('existing, blocked and stale-PATH cases do not authorize replacement', () => {
-  assert.match(setup, /Keep a working stable Git \*\*>=2\.54\.0\*\* unchanged/);
-  assert.match(setup, /older Git, an executable that cannot run, or a broken registration requires review/);
-  assert.match(setup, /Never invoke migration\/replacement modes/);
-  assert.match(setup, /& \$GitExe clone/);
-  assert.match(setup, /& \$GitExe -C "\$AgentRepo" pull --ff-only/);
+test('scope and prerequisite decisions allow only absent-Git bootstrap, not replacement', () => {
+  contract(setup, [
+    /Node\.js must already be installed/, /global SDK package install\/update/,
+    /Authentication, deployment, other prerequisites and elevation are outside scope/,
+    /Missing\/failing\/old Node[^\n]*report the prerequisite failure/,
+    /Genuinely absent Git[^\n]*#git-download/,
+    /Older, blocked, broken, prerelease or ambiguous Git[^\n]*review, not automatic replacement/,
+    /stable Git \*\*>=2\.54\.0\*\*, preserved unchanged/,
+  ]);
+  contract(appendix('git-download'), [/without cloning/, /only `-InstallIfMissing`/, /2\.54\.0\.windows\.1/, /find\/sort excluded.*\*\*before extraction\*\*/, /Migration\/replacement modes are outside setup/, /Verify completion.*absolute `\$GitExe` before step 2/]);
+  assert.match(psBlock('docs-clone'), /& \$GitExe clone/);
+  assert.match(psBlock('agent-checkout'), /& \$GitExe -C "\$AgentRepo" pull --ff-only/);
 });
 
 test('separate page reuses the single canonical skill and worker', () => {
@@ -206,66 +257,62 @@ test('HTTPS handoff needs no Git and hashes the saved script before execution', 
   assert.match(gitSetup, /Read the saved script before executing it/);
 });
 
-test('setup configures Windows user PATH, not a shell profile, and requires actual terminal checks', () => {
-  assert.match(setup, /install --git-exe "\$GitExe"/);
-  assert.match(setup, /configure-git --git-exe "\$GitExe"/);
-  assert.match(setup, /SN_FLUENT_ENV_REFRESH/);
-  assert.match(setup, /PATH itself is never passed through `setx`/);
+test('Git registration preserves user environment and is verified outside the SDK profile', () => {
+  contract(setup, [/install --git-exe "\$GitExe"/, /configure-git --git-exe "\$GitExe"/, /SN_FLUENT_ENV_REFRESH/, /PATH itself is never passed through `setx`/, /independently of shell type/, /npm-cli\.js/]);
+  contract(appendix('rationale'), [/preserves raw Windows user PATH\/type and backups/, /Machine PATH, Git installation\/config and policy are unchanged/, /Unrelated custom settings remain preserved/]);
+  contract(appendix('terminal-check'), [/including outside the SDK profile/, /report untested hosts separately/, /Reload Window alone is not a guaranteed environment refresh/, /refreshed launcher/]);
   assert.doesNotMatch(setup, /\$env:Path =/);
-  assert.match(setup, /\$GitCommand = Get-Command git -ErrorAction Stop/);
-  assert.match(setup, /not a restored\/reconnected terminal/);
-  assert.match(setup, /Installation complete; fresh-terminal integration check pending/);
-  assert.match(setup, /independently of shell type/);
-  assert.match(setup, /npm-cli\.js/);
 });
 
 test('agent terminal handoff is the final step and the launch prompt stays short', () => {
   const headings = [...setup.matchAll(/^### (\d+)\. (.+)$/gm)];
   assert.deepEqual(headings.map(m => Number(m[1])), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.match(headings.at(-1)[2], /Open a fresh agent terminal and verify \(final step\)/);
-  assert.ok(setup.indexOf('SETUP_TERMINAL_PID=') > setup.indexOf('### 6. Build and verify'));
+  assert.match(setup, /\*\*Run:\*\* The agent performs \[E: terminal handoff and checks\]\(#terminal-check\)/);
   const prompt = setup.match(/Give a new agent[\s\S]*?```text\n([^`]+)```/)[1].trim();
   assert.equal(prompt, 'Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its instructions to perform the full ServiceNow Fluent agent setup.');
   assert.ok(read('README.md').includes(prompt));
   assert.doesNotMatch(setup, /not the unversioned|unversioned page is for discovery|\/releases\/\d+\.\d+\.\d+\//);
-  assert.match(setup, /compare the text file's SHA-256 with `manifest.setup.sha256`/);
+  assert.match(psBlock('guide-download'), /Get-FileHash -LiteralPath \$Guide -Algorithm SHA256\)\.Hash -ne \$Manifest.setup.sha256/);
 });
 
-test('terminal retirement is one standalone exit after saved completion, never an installer suffix', () => {
-  const final = setup.split('### 7.')[1];
-  const blocks = [...setup.matchAll(/```powershell\n([\s\S]*?)```/g)].map(m => m[1].trim());
+test('terminal retirement requires saved completion, ownership, idleness and ordered standalone calls', () => {
+  const final = appendix('terminal-check');
+  const blocks = [...setup.matchAll(/```powershell\r?\n([\s\S]*?)```/g)].map(m => m[1].trim());
   assert.deepEqual(blocks.filter(block => /(?:^|[;\r\n])\s*exit\b/.test(block)), ['exit']);
-  assert.match(setup, /Never append `exit` to a command in a shared interactive terminal/);
-  assert.match(final, /confirmed completion of every installation\/clone\/index operation and save their results/);
-  assert.match(final, /No pending\/background operations, running jobs or unresolved completion/);
-  assert.match(final, /agent's own idle, disposable setup terminal/);
-  assert.match(final, /Do not close a user\/shared terminal, lose user work or interrupt any process/);
-  assert.match(final, /If ownership, idleness or profile selection is uncertain, stop/);
-  assert.match(final, /own separate.*run_in_terminal/);
-  assert.match(final, /does not invalidate the already-saved installation results/);
-  assert.match(final, /not background mode/);
-  assert.ok(final.indexOf('SETUP_TERMINAL_PID=') < final.indexOf('\nexit\n'));
-  assert.ok(final.indexOf('\nexit\n') < final.indexOf('VERIFICATION_TERMINAL_PID='));
-  assert.ok(final.indexOf('VERIFICATION_TERMINAL_PID=') < final.indexOf('$SdkCommand = Get-Command'));
+  assert.equal(psBlock('terminal-exit').trim(), 'exit');
+  contract(final, [
+    /saved completion of every install\/clone\/index operation/, /no queued commands\/jobs/,
+    /idle, disposable agent-owned terminal/, /ownership, idleness or profile selection is uncertain, ask/,
+    /instead of closing a user\/shared terminal/, /separate normal synchronous calls in this order/,
+    /never append it to another command/, /closed-terminal result leaves saved installation results valid/,
+    /Unconfirmed closure[^\n]*not repeated exit/,
+  ]);
+  const lifecycle = [...final.matchAll(/<!-- setup-block:([^ ]+) -->/g)].map(m => m[1]);
+  assert.deepEqual(lifecycle, ['terminal-old', 'terminal-exit', 'terminal-new', 'terminal-verify']);
+  assert.match(psBlock('terminal-old'), /SETUP_TERMINAL_PID=\$PID/);
+  assert.match(psBlock('terminal-new'), /VERIFICATION_TERMINAL_PID=\$PID/);
 });
 
-test('fresh terminal acceptance cannot be replaced by configuration or a simulated shell', () => {
-  const final = setup.split('### 7.')[1];
-  assert.match(final, /do not install an extension, add a task or simulate a terminal with a child PowerShell process/);
-  assert.match(final, /Require a different PID/);
-  assert.match(final, /missing\/unchanged PID is not fresh-terminal evidence/);
-  assert.match(final, /chat\.tools\.terminal\.terminalProfile\.windows/);
-  assert.match(final, /rather than silently replacing it/);
-  assert.match(final, /Set-Location -LiteralPath/);
-  assert.match(final, /Do not assume `\$GitExe`/);
-  assert.match(final, /Do not define `now-sdk`, inject PATH or copy startup commands/);
-  assert.match(final, /CommandType -ne 'Application'/);
-  assert.match(final, /CommandType -ne 'Function'/);
-  assert.match(final, /path\/version to match the recorded step-1 values/);
-  assert.match(final, /SDK version to match the verified global package/);
-  assert.match(final, /source-confirmed, not yet end-to-end tested in Copilot/);
-  assert.match(final, /Installation complete; fresh-terminal integration check pending/);
-  assert.match(final, /does not certify every terminal/);
+test('fresh-terminal acceptance requires live PID, strict command kinds and matching versions', () => {
+  const final = appendix('terminal-check');
+  contract(final, [
+    /not an extension, added task or simulated child shell/, /Require a different PID/,
+    /absent\/unchanged PID fails/, /chat\.tools\.terminal\.terminalProfile\.windows/,
+    /incompatible override requires review rather than replacement/, /Settings are preconditions, not runtime proof/,
+    /Set-Location -LiteralPath/, /recorded agent-repo absolute path, avoiding another project's SDK/,
+    /Restore no old variables/, /without defining it, injecting PATH or copying startup commands/,
+    /Git Application path\/version with step 1/, /SDK version with the verified global package/,
+    /mismatches\/nonzero payload results fail acceptance/, /Missing Function[^\n]*not shims or npm reinstallation/,
+    /Create New Terminal \(With Profile\)/, /genuinely new terminal, not a restored\/reconnected one/,
+  ]);
+  const verify = psBlock('terminal-verify');
+  contract(verify, [/\$GitCommand.CommandType -ne 'Application'/, /\$SdkCommand.CommandType -ne 'Function'/, /node bin\/sn-fluent-agent.cjs verify/]);
+  assert.ok(verify.indexOf("$GitCommand.CommandType -ne 'Application'") < verify.indexOf('\ngit --version'));
+  assert.ok(verify.indexOf("$SdkCommand.CommandType -ne 'Function'") < verify.indexOf('\nnow-sdk --version'));
+  assert.equal((verify.match(/if \(\$LASTEXITCODE -ne 0\)/g) || []).length, 3, 'Git, SDK and payload native exits checked');
+  assert.match(appendix('rationale'), /source evidence, not an end-to-end acceptance result/);
+  assert.match(setup, /Installation evidence alone is not fresh-terminal acceptance/);
   assert.doesNotMatch(final, /\[pscustomobject\]|ExecutionPolicy\s+Bypass|skipCheck|Stop-Process/i);
 });
 
@@ -397,7 +444,7 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['VERSION', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
+  for (const entry of ['VERSION', 'tools/setup-guide-metrics.cjs', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));

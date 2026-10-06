@@ -22,6 +22,8 @@ The Git page provides a directly downloadable, SHA-256-checked worker, so no Git
 
 Maintainers: run the `test:setup` command from `package.json` before publishing (Windows runtime tests skip on other platforms). If the worker changes, review it and update the **worker script** hash in `git-setup.md`; the worker's separate pinned **MinGit ZIP** hash must not be confused with it. Publication fails if the script and page digest disagree. Do not duplicate the worker at the repository root.
 
+Keep setup steps as **Pre / Run / Expect / If–then** cards. Executable detail, recovery and rationale belong in the linked appendices inside `setup.md`, so `/setup.txt` and its manifest cover the complete guide. Run `node tools/setup-guide-metrics.cjs` to measure prose (code fences excluded); tests cap the whole guide at 2,700 words, main path at 1,300 and SDK card at 180. Moving prose to an appendix does not reduce the whole-guide count. Preserve safety decisions and stable `setup-block` IDs when editing.
+
 ## Install with VS Code
 
 VS Code can handle the Git clone.

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — concise setup action cards
+
+- Restructure setup into Pre / Run / Expect / If–then cards, with linked executable, recovery and rationale appendices in the same checksum-protected complete guide. Preserve all 20 PowerShell blocks and both workers unchanged.
+- Reduce repeated prose across the whole guide, not just the main path. Add a read-only metrics command and regression budgets for total prose, the main path and SDK step; bind fixture extraction to stable block IDs rather than narrative position.
+- Lead with Complete / Action needed / Could not complete and a concrete next action; retain truthful UNKNOWN evidence and same-operation recovery, approval, provenance and fresh-terminal gates. Offline tests do not certify live Copilot completion behavior.
+
 ## Unreleased — setup preflight and checkout safeguards
 
 - Declare the supported Windows/Copilot target and Node >=20.18.0 minimum; add executable complete-guide hash/marker verification, Git discovery/version decisions, literal-path recovery, checkout identity checks and a resumable final report.
