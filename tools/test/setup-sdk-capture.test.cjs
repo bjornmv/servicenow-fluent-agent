@@ -182,9 +182,10 @@ test('durable success requires exact run, worker, package identity and complete 
 test('read-only recovery cannot override conflicting JSON or invent npm failure from its own exit', () => {
   const route = evidence.match(/^\| Completed read-only recovery \| ([^\n]+)$/m)?.[1];
   assert.ok(route, 'completed recovery route');
+  const releaseVersion = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
+  assert.ok(route.includes('expected worker (`SDK_WORKER_VERSION=' + releaseVersion + '`) and exact run'));
   contract(route, [
     /Attributable native exit 0/, /SDK_PACKAGE_VERIFIED=true/,
-    /expected worker \(`SDK_WORKER_VERSION=0\.3\.8`\) and exact run/,
     /Independently validate any existing `sdk.result.json`.*same identity\/version\/metadata checks/,
     /worker does not validate that file/, /Legacy result-less exit\/log evidence.*0\.3\.4 logs/,
     /conflicting existing JSON is not ignored/,

@@ -146,7 +146,7 @@ for (const mode of ['valid', 'hash', 'protocol', 'missing-end', 'duplicate-end']
     const prelude = `function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing,$TimeoutSec)\n if ($Uri -notin @('https://bjornmv.github.io/servicenow-fluent-agent/setup.txt','https://bjornmv.github.io/servicenow-fluent-agent/setup-manifest.json')) { throw 'Unexpected fixture URL' }\n Copy-Item -LiteralPath (Join-Path $FixtureRoot ('published\\'+($Uri -split '/')[-1])) -Destination $OutFile\n}`;
     const r = runSnippet(directory, psBlock('guide-download'), prelude);
     assert.equal(r.status, mode === 'valid' ? 0 : 11, r.stdout + r.stderr);
-    if (mode === 'valid') assert.match(r.stdout, /GUIDE_VERSION=0\.3\.8/);
+    if (mode === 'valid') assert.ok(r.stdout.split(/\r?\n/).includes(`GUIDE_VERSION=${read('VERSION').trim()}`));
     else assert.doesNotMatch(r.stdout, /GUIDE_VERSION=|FIXTURE_COMPLETE/);
   }));
 }

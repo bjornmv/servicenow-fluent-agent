@@ -1,63 +1,68 @@
 # Changelog
 
-## Unreleased — shared session-start update stamp
+## 0.3.9 — Upgrade improvements
+
+- Publish the accumulated improvements below as 0.3.9. This release bump adds no new runtime behavior beyond the preceding published commit; known live completion-capture issues remain separate work.
+- Align package/manifest versions, setup protocol markers, SDK worker release stamp and its reviewed checksum. Read the expected release from VERSION in two setup tests instead of hard-coding 0.3.8.
+
+### Shared session-start update stamp
 
 - Make the custom agent's first workflow action a local `session-start` check. Missing or older-than-48-hour user-level stamp is created/touched before invoking the advisor; fresh stamps are not refreshed. The stamp records an attempt and is separate from reminder/skip state.
 - Route due startup checks to the agent repository, identified project SDK and configured existing docs checkout. Preserve scoped targets, component intervals, reminder/skip choices and approval before applying updates; remove contradictory task-type exclusions for this gate.
 - Add isolated tests for stamp creation, freshness boundaries, stale touch, shared-session behavior, state preservation, unexpected file types and errors. No extension or background trigger; live new-session adherence requires separate Copilot verification.
 
-## Unreleased — isolated agent-update integration test
+### Isolated agent-update integration test
 
 - Exercise production advisor detection against a real local Git remote and an older fixture checkout at the same package version. Require recorded approval in the test driver before a fast-forward, then run the production payload installer/verifier against a temporary home with host configuration blocked.
 - Verify backups, receipt hashes, current-state silence, 48-hour checks, seven-day reminders, skipped revisions, dirty checkout suppression, failed-check evidence and preservation of customized installed files. Document that a current checkout or installer exit 0 alone does not prove payload verification.
 - Add the offline integration test to advisor/full/CI suites. No runtime updater changes; live Copilot prompting and Windows/profile integration remain separate acceptance work.
 
-## Unreleased — concise setup action cards
+### Concise setup action cards
 
 - Restructure setup into Pre / Run / Expect / If–then cards, with linked executable, recovery and rationale appendices in the same checksum-protected complete guide. Preserve all 20 PowerShell blocks and both workers unchanged.
 - Reduce repeated prose across the whole guide, not just the main path. Add a read-only metrics command and regression budgets for total prose, the main path and SDK step; bind fixture extraction to stable block IDs rather than narrative position.
 - Lead with Complete / Action needed / Could not complete and a concrete next action; retain truthful UNKNOWN evidence and same-operation recovery, approval, provenance and fresh-terminal gates. Offline tests do not certify live Copilot completion behavior.
 
-## Unreleased — setup preflight and checkout safeguards
+### Setup preflight and checkout safeguards
 
 - Declare the supported Windows/Copilot target and Node >=20.18.0 minimum; add executable complete-guide hash/marker verification, Git discovery/version decisions, literal-path recovery, checkout identity checks and a resumable final report.
 - Clone docs into a recorded incoming sibling and preserve interrupted work; pin fast-forward pulls to verified origin/branch, bind the agent destination/cwd, and inspect index manifest provenance before choosing reuse or an approved rebuild. Keep Australia and existing rebuild/terminal-acceptance gates rather than silently migrate them.
 - Keep SDK `latest` intentional, verify/pin the expected npm global prefix before installation, and reject EBADENGINE for compatibility review even after native npm exit 0. Preserve logs, true exit status and read-only recovery; update the reviewed worker digest.
 - Publish a complete Git setup text and guide/worker hashes in both current and versioned manifests; clarify that only the current versioned reference is retained. Add Windows fixture tests with fake downloads/Git/npm rather than live setup operations.
 
-## Unreleased — setup completion recovery
+### Setup completion recovery
 
 - Distinguish early/blank terminal returns, pending operations, native failure and verified package completion. Measure actual elapsed waits, refresh evidence before unresolved handoff, and preserve a resumable original-run checkpoint instead of restarting installation.
 - Respect notification-only/no-polling hosts and require a confirmed independent context for recovery. Validate original durable success directly, retain conflict/identity gates and continue at step 3 without an unnecessary recovery launch. Add offline instruction regressions; live terminal completion/notification behavior is not certified by these tests.
 
-## Unreleased — focused agent and compact co-loaded baseline
+### Focused agent and compact co-loaded baseline
 
 - Restructure the runtime agent around supported host, explicit precedence, one routing table, individual invariants with reasons, and approval gates. Move incident details and maintenance instructions to their owners.
 - Replace whole-section baseline copying with a 100–150-word hard-stop summary and pointers. Document simultaneous agent/file-instruction loading and intentional limited safety overlap.
 - Give automation ownership a skill-local home, preserve record-move/transform-force warnings, and remove assumed memory-tool paths. Add word-budget, duplication, ownership, link and approval regression checks.
 
-## Unreleased — VS Code-native skill guidance
+### VS Code-native skill guidance
 
 - Remove other-harness launcher/tool/reload guidance from all shipped instructions, skills and references. Keep SDK execution in VS Code PowerShell, regenerate the baseline and retain approval, project-directory and UNKNOWN-completion rules.
 - Make `sn-rest` explicitly a skill using its bundled Node CLI, not a registered tool. Add schema/inheritance, bounded table/pagination and Stats recipes; document actual CLI limits and explicit write approval instead of claiming nonexistent wrapper protections.
 - Add regression checks across hidden payload directories and offline CLI examples/envelopes. No authentication, SDK package or instance changes are required.
 
-## Unreleased — stable setup entry point
+### Stable setup entry point
 
 - Clarify that the install prompt is for a new agent session.
 - Make the unversioned `/setup/` URL canonical in the setup prompt and README. Publish complete `/setup.txt` and `/setup-manifest.json` alongside the existing `/downloads/Invoke-SdkSetup.ps1`.
 - Keep guide completeness, protocol-version and SHA-256 checks; stale/mixed content must stop. Versioned copies remain reference artifacts, not the default setup route. Worker behavior and package versions are unchanged.
 
-## Unreleased — skill and packaging cleanup
+### Skill and packaging cleanup
 
 - Normalize version-neutral skill triggers and metadata; retain honest historical SDK verification in bodies. Remove personal backend paths/examples and configure optional document export explicitly.
 - Consolidate table/business-rule wrappers into `sn-add-record` with type references; retain specialized GraphQL/Playbook/ATF workflows. Rename `sn-doc` to `sn-doc-export` and narrow Git bootstrap to setup.
 - Move development tests out of the runtime payload and enforce exclusions in install/verify/refresh, preserving the docs setup acceptance harness. Retired managed files use the existing backup/conflict-preserving migration.
 - Generate a trimmed fallback baseline from the canonical agent and reject drift. Explain user-global discovery in README. Align distribution manifest version and include it in publication checks.
 
-## Unreleased — upgrade execution safeguards
+### Upgrade execution safeguards
 
-- Skip update checks for documentation-only/read-only tasks. Scope checks with `--only agent|sdk|docs`; identify the project path and declared-version source in SDK notices. Do not treat a range floor as an installed SDK version; compare prereleases correctly.
+- Outside the shared session-start gate, skip update checks for documentation-only/read-only tasks. Scope checks with `--only agent|sdk|docs`; identify the project path and declared-version source in SDK notices. Do not treat a range floor as an installed SDK version; compare prereleases correctly.
 - Replace cwd-dependent project npm instructions with a small guarded npm-only worker: explicit cwd/prefix, strict engine/config checks, manifest/lock backups, exclusive ownership, durable streams/native result, independent version/manifest verification and read-only recovery. Unsupported layouts stop; no SDK/instance/global install is performed by this worker.
 - Treat missing native completion, mixed output and terminal errors as UNKNOWN across mirrored agent/baseline/lookup instructions. No blind retries, follow-on build claims or corpus diagnoses from blank transcripts.
 - Add isolated regression coverage for wrong-root updates, interrupted/delayed output, duplicate runs, engine/manager/layout refusals, scoped checks and truthful recovery; wire it into existing test gates. Windows Copilot terminal end-to-end acceptance and a real approved package upgrade remain separate, untested acceptance steps.
