@@ -66,17 +66,27 @@ function stageSetupPages(outputDirectory, sourceRoot = repoRoot) {
   // Complete plain text is available at a stable URL, not an HTML redirect.
   // The matching manifest detects stale/mixed guide and worker content.
   const text = Buffer.from(setup.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''));
+  const gitText = Buffer.from(fs.readFileSync(path.join(sourceRoot, 'git-setup.md'), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''));
   const manifest = {
     version,
     setup: { file: 'setup.txt', sha256: crypto.createHash('sha256').update(text).digest('hex') },
     sdkWorker: { file: 'Invoke-SdkSetup.ps1', sha256: sdkSha256 },
+    gitSetup: { file: 'git-setup.txt', sha256: crypto.createHash('sha256').update(gitText).digest('hex') },
+    gitWorker: { file: 'Ensure-MinGit254.ps1', sha256 },
   };
-  const currentManifest = { ...manifest, sdkWorker: { file: sdkDownloadRelativePath, sha256: sdkSha256 } };
+  const currentManifest = {
+    ...manifest,
+    sdkWorker: { ...manifest.sdkWorker, file: sdkDownloadRelativePath },
+    gitWorker: { ...manifest.gitWorker, file: downloadRelativePath },
+  };
   inputs.push(
     { destination: 'setup.txt', bytes: text },
+    { destination: 'git-setup.txt', bytes: gitText },
     { destination: 'setup-manifest.json', bytes: Buffer.from(JSON.stringify(currentManifest, null, 2) + '\n') },
     { destination: `${releaseRoot}/setup.txt`, bytes: text },
     { destination: `${releaseRoot}/Invoke-SdkSetup.ps1`, bytes: fs.readFileSync(path.join(sourceRoot, sdkWorkerRelativePath)) },
+    { destination: `${releaseRoot}/git-setup.txt`, bytes: gitText },
+    { destination: `${releaseRoot}/Ensure-MinGit254.ps1`, bytes: fs.readFileSync(path.join(sourceRoot, workerRelativePath)) },
     { destination: `${releaseRoot}/manifest.json`, bytes: Buffer.from(JSON.stringify(manifest, null, 2) + '\n') },
   );
   for (const { destination, bytes } of inputs) {

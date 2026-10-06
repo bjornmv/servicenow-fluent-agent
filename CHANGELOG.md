@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — setup preflight and checkout safeguards
+
+- Declare the supported Windows/Copilot target and Node >=20.18.0 minimum; add executable complete-guide hash/marker verification, Git discovery/version decisions, literal-path recovery, checkout identity checks and a resumable final report.
+- Clone docs into a recorded incoming sibling and preserve interrupted work; pin fast-forward pulls to verified origin/branch, bind the agent destination/cwd, and inspect index manifest provenance before choosing reuse or an approved rebuild. Keep Australia and existing rebuild/terminal-acceptance gates rather than silently migrate them.
+- Keep SDK `latest` intentional, verify/pin the expected npm global prefix before installation, and reject EBADENGINE for compatibility review even after native npm exit 0. Preserve logs, true exit status and read-only recovery; update the reviewed worker digest.
+- Publish a complete Git setup text and guide/worker hashes in both current and versioned manifests; clarify that only the current versioned reference is retained. Add Windows fixture tests with fake downloads/Git/npm rather than live setup operations.
+
+## Unreleased — setup completion recovery
+
+- Distinguish early/blank terminal returns, pending operations, native failure and verified package completion. Measure actual elapsed waits, refresh evidence before unresolved handoff, and preserve a resumable original-run checkpoint instead of restarting installation.
+- Respect notification-only/no-polling hosts and require a confirmed independent context for recovery. Validate original durable success directly, retain conflict/identity gates and continue at step 3 without an unnecessary recovery launch. Add offline instruction regressions; live terminal completion/notification behavior is not certified by these tests.
+
 ## Unreleased — focused agent and compact co-loaded baseline
 
 - Restructure the runtime agent around supported host, explicit precedence, one routing table, individual invariants with reasons, and approval gates. Move incident details and maintenance instructions to their owners.
@@ -14,6 +26,7 @@
 
 ## Unreleased — stable setup entry point
 
+- Clarify that the install prompt is for a new agent session.
 - Make the unversioned `/setup/` URL canonical in the setup prompt and README. Publish complete `/setup.txt` and `/setup-manifest.json` alongside the existing `/downloads/Invoke-SdkSetup.ps1`.
 - Keep guide completeness, protocol-version and SHA-256 checks; stale/mixed content must stop. Versioned copies remain reference artifacts, not the default setup route. Worker behavior and package versions are unchanged.
 

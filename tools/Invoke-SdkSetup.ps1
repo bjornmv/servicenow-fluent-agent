@@ -27,7 +27,31 @@ if ($Install) {
     if (-not (Test-Path -LiteralPath $NpmCli -PathType Leaf)) { throw 'Locate the approved npm JavaScript entry point before continuing.' }
     New-Item -ItemType Directory -Path $SdkLogDir -ErrorAction Stop | Out-Null
     Set-Content -LiteralPath (Join-Path $SdkLogDir 'runner.pid.txt') -Value $PID -Encoding ascii
-    $NpmProcess = Start-Process -FilePath $NodeExe -ArgumentList @("`"$NpmCli`"", 'install', '--global', '@servicenow/sdk@latest', '--no-progress') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $SdkStdout -RedirectStandardError $SdkStderr -ErrorAction Stop
+    # Fail closed before installation: metadata below is verified only at APPDATA/npm.
+    # String-only normalization is safe in ConstrainedLanguage; do not resolve a
+    # filesystem alias or accept relative/dot-segment paths as prefix evidence.
+    function Normalize-SdkPrefix([string]$Value) {
+        $Normalized = $Value.Replace('/', '\').TrimEnd('\')
+        if ($Normalized -notmatch '^[a-zA-Z]:\\[^\\]' -or
+            $Normalized.Substring(2) -match '[<>:"|?*\x00-\x1f]' -or
+            $Normalized -match '\\\\|\\\.{1,2}(\\|$)|[. ](\\|$)') {
+            throw 'Malformed npm global prefix; require an absolute local path and stop for configuration review.'
+        }
+        return $Normalized
+    }
+    $ExpectedPrefix = Normalize-SdkPrefix (Join-Path $env:APPDATA 'npm')
+    $PrefixStdout = Join-Path $SdkLogDir 'npm-prefix.stdout.log'
+    $PrefixStderr = Join-Path $SdkLogDir 'npm-prefix.stderr.log'
+    $PrefixProcess = Start-Process -FilePath $NodeExe -ArgumentList @("`"$NpmCli`"", 'prefix', '--global') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $PrefixStdout -RedirectStandardError $PrefixStderr -ErrorAction Stop
+    if ($null -eq $PrefixProcess -or $null -eq $PrefixProcess.ExitCode) { throw 'npm prefix completion is unknown; preserve this run for review. No SDK installation was started.' }
+    Write-Output "SDK_NPM_PREFIX_EXIT=$($PrefixProcess.ExitCode)"
+    if ($PrefixProcess.ExitCode -ne 0) { throw 'npm prefix failed; preserve prefix logs and stop. No SDK installation was started.' }
+    $PrefixLines = @(Get-Content -LiteralPath $PrefixStdout -ErrorAction Stop)
+    if ($PrefixLines.Count -ne 1 -or [string]::IsNullOrWhiteSpace($PrefixLines[0])) { throw 'npm prefix output is empty or multiple lines; stop for configuration review.' }
+    $EffectivePrefix = Normalize-SdkPrefix $PrefixLines[0]
+    if ($EffectivePrefix -ine $ExpectedPrefix) { throw 'npm global prefix differs from expected APPDATA/npm; stop for configuration review. No SDK installation was started.' }
+    # Pin the verified prefix so later npm configuration changes cannot redirect installation.
+    $NpmProcess = Start-Process -FilePath $NodeExe -ArgumentList @("`"$NpmCli`"", 'install', '--global', '--prefix', "`"$ExpectedPrefix`"", '@servicenow/sdk@latest', '--no-progress') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $SdkStdout -RedirectStandardError $SdkStderr -ErrorAction Stop
     if ($null -eq $NpmProcess -or $null -eq $NpmProcess.ExitCode) { throw 'SDK install completion is unknown; inspect existing logs/process state, do not repeat it.' }
     $SdkExit = $NpmProcess.ExitCode
     $ExitPending = Join-Path $SdkLogDir 'npm.exit-code.pending'
@@ -54,6 +78,11 @@ Write-Output 'SDK_STDOUT_TAIL:'
 Get-Content -LiteralPath $SdkStdout -Tail 12 -ErrorAction Stop
 Write-Output 'SDK_STDERR_TAIL:'
 Get-Content -LiteralPath $SdkStderr -Tail 12 -ErrorAction Stop
+# Inspect the complete saved stderr, not just the diagnostic tail, in both modes.
+if (Select-String -LiteralPath $SdkStderr -Pattern 'EBADENGINE' -SimpleMatch -Quiet -ErrorAction Stop) {
+    Write-Output 'SDK_ENGINE_WARNING=true'
+    throw 'npm exited 0 but reported EBADENGINE; stop setup for compatibility review. Preserve both logs and the recorded exit status; do not reinstall.'
+}
 if (-not (Test-Path -LiteralPath $SdkPackage -PathType Leaf)) { throw 'SDK metadata is missing at the profile global path; review npm prefix configuration, do not reinstall blindly.' }
 $SdkMetadata = Get-Content -LiteralPath $SdkPackage -Raw | ConvertFrom-Json
 if ($SdkMetadata.name -ne '@servicenow/sdk' -or -not $SdkMetadata.version) { throw 'Unexpected SDK package metadata.' }

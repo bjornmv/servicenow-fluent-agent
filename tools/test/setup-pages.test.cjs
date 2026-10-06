@@ -1,12 +1,15 @@
 'use strict';
 
-// Offline documentation/package tests. Never launch PowerShell or install Git.
+// Offline documentation/package tests. PowerShell snippets run only with fixture
+// downloads/Git discovery/clone commands; never install Git or access the network.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
 const { stageSetupPages, validateBootstrapHash, validateSdkSetupHash, workerRelativePath, downloadRelativePath, sdkWorkerRelativePath, sdkDownloadRelativePath } = require('../stage-setup-pages.cjs');
 
 const root = path.resolve(__dirname, '../..');
@@ -33,6 +36,132 @@ function sourceFixture(directory) {
   return source;
 }
 
+const psBlocks = [...setup.matchAll(/```powershell\n([\s\S]*?)```/g)].map(m => m[1]);
+const windows = { skip: process.platform !== 'win32' };
+const psQuote = s => "'" + s.replaceAll("'", "''") + "'";
+function runSnippet(directory, block, prelude = '') {
+  const file = path.join(directory, 'fixture.ps1');
+  fs.writeFileSync(file, `$ErrorActionPreference='Stop'\n$FixtureRoot=${psQuote(directory)}\n${prelude}\ntry {\n${block}\nWrite-Output 'FIXTURE_COMPLETE'\n} catch { Write-Output ('FIXTURE_ERROR: '+$_.Exception.Message); exit 11 }\n`);
+  const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const r = spawnSync(exe, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', file], {
+    cwd: directory, env: { ...process.env, LOCALAPPDATA: path.join(directory, 'Local') }, encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(r.error);
+  return r;
+}
+
+test('setup declares its host, runtime minimum, recovery bindings and resumable report', () => {
+  assert.match(setup, /Target: Windows x64, VS Code, GitHub Copilot agent mode/);
+  assert.match(setup, /another harness[\s\S]*report step 7 as pending/);
+  assert.equal(JSON.parse(read('package.json')).engines.node, '>=20.18.0');
+  assert.match(setup, /latest` dist-tag\*\*, not `next`/);
+  assert.match(setup, /SDK_ENGINE_WARNING=true/);
+  assert.match(setup, /scan complete stderr for `EBADENGINE`, not just its tail/);
+  const recovery = psBlocks.find(b => b.includes('-WaitSeconds 180'));
+  for (const variable of ['$PowerShellExe', '$SdkWorker', '$SdkLogDir']) assert.ok(recovery.includes(variable + " = '<recorded absolute"));
+  assert.match(recovery, /Fill the original recorded paths/);
+  assert.match(setup, /Only the current versioned reference copy is published/);
+  assert.doesNotMatch(setup, /Versioned artifacts remain available/);
+  for (const field of ['NODE_VERSION', 'SDK_STATUS', 'DOCS_FAMILY_SOURCE', 'DOCS_GIT_HEAD', 'INDEX_PROVENANCE', 'PAYLOAD_VERIFY', 'TERMINAL_CHECK', 'NEXT_STEP']) {
+    assert.ok(setup.includes('\n' + field + '='), field);
+  }
+});
+
+test('documented Node gate rejects below 20.18 while permitting the minimum and newer majors', () => {
+  const expression = psBlocks.find(b => b.includes('process.versions.node')).match(/node\.exe -e "([^"\n]+)"/)[1];
+  for (const [version, expected] of [['18.20.0', 1], ['20.17.9', 1], ['20.18.0', 0], ['22.0.0', 0], ['25.2.1', 0]]) {
+    let result;
+    vm.runInNewContext(expression, { process: { versions: { node: version }, exit: code => { result = code; } } });
+    assert.equal(result, expected, version);
+  }
+});
+
+for (const mode of ['valid', 'hash', 'protocol', 'missing-end', 'duplicate-end']) {
+  test('guide verification block on Windows: ' + mode, windows, () => withTemp(directory => {
+    const output = path.join(directory, 'published');
+    stageSetupPages(output);
+    const guide = path.join(output, 'setup.txt');
+    const manifestPath = path.join(output, 'setup-manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath));
+    if (mode === 'hash') fs.appendFileSync(guide, '\nchanged\n');
+    if (mode === 'protocol') manifest.version = '0.0.0';
+    if (mode === 'missing-end' || mode === 'duplicate-end') {
+      const text = fs.readFileSync(guide, 'utf8');
+      fs.writeFileSync(guide, mode === 'missing-end' ? text.replace(/^SETUP_GUIDE_END=.*$/m, '') : text + '\nSETUP_GUIDE_END=' + manifest.version + '\n');
+      manifest.setup.sha256 = crypto.createHash('sha256').update(fs.readFileSync(guide)).digest('hex');
+    }
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    const prelude = `function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing,$TimeoutSec)\n if ($Uri -notin @('https://bjornmv.github.io/servicenow-fluent-agent/setup.txt','https://bjornmv.github.io/servicenow-fluent-agent/setup-manifest.json')) { throw 'Unexpected fixture URL' }\n Copy-Item -LiteralPath (Join-Path $FixtureRoot ('published\\'+($Uri -split '/')[-1])) -Destination $OutFile\n}`;
+    const r = runSnippet(directory, psBlocks.find(b => b.includes('$GuideDir =')), prelude);
+    assert.equal(r.status, mode === 'valid' ? 0 : 11, r.stdout + r.stderr);
+    if (mode === 'valid') assert.match(r.stdout, /GUIDE_VERSION=0\.3\.8/);
+    else assert.doesNotMatch(r.stdout, /GUIDE_VERSION=|FIXTURE_COMPLETE/);
+  }));
+}
+
+for (const mode of ['path', 'standard', 'old', 'blocked', 'prerelease', 'absent', 'registered', 'directory', 'denied']) {
+  test('Git discovery block uses fixture evidence: ' + mode, windows, () => withTemp(directory => {
+    const prelude = `$Mode=${psQuote(mode)}\nfunction Get-Command { param($Name,$CommandType,$ErrorAction) if ($Mode -in @('path','old','blocked','prerelease')) { return @{Source='Invoke-FixtureGit'} } }\nfunction Test-Path { param($LiteralPath,$PathType,$ErrorAction)\n if ($LiteralPath -like '*Git_is1') { if ($Mode -eq 'denied') { throw 'Registry unreadable' }; return ($Mode -eq 'registered') }\n if ($LiteralPath -like '*cmd\\git.exe') { return ($Mode -eq 'standard') }\n return ($Mode -eq 'directory')\n}\nfunction Get-ItemProperty { param($LiteralPath,$ErrorAction) return @{InstallLocation='C:\\fixture-git'} }\nfunction Resolve-Path { param($LiteralPath) return @{Path='Invoke-FixtureGit'} }\nfunction Invoke-FixtureGit { $global:LASTEXITCODE=0; if ($Mode -eq 'blocked') { $global:LASTEXITCODE=23; return }; if ($Mode -eq 'old') { 'git version 2.53.0.windows.1' } elseif ($Mode -eq 'prerelease') { 'git version 2.55.0.rc1' } else { 'git version 2.54.0.windows.1' } }`;
+    const r = runSnippet(directory, psBlocks.find(b => b.includes('$GitRoots =')), prelude);
+    assert.equal(r.status, ['path', 'standard', 'absent'].includes(mode) ? 0 : 11, r.stdout + r.stderr);
+    if (mode === 'absent') assert.match(r.stdout, /GIT_EXE=absent/);
+    else assert.doesNotMatch(r.stdout, /GIT_EXE=absent/);
+  }));
+}
+
+for (const mode of ['success', 'failed', 'leftover', 'collision']) {
+  test('staged docs clone preserves fixture directories: ' + mode, windows, () => withTemp(directory => {
+    const docs = path.join(directory, 'docs');
+    if (mode === 'leftover') fs.mkdirSync(docs + '.incoming-old');
+    const prelude = `$Docs=${psQuote(docs)}\n$Mode=${psQuote(mode)}\n$Family='australia'\n$DocsUrl='https://github.com/ServiceNow/ServiceNowDocs.git'\n$GitExe='Invoke-FixtureGit'\nfunction Invoke-FixtureGit {\n if ($args[0] -ne 'clone') { throw 'Not a clone' }\n New-Item -ItemType Directory -Path $args[-1] | Out-Null\n Set-Content -LiteralPath (Join-Path $FixtureRoot 'clone.calls') -Value ($args -join '|')\n $global:LASTEXITCODE=0\n if ($Mode -eq 'failed') { $global:LASTEXITCODE=23 }\n if ($Mode -eq 'collision') { New-Item -ItemType Directory -Path $Docs | Out-Null }\n}`;
+    const r = runSnippet(directory, psBlocks.find(b => b.includes('$DocsRunId =')), prelude);
+    assert.equal(r.status, mode === 'success' ? 0 : 11, r.stdout + r.stderr);
+    const incoming = fs.readdirSync(directory).filter(n => n.startsWith('docs.incoming-'));
+    assert.equal(incoming.length, mode === 'success' ? 0 : 1);
+    assert.equal(fs.existsSync(docs), ['success', 'collision'].includes(mode));
+    assert.equal(fs.existsSync(path.join(directory, 'clone.calls')), mode !== 'leftover');
+    if (mode !== 'leftover') assert.match(fs.readFileSync(path.join(directory, 'clone.calls'), 'utf8'), /clone\|-c\|core\.longpaths=true\|--depth\|1\|--single-branch\|--branch\|australia/);
+  }));
+}
+
+for (const target of ['docs', 'agent']) {
+  for (const mode of ['success', 'root', 'origin', 'branch', 'dirty', 'native-failure']) {
+    test(`${target} checkout guard executes on Windows: ${mode}`, windows, () => withTemp(directory => {
+      const repo = path.join(directory, target);
+      fs.mkdirSync(repo);
+      const expectedUrl = target === 'docs' ? 'https://github.com/ServiceNow/ServiceNowDocs.git' : 'https://github.com/bjornmv/servicenow-fluent-agent.git';
+      const branch = target === 'docs' ? 'australia' : 'main';
+      const prelude = `$Mode=${psQuote(mode)}\n$ExpectedUrl=${psQuote(expectedUrl)}\n$ExpectedBranch=${psQuote(branch)}\n$Docs=${psQuote(repo)}\n$DocsUrl=$ExpectedUrl\n$Family=$ExpectedBranch\n$GitExe='Invoke-FixtureGit'\nfunction Invoke-FixtureGit {\n Add-Content -LiteralPath (Join-Path $FixtureRoot 'git.calls') -Value ($args -join '|')\n $global:LASTEXITCODE=0\n if ($args[2] -eq 'rev-parse') {\n   if ($Mode -eq 'native-failure') { $global:LASTEXITCODE=23; return }\n   if ($args[3] -eq '--show-toplevel') { if ($Mode -eq 'root') { $FixtureRoot } else { $args[1] }; return }\n   'abcdef0123456789'; return\n }\n if ($args[2] -eq 'remote') { if ($Mode -eq 'origin') { 'https://example.invalid/unapproved.git' } else { $ExpectedUrl }; return }\n if ($args[2] -eq 'branch') { if ($Mode -eq 'branch') { 'other' } else { $ExpectedBranch }; return }\n if ($args[2] -eq 'status') { if ($Mode -eq 'dirty') { ' M README.md' }; return }\n if ($args[2] -eq 'pull') { if ($args[4] -ne 'origin' -or $args[5] -ne $ExpectedBranch) { throw 'Pull must name verified remote/branch, not the configured upstream' }; return }\n throw 'Unexpected fixture command'\n}`;
+      const block = target === 'docs'
+        ? psBlocks.find(b => b.includes('$DocsTop =')) + '\n' + psBlocks.find(b => b.includes('-C "$Docs" pull'))
+        : psBlocks.find(b => b.includes('$AgentRepo =')).replace("$AgentRepo = Join-Path $HOME 'source\\servicenow-fluent-agent'", "$AgentRepo = Join-Path $FixtureRoot 'agent'");
+      if (target === 'agent') assert.ok(block.includes("Join-Path $FixtureRoot 'agent'"), 'fixture must never use real HOME');
+      const r = runSnippet(directory, block, prelude);
+      assert.equal(r.status, mode === 'success' ? 0 : 11, r.stdout + r.stderr);
+      const calls = fs.readFileSync(path.join(directory, 'git.calls'), 'utf8');
+      if (mode === 'success') assert.ok(calls.includes('pull|--ff-only|origin|' + branch), calls);
+      else assert.doesNotMatch(calls, /pull|clone/);
+    }));
+  }
+}
+
+test('checkout and index instructions verify identities without automatic migration or rebuild', () => {
+  const docs = psBlocks.find(b => b.includes('$DocsTop ='));
+  const agent = psBlocks.find(b => b.includes('$AgentRepo ='));
+  for (const b of [docs, agent]) {
+    for (const command of ['rev-parse --show-toplevel', 'remote get-url origin', 'branch --show-current', 'status --porcelain']) assert.ok(b.includes(command), command);
+    assert.match(b, /\$LASTEXITCODE -ne 0/);
+  }
+  assert.match(agent, /\$AgentRepo = Join-Path \$HOME 'source\\servicenow-fluent-agent'/);
+  assert.match(agent, /Set-Location -LiteralPath \$AgentRepo -ErrorAction Stop/);
+  assert.match(setup, /Opening this folder in VS Code is optional/);
+  assert.match(setup, /Join-Path \$Index 'manifest.json'/);
+  for (const field of ['schema_version', 'generator', 'family', 'docs_root', 'git_head']) assert.ok(setup.includes('`' + field + '`'));
+  assert.match(setup, /empty value is unknown provenance, not a match/);
+  assert.match(setup, /not automatic permission to replace an existing index/);
+  assert.doesNotMatch(setup, /remote set-branches|git switch|--force.*--family/);
+});
+
 test('setup scopes approved changes and ensures Git before SDK or clone steps', () => {
   assert.match(setup, /Node\.js must already be installed/);
   assert.match(setup, /global SDK package install\/update/);
@@ -50,7 +179,7 @@ test('existing, blocked and stale-PATH cases do not authorize replacement', () =
   assert.match(setup, /older Git, an executable that cannot run, or a broken registration requires review/);
   assert.match(setup, /Never invoke migration\/replacement modes/);
   assert.match(setup, /& \$GitExe clone/);
-  assert.match(setup, /& \$GitExe pull --ff-only/);
+  assert.match(setup, /& \$GitExe -C "\$AgentRepo" pull --ff-only/);
 });
 
 test('separate page reuses the single canonical skill and worker', () => {
@@ -157,7 +286,7 @@ test('Pages staging copies both documents and download byte-for-byte', () => wit
   const output = path.join(directory, 'pages');
   const result = stageSetupPages(output);
   const version = read('VERSION').trim();
-  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath, 'setup.txt', 'setup-manifest.json', `releases/${version}/setup.txt`, `releases/${version}/Invoke-SdkSetup.ps1`, `releases/${version}/manifest.json`]);
+  assert.deepEqual(result.files, ['setup.md', 'git-setup.md', downloadRelativePath, sdkDownloadRelativePath, 'setup.txt', 'git-setup.txt', 'setup-manifest.json', `releases/${version}/setup.txt`, `releases/${version}/Invoke-SdkSetup.ps1`, `releases/${version}/git-setup.txt`, `releases/${version}/Ensure-MinGit254.ps1`, `releases/${version}/manifest.json`]);
   const release = path.join(output, 'releases', version);
   const text = fs.readFileSync(path.join(release, 'setup.txt'), 'utf8');
   assert.doesNotMatch(text, /^---/);
@@ -174,6 +303,15 @@ test('Pages staging copies both documents and download byte-for-byte', () => wit
   assert.equal(current.sdkWorker.file, sdkDownloadRelativePath);
   assert.equal(current.setup.sha256, manifest.setup.sha256);
   assert.equal(current.sdkWorker.sha256, manifest.sdkWorker.sha256);
+  for (const [key, expectedFile, original] of [['gitSetup', 'git-setup.txt', 'git-setup.md'], ['gitWorker', downloadRelativePath, workerRelativePath]]) {
+    assert.equal(current[key].file, expectedFile);
+    const bytes = fs.readFileSync(path.join(output, current[key].file));
+    assert.equal(current[key].sha256, crypto.createHash('sha256').update(bytes).digest('hex'));
+    const expected = original.endsWith('.md') ? Buffer.from(read(original).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')) : fs.readFileSync(path.join(root, original));
+    assert.deepEqual(bytes, expected);
+    assert.deepEqual(fs.readFileSync(path.join(release, manifest[key].file)), expected);
+    assert.equal(current[key].sha256, manifest[key].sha256);
+  }
   assert.equal(fs.readFileSync(path.join(output, current.setup.file), 'utf8'), text);
   assert.deepEqual(fs.readFileSync(path.join(output, current.sdkWorker.file)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));
   assert.deepEqual(fs.readFileSync(path.join(release, manifest.sdkWorker.file)), fs.readFileSync(path.join(root, sdkWorkerRelativePath)));

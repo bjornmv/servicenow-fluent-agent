@@ -4,7 +4,7 @@ permalink: /git-setup/
 
 # Windows Git setup
 
-This is the Git prerequisite handoff from [Agent-assisted setup](https://bjornmv.github.io/servicenow-fluent-agent/setup/). Git is **not required** to read these instructions or download the worker. Do not clone a repository to bootstrap missing Git.
+This is the Git prerequisite handoff from [Agent-assisted setup](https://bjornmv.github.io/servicenow-fluent-agent/setup/). Git is **not required** to read these instructions or download the worker. Do not clone a repository to bootstrap missing Git. If HTML extraction is incomplete, read the complete [plain-text Git guide](https://bjornmv.github.io/servicenow-fluent-agent/git-setup.txt); the current setup manifest records `gitSetup.sha256` and `gitWorker.sha256`. During full setup, require these to match the saved Git guide and worker as well as the expected worker digest below.
 
 The authoritative installation rules are in the **[win-git-bootstrap skill](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/SKILL.md)** ([repository copy](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/payload/.agents/skills/win-git-bootstrap/SKILL.md)). Read that document completely first. The executable implementation is its adjacent `scripts/Ensure-MinGit254.ps1`; this page adds only the pre-clone HTTPS handoff, not another installer implementation.
 

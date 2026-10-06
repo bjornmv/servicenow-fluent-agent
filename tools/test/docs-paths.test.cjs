@@ -177,7 +177,9 @@ test('setup and skill use short defaults, explicit clone destination and index s
     assert.doesNotMatch(text, /C:\\Personal\\SNDocs|\.agents\\cache\\sn-doc-md/);
   }
   const setup = fs.readFileSync(path.join(root, 'setup.md'), 'utf8');
-  assert.match(setup, /ServiceNowDocs\.git "\$Docs"/);
+  assert.match(setup, /\$DocsUrl = 'https:\/\/github\.com\/ServiceNow\/ServiceNowDocs\.git'/);
+  assert.match(setup, /--branch \$Family \$DocsUrl "\$DocsIncoming"/);
   assert.match(setup, /& \$GitExe -C "\$Docs" pull --ff-only/);
-  assert.match(setup, /build --docs "\$Docs" --out "\$Index" --family australia/);
+  assert.match(setup, /\$Family = 'australia'/);
+  assert.match(setup, /build --docs "\$Docs" --out "\$Index" --family "\$Family"/);
 });
