@@ -525,9 +525,11 @@ function printInstallSummary(summary, receiptCount) {
 
   if (!summary.dryRun && !summary.skippedConflicts.length && !summary.skippedObsoleteConflicts.length) {
     console.log('\nNext: connect your PDI (if not already connected).');
-    console.log('After terminal checks pass, open a new ServiceNow Fluent chat and ask:');
-    console.log('  "Help me connect my PDI using OAuth. Ask me for the instance URL and a new alias, then verify access with a read-only request. Do not deploy anything."');
-    console.log('Complete browser sign-in and code entry yourself; never paste passwords or OAuth codes into chat.');
+    console.log('1. Open your PDI in your browser and log in first.');
+    console.log('2. In VS Code, choose Terminal -> New Terminal.');
+    console.log('3. Run: now-sdk auth --add dev123456');
+    console.log('Replace dev123456 with your own instance name, then follow the SDK prompts and choose OAuth.');
+    console.log('Enter any authorization code only in the terminal; never paste passwords or OAuth codes into chat.');
     console.log('Guide with screenshots: https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md');
   }
 }

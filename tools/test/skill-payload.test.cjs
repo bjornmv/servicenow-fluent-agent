@@ -95,8 +95,12 @@ test('completed install prints the PDI guide and safe next action, but dry runs/
   const guide = 'https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md';
   print(summary, 67);
   assert.ok(messages.some(message => message.includes(guide)));
-  assert.ok(messages.some(message => message.includes('After terminal checks pass')));
-  assert.ok(messages.some(message => message.includes('read-only request. Do not deploy anything.')));
+  const login = messages.findIndex(message => message.includes('log in first'));
+  const terminal = messages.findIndex(message => message === '2. In VS Code, choose Terminal -> New Terminal.');
+  const command = messages.findIndex(message => message.includes('now-sdk auth --add dev123456'));
+  assert.ok(login >= 0 && terminal > login && command > terminal, 'login, new terminal, then manual command');
+  assert.ok(messages.some(message => message.includes('Replace dev123456 with your own instance name')));
+  assert.equal(messages.some(message => message.includes('new ServiceNow Fluent chat')), false);
   assert.ok(messages.some(message => message.includes('never paste passwords or OAuth codes into chat')));
   for (const override of [{ dryRun: true }, { skippedConflicts: ['edited.md'] }, { skippedObsoleteConflicts: ['old.md'] }]) {
     messages.length = 0;
@@ -105,7 +109,7 @@ test('completed install prints the PDI guide and safe next action, but dry runs/
   }
 });
 
-test('PDI guide has local screenshots, valid links and a read-only verification path', () => {
+test('PDI guide has local screenshots, valid links and login-first manual authentication', () => {
   const guide = read('docs/connect-pdi.md');
   const images = [...guide.matchAll(/!\[[^\]]+\]\(([^)]+)\)/g)];
   assert.equal(images.length, 2);
@@ -116,9 +120,12 @@ test('PDI guide has local screenshots, valid links and a read-only verification 
   for (const [, link] of guide.matchAll(/\]\(([^)]+)\)/g)) {
     if (!/^https?:/.test(link)) assert.ok(fs.existsSync(path.join(root, 'docs', link.split('#')[0])), link);
   }
-  assert.match(guide, /now-sdk auth --add \$Instance --type oauth --alias \$Alias/);
-  assert.match(guide, /sysparm_limit=1&sysparm_fields=user_name/);
-  assert.match(guide, /not.*proof of which account authenticated/);
+  assert.match(guide, /now-sdk auth --add dev123456/);
+  assert.match(guide, /Replace `dev123456` with your own instance name/);
+  assert.match(guide, /Choose \*\*oauth\*\*/);
+  assert.ok(guide.indexOf('## 1. Log in to your PDI first') < guide.indexOf('now-sdk auth --add dev123456'));
+  assert.match(guide, /\*\*Terminal -> New Terminal\*\*/);
+  assert.doesNotMatch(guide, /PowerShell with now-sdk|With Profile|Read-Host|\$Instance|--type oauth --alias|Quick start: ask the agent/);
   assert.doesNotMatch(guide, /auth --print|--type basic|dev426577|ven06834|bvelsrud/);
   const url = 'https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md';
   assert.ok(read('setup.md').includes(url));

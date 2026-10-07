@@ -56,9 +56,9 @@ Then restart VS Code, or reload the VS Code window.
 
 ## Connect your PDI after installation
 
-Installation does not connect a ServiceNow instance. Once the terminal checks pass, follow [Connect your Personal Developer Instance (PDI)](docs/connect-pdi.md) for screenshots, OAuth sign-in, alias selection and a read-only connection check.
+Log in to your PDI in your browser first. In VS Code, choose **Terminal -> New Terminal**, then run `now-sdk auth --add dev123456`, replacing `dev123456` with your own instance name. Follow the SDK prompts and choose OAuth. See [Connect your Personal Developer Instance (PDI)](docs/connect-pdi.md) for screenshots and details.
 
-The installer prints the guide link and a ready-to-use chat prompt after a non-dry-run installation without payload conflicts. Sign in and enter the authorization code yourself; never paste passwords or OAuth codes into chat. Connecting does not authorize deployment.
+The installer prints these manual steps and the guide link after a non-dry-run installation without payload conflicts. Enter authorization codes only in the terminal, never in chat. Connecting does not authorize deployment.
 
 ## Shell-independent Windows Git PATH
 
