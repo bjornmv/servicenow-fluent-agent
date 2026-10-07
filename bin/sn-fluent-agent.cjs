@@ -522,6 +522,14 @@ function printInstallSummary(summary, receiptCount) {
   console.log('Require Get-Command now-sdk to resolve to a Function before running now-sdk --version; do not probe batch shims or reinstall for an old terminal.');
   console.log('Restart affected terminal applications from a refreshed launcher if Git PATH remains stale; reload alone may retain old process environments.');
   console.log('Run bare git --version in actual fresh terminals before reporting setup complete. No shell-specific Git PATH workaround is installed.');
+
+  if (!summary.dryRun && !summary.skippedConflicts.length && !summary.skippedObsoleteConflicts.length) {
+    console.log('\nNext: connect your PDI (if not already connected).');
+    console.log('After terminal checks pass, open a new ServiceNow Fluent chat and ask:');
+    console.log('  "Help me connect my PDI using OAuth. Ask me for the instance URL and a new alias, then verify access with a read-only request. Do not deploy anything."');
+    console.log('Complete browser sign-in and code entry yourself; never paste passwords or OAuth codes into chat.');
+    console.log('Guide with screenshots: https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md');
+  }
 }
 
 function help() {

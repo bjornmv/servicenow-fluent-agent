@@ -54,6 +54,12 @@ node bin/sn-fluent-agent.cjs install
 
 Then restart VS Code, or reload the VS Code window.
 
+## Connect your PDI after installation
+
+Installation does not connect a ServiceNow instance. Once the terminal checks pass, follow [Connect your Personal Developer Instance (PDI)](docs/connect-pdi.md) for screenshots, OAuth sign-in, alias selection and a read-only connection check.
+
+The installer prints the guide link and a ready-to-use chat prompt after a non-dry-run installation without payload conflicts. Sign in and enter the authorization code yourself; never paste passwords or OAuth codes into chat. Connecting does not authorize deployment.
+
 ## Shell-independent Windows Git PATH
 
 On Windows, installation verifies Git >=2.54.0, registers its directory in **Windows user PATH**, and requests native Windows environment propagation. It does not add Git to any PowerShell/VS Code profile, shell startup script, function or alias. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. The Node installer never downloads/reinstalls Git.

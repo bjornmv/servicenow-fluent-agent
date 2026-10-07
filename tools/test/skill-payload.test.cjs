@@ -85,6 +85,46 @@ test('baseline is generated, has fewer words and cannot silently drift', () => {
   assert.match(baseline, /\.\.\/reference\/sdk-commands.md/);
 });
 
+test('completed install prints the PDI guide and safe next action, but dry runs/conflicts do not', () => {
+  const source = read('bin/sn-fluent-agent.cjs');
+  const body = source.slice(source.indexOf('function printInstallSummary('), source.indexOf('\nfunction help()'));
+  const messages = [];
+  const print = vm.runInNewContext('(' + body + ')', { console: { log: message => messages.push(message) } });
+  const summary = { version: 'fixture', home: '/fixture', dryRun: false, force: false,
+    copied: [], unchanged: [], removedObsolete: [], skippedConflicts: [], skippedObsoleteConflicts: [], backups: [] };
+  const guide = 'https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md';
+  print(summary, 67);
+  assert.ok(messages.some(message => message.includes(guide)));
+  assert.ok(messages.some(message => message.includes('After terminal checks pass')));
+  assert.ok(messages.some(message => message.includes('read-only request. Do not deploy anything.')));
+  assert.ok(messages.some(message => message.includes('never paste passwords or OAuth codes into chat')));
+  for (const override of [{ dryRun: true }, { skippedConflicts: ['edited.md'] }, { skippedObsoleteConflicts: ['old.md'] }]) {
+    messages.length = 0;
+    print({ ...summary, ...override }, 67);
+    assert.equal(messages.some(message => message.includes(guide)), false);
+  }
+});
+
+test('PDI guide has local screenshots, valid links and a read-only verification path', () => {
+  const guide = read('docs/connect-pdi.md');
+  const images = [...guide.matchAll(/!\[[^\]]+\]\(([^)]+)\)/g)];
+  assert.equal(images.length, 2);
+  for (const [, image] of images) {
+    const bytes = fs.readFileSync(path.join(root, 'docs', image));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', image);
+  }
+  for (const [, link] of guide.matchAll(/\]\(([^)]+)\)/g)) {
+    if (!/^https?:/.test(link)) assert.ok(fs.existsSync(path.join(root, 'docs', link.split('#')[0])), link);
+  }
+  assert.match(guide, /now-sdk auth --add \$Instance --type oauth --alias \$Alias/);
+  assert.match(guide, /sysparm_limit=1&sysparm_fields=user_name/);
+  assert.match(guide, /not.*proof of which account authenticated/);
+  assert.doesNotMatch(guide, /auth --print|--type basic|dev426577|ven06834|bvelsrud/);
+  const url = 'https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md';
+  assert.ok(read('setup.md').includes(url));
+  assert.ok(read('README.md').includes('(docs/connect-pdi.md)'));
+});
+
 test('installer backs up retired owned files and preserves local edits (isolated virtual host)', async t => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-install-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));

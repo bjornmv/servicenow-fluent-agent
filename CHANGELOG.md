@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — PDI connection guide
+
+- Add a beginner-friendly PDI connection guide with redacted Developer Portal screenshots, OAuth sign-in steps and a read-only connection check.
+- Show the guide's GitHub link and a ready-to-use chat prompt after a non-dry-run install without payload conflicts; include the same next step in the completed agent-assisted setup response. Authentication is never started automatically.
+
 ## 0.3.10 — Simpler advisor execution
 
 - Provide copy-ready direct Node commands with immediate native exit-code reporting in the update-advisor skill; delegate resolved commands unchanged rather than inventing PowerShell capture wrappers.

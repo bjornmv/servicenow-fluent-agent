@@ -173,6 +173,8 @@ Use one heading, a short component summary (verified / missing / not checked), a
 
 Example: “SDK installed; the final VS Code check needs a new terminal. Please open **PowerShell with now-sdk** and return the [E](#terminal-check) check output.” Use supported automatic recovery first. Keep paths/technical evidence in a checkpoint rather than leading with a diagnostic-field dump. Authentication and instance connectivity are not tested here.
 
+After **Complete**, include this next step in the final message: “To connect your PDI, start a new ServiceNow Fluent chat and ask for OAuth connection help. Follow the [PDI connection guide with screenshots](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md). Keep passwords and OAuth codes out of chat.” Do not start authentication automatically.
+
 <a id="appendices"></a>
 ## Appendices: executable detail and rationale
 
