@@ -4,19 +4,21 @@ After installing ServiceNow Fluent Agent, **log in to your PDI first**, then run
 
 ## 1. Log in to your PDI first
 
-Open the [ServiceNow Developer Portal](https://developer.servicenow.com/), sign in, and choose **Manage my instance**. If you do not have a PDI yet, request one through the portal first; availability and button labels can vary.
+Open the [ServiceNow Developer Portal](https://developer.servicenow.com/) and sign in.
 
-![Developer Portal instance controls: Manage my instance and Start building.](images/connect-pdi/developer-portal-navigation.png)
+**Don't have an instance yet?** If you see the screen below, click **Request your instance**, wait until the instance is available, then click **Start building**.
 
-*The instance controls are in the Developer Portal navigation.*
+![Start building card offering Request your instance when no PDI is available.](images/connect-pdi/request-instance.png)
 
-Wait until your PDI is **Online**, then open it in your browser and **log in before running the SDK command**. Keep that browser session open.
+**Already have an instance?** Click **Start Building** at the top right:
 
-![Your PDI card showing Online status. The instance name is hidden.](images/connect-pdi/pdi-online-status.png)
+![Start Building button in the Developer Portal.](images/connect-pdi/developer-portal-navigation.png)
 
-*Example of an online PDI. The name is redacted; your release and installed applications may differ. You do not need Build Agent for this guide.*
+Or click **ServiceNow studio** or **Build Agent** on your PDI card:
 
-Signing in to the **Developer Portal is not the same as signing in to the PDI**. Use your instance's credentials or its configured sign-in method.
+![PDI card with Build Agent and ServiceNow studio buttons. The instance name is hidden.](images/connect-pdi/pdi-online-status.png)
+
+These buttons open your PDI and **automatically log you in**. Keep the PDI browser tab open, then continue below.
 
 Note your instance name from its address. For example, an address of `https://dev123456.service-now.com` has the instance name `dev123456`. This is an example—use your own instance.
 
@@ -61,6 +63,6 @@ When the SDK confirms that credentials have been saved, you can start using the 
 
 Instance-name support and interactive OAuth prompts were checked against **now-sdk 4.13.6** help/source. Browser screens vary; this documentation task did not perform a new OAuth sign-in.
 
-The two screenshots are actual Developer Portal captures from **2026-10-07**, cropped to exclude account/browser details. The instance name is masked. No password, authorization code, token or authorization URL is included.
+The instance-request screenshot was supplied for this guide. The other two screenshots are actual Developer Portal captures from **2026-10-07**, cropped to exclude account/browser details. The instance name is masked. No password, authorization code, token or authorization URL is included.
 
 [Back to the installation instructions](../README.md#agent-assisted-setup) · [Agent authentication reference](../payload/.agents/skills/sn-auth/SKILL.md)

@@ -112,7 +112,8 @@ test('completed install prints the PDI guide and safe next action, but dry runs/
 test('PDI guide has local screenshots, valid links and login-first manual authentication', () => {
   const guide = read('docs/connect-pdi.md');
   const images = [...guide.matchAll(/!\[[^\]]+\]\(([^)]+)\)/g)];
-  assert.equal(images.length, 2);
+  assert.equal(images.length, 3);
+  assert.match(guide, /Request your instance\*\*, wait until the instance is available, then click \*\*Start building/);
   for (const [, image] of images) {
     const bytes = fs.readFileSync(path.join(root, 'docs', image));
     assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', image);
@@ -123,6 +124,9 @@ test('PDI guide has local screenshots, valid links and login-first manual authen
   assert.match(guide, /now-sdk auth --add dev123456/);
   assert.match(guide, /Replace `dev123456` with your own instance name/);
   assert.match(guide, /Choose \*\*oauth\*\*/);
+  for (const button of ['**Start Building**', '**ServiceNow studio**', '**Build Agent**']) assert.ok(guide.includes(button));
+  assert.match(guide, /automatically log you in/);
+  assert.doesNotMatch(guide, /Manage my instance/);
   assert.ok(guide.indexOf('## 1. Log in to your PDI first') < guide.indexOf('now-sdk auth --add dev123456'));
   assert.match(guide, /\*\*Terminal -> New Terminal\*\*/);
   assert.doesNotMatch(guide, /PowerShell with now-sdk|With Profile|Read-Host|\$Instance|--type oauth --alias|Quick start: ask the agent/);
