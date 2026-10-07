@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Technical guide
+
+- Add a source-linked technical guide covering architecture, managed-file lifecycle, Windows execution, configuration/state, update workers, authentication/REST boundaries, documentation tooling, testing and publication. Distinguish implemented checks from instruction-level safeguards and document verification limitations; no runtime behavior changes.
+
 ## Unreleased — Manual uninstall guide
 
 - Document separate manual removal of agent files, selected SDK credentials, the global SDK, VS Code settings, offline docs, setup-owned Git and optional local state/backups. Preserve shared tools, edited files and project work; no uninstaller behavior changes.

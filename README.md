@@ -4,6 +4,10 @@ Team distribution package for the **ServiceNow Fluent** VS Code custom agent, it
 
 The package is designed for locked-down Windows machines where Node >=20.18.0, npm, and VS Code are available, but PowerShell/cmd scripts may be restricted. Missing Git can be provisioned through the pinned selective MinGit procedure below. The Agent-file installer is a dependency-free Node program; it does not bypass policy.
 
+## Technical documentation
+
+See the [technical guide](docs/technical-guide.md) for architecture, source ownership, installation behavior, configuration/state, update flows, security boundaries, verification and release maintenance. For end-user procedures, use the setup, PDI connection and uninstall guides below.
+
 ## Agent-assisted setup
 
 Use the stable, unversioned [setup guide](https://bjornmv.github.io/servicenow-fluent-agent/setup/), or read local [setup.md](setup.md) in full. Give a new agent this prompt:

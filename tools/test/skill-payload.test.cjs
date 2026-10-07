@@ -136,6 +136,28 @@ test('PDI guide has local screenshots, valid links and login-first manual authen
   assert.ok(read('README.md').includes('(docs/connect-pdi.md)'));
 });
 
+test('technical guide links to source and distinguishes implementation from workflow safeguards', () => {
+  const guide = read('docs/technical-guide.md');
+  assert.ok(read('README.md').includes('(docs/technical-guide.md)'));
+  const headings = new Set([...guide.matchAll(/^#{1,6} (.+)$/gm)].map(([, text]) =>
+    text.toLowerCase().replace(/[^\w -]/g, '').replace(/ /g, '-')));
+  for (const [, link] of guide.matchAll(/\]\(([^)]+)\)/g)) {
+    if (link.startsWith('#')) assert.ok(headings.has(link.slice(1)), link);
+    else if (!/^https?:/.test(link)) assert.ok(fs.existsSync(path.resolve(root, 'docs', decodeURIComponent(link.split('#')[0]))), link);
+  }
+  for (const boundary of [
+    'not a transaction', 'no previous receipt hash', 'malformed receipt JSON',
+    'strictly older than 48 hours', 'not a background scheduler',
+    'Silence is not proof', 'instruction-level responsibilities',
+    'build: not-run', 'does not automatically enforce schema validation',
+    'Use the explicit `help` subcommand', 'Windows-specific tests skip',
+    'Publication, Pages deployment and local installation are three distinct outcomes',
+  ]) assert.ok(guide.includes(boundary), boundary);
+  assert.match(guide, /node bin\/sn-fluent-agent\.cjs help/);
+  assert.match(guide, /source revision being deployed/);
+  assert.doesNotMatch(guide, /bvelsrud|C:\\Personal\\|ven06834|auth --print/);
+});
+
 test('manual uninstall guide separates components and preserves shared installations', () => {
   // Documentation checks only: never execute the removal commands in this guide.
   const guide = read('docs/uninstall.md');
