@@ -136,6 +136,30 @@ test('PDI guide has local screenshots, valid links and login-first manual authen
   assert.ok(read('README.md').includes('(docs/connect-pdi.md)'));
 });
 
+test('manual uninstall guide separates components and preserves shared installations', () => {
+  // Documentation checks only: never execute the removal commands in this guide.
+  const guide = read('docs/uninstall.md');
+  assert.ok(read('README.md').includes('(docs/uninstall.md)'));
+  const headings = new Set([...guide.matchAll(/^#{1,6} (.+)$/gm)].map(([, text]) =>
+    text.toLowerCase().replace(/[^\w -]/g, '').replace(/ /g, '-')));
+  for (const [, link] of guide.matchAll(/\]\(([^)]+)\)/g)) {
+    if (link.startsWith('#')) assert.ok(headings.has(link.slice(1)), link);
+    else if (!/^https?:/.test(link)) assert.ok(fs.existsSync(path.join(root, 'docs', link.split('#')[0])), link);
+  }
+  assert.ok(guide.indexOf('uninstall --dry-run') < guide.indexOf('node bin/sn-fluent-agent.cjs uninstall\n'));
+  assert.match(guide, /now-sdk auth --delete my-pdi/);
+  assert.match(guide, /before\*\* the SDK/);
+  assert.match(guide, /uninstall --global --prefix \$SdkPrefix @servicenow\/sdk --ignore-scripts/);
+  assert.match(guide, /skipped modified/);
+  assert.match(guide, /Do not delete the entire `\.agents` or `\.copilot` folders/);
+  assert.match(guide, /chat\.skillsFilesLocations/);
+  assert.doesNotMatch(guide, /chat\.skillsLocations|auth --delete all|Remove-Item|ExecutionPolicy Bypass/);
+  assert.match(guide, /\.mingit254-bootstrap\.json/);
+  assert.match(guide, /SN_FLUENT_ENV_REFRESH/);
+  assert.match(guide, /\.servicenow-fluent-agent-update-check\.stamp/);
+  assert.match(guide, /does not remove SDK dependencies inside individual projects/);
+});
+
 test('installer backs up retired owned files and preserves local edits (isolated virtual host)', async t => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-install-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));

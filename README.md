@@ -209,6 +209,12 @@ node bin/sn-fluent-agent.cjs status
 node bin/sn-fluent-agent.cjs uninstall
 ```
 
+## Uninstall components
+
+See [Manually uninstall components](docs/uninstall.md) for separate instructions covering agent files, PDI credentials, the global SDK, VS Code settings, offline documentation, Git and leftover state/backups. Remove only what you no longer need; Git, SDKs and settings may be shared with other projects.
+
+The agent-file uninstaller preserves local edits and does **not** uninstall those other components. Preview its changes before removal.
+
 ## Safety behavior
 
 - Existing files are backed up before overwrite.

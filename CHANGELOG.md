@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Manual uninstall guide
+
+- Document separate manual removal of agent files, selected SDK credentials, the global SDK, VS Code settings, offline docs, setup-owned Git and optional local state/backups. Preserve shared tools, edited files and project work; no uninstaller behavior changes.
+
 ## Unreleased — PDI connection guide
 
 - Add a beginner-friendly PDI connection guide with redacted Developer Portal screenshots: log in to the PDI first, choose **Terminal -> New Terminal** in VS Code, then manually run `now-sdk auth --add dev123456` with your own instance name and follow the OAuth prompts.
