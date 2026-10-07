@@ -1,7 +1,7 @@
 {
   "name": "ServiceNow Fluent Agent",
   "packageName": "servicenow-fluent-agent",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "VS Code custom agent, instructions, and skills for ServiceNow now-sdk / Fluent development.",
   "payloadRoot": "payload",
   "installRoots": [

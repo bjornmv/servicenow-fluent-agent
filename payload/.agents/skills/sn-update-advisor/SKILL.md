@@ -27,12 +27,38 @@ If existing decision-state JSON or its component map is unreadable/malformed, re
 
 ## Check Contract
 
-The installed launcher is `%USERPROFILE%\.agents\tools\sn-update-advisor.cjs`:
+Run each applicable block separately. Replace placeholders with resolved values before execution. When delegating, send the exact block and require execution unchanged; keep prose and punctuation outside it. Leave stdout/stderr visible and print `$LASTEXITCODE` immediately. Do not add .NET process/capture wrappers, temporary-file capture, or `exit` to these commands.
+
+Resolve documentation paths:
 
 ```powershell
-node "$Advisor" check --only sdk --project "<absolute-project-root>"
-node "$Advisor" check --only agent
-node "$Advisor" check --only docs --docs "<resolved-docs-checkout>"
+$ErrorActionPreference = 'Stop'
+& node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths
+Write-Output "docs-paths-exit=$LASTEXITCODE"
+```
+
+Check the receipt's agent checkout:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+& node "$env:USERPROFILE\.agents\tools\sn-update-advisor.cjs" check --only agent
+Write-Output "advisor-exit=$LASTEXITCODE"
+```
+
+Check an identified SDK project:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+& node "$env:USERPROFILE\.agents\tools\sn-update-advisor.cjs" check --only sdk --project "<absolute-project-root>"
+Write-Output "advisor-exit=$LASTEXITCODE"
+```
+
+Check the resolved documentation checkout:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+& node "$env:USERPROFILE\.agents\tools\sn-update-advisor.cjs" check --only docs --docs "<resolved-docs-checkout>"
+Write-Output "advisor-exit=$LASTEXITCODE"
 ```
 
 Use each resolved component's `--only` filter for due startup checks; explicit requests check only the requested components. Resolve docs paths with `sn-doc-md.js paths`; `--docs` requires a value. Outside the session gate, documentation-only questions skip update checks and maintenance.
@@ -43,8 +69,12 @@ Use each resolved component's `--only` filter for due startup checks; explicit r
 - Never say only “now-sdk update” when the target is a project. A global 4.13.3 install does not change a project's 4.12.2 dependency. Inspect global metadata only when relevant; do not reinstall it to update the project.
 - Record each selected component key, never unrelated returned keys. Do not add a fourth choice or re-prompt in the same session:
 
+Replace `<selected-decision>` with `update`, `remind`, or `skip`, matching the user's choice:
+
 ```powershell
-node "$Advisor" decision <update|remind|skip> --component "<returned-component>"
+$ErrorActionPreference = 'Stop'
+& node "$env:USERPROFILE\.agents\tools\sn-update-advisor.cjs" decision "<selected-decision>" --component "<returned-component>"
+Write-Output "advisor-decision-exit=$LASTEXITCODE"
 ```
 
 Recording **Update** records authorization, not installation or build success.

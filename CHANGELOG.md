@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.10 — Simpler advisor execution
+
+- Provide copy-ready direct Node commands with immediate native exit-code reporting in the update-advisor skill; delegate resolved commands unchanged rather than inventing PowerShell capture wrappers.
+- Keep existing check timers, approval gates and update workflow unchanged. Align release metadata and setup worker/guide versions and checksum.
+
 ## 0.3.9 — Upgrade improvements
 
 - Publish the accumulated improvements below as 0.3.9. This release bump adds no new runtime behavior beyond the preceding published commit; known live completion-capture issues remain separate work.
