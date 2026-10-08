@@ -12,6 +12,9 @@ const {
   tryGit,
 } = require('./common');
 
+// 0.1.0 indexes dropped underscores from canonical_url, title and heading.
+const GENERATOR = 'sn-doc-md@0.1.1';
+
 function splitMarkdown(body, fallbackTitle) {
   const text = normalizeText(body);
   const re = /^(#{1,4})\s+(.+?)\s*$/gm;
@@ -175,6 +178,7 @@ async function buildIndex(options) {
   let zeroSkipped = 0;
   let indexSkipped = 0;
   let articleFiles = 0;
+  const releaseCounts = new Map();
 
   for (const f of allMarkdown) {
     if (f.size === 0) { zeroSkipped++; continue; }
@@ -190,7 +194,10 @@ async function buildIndex(options) {
     const topic_type = stripMarkdownInline(meta.topic_type || '');
     const last_updated = stripMarkdownInline(meta.last_updated || '');
     const breadcrumb = Array.isArray(meta.breadcrumb) ? meta.breadcrumb.map(stripMarkdownInline) : [];
-    const canonical_url = stripMarkdownInline(meta.canonical_url || '').replace(/\\_/g, '_');
+    // A URL is not Markdown: keep it verbatim (parseFrontmatter already unescapes \_).
+    const canonical_url = String(meta.canonical_url || '').trim();
+    const release = String(meta.release || '').trim().toLowerCase();
+    if (release) releaseCounts.set(release, (releaseCounts.get(release) || 0) + 1);
     const raw_url = `https://raw.githubusercontent.com/ServiceNow/ServiceNowDocs/${family}/markdown/${f.rel}`;
     const chunks = splitMarkdown(body, title);
     for (const c of chunks) {
@@ -274,11 +281,15 @@ async function buildIndex(options) {
   writeOffsets(path.join(outDir, 'toc.off'), tocOffsets);
   writeIndex(path.join(outDir, 'toc'), tocTerms);
 
+  // --family is only a label; record what the corpus itself declares so a
+  // mismatch (for example a checkout on another release branch) is visible.
+  const corpusRelease = [...releaseCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   const manifest = {
     schema_version: 1,
     generated_at: new Date().toISOString(),
-    generator: 'sn-doc-md@0.1.0',
+    generator: GENERATOR,
     family,
+    corpus_release: corpusRelease,
     docs_root: root,
     markdown_root: markdown,
     git_head: tryGit(root, ['rev-parse', 'HEAD']),
@@ -299,7 +310,11 @@ async function buildIndex(options) {
     elapsed_ms: Date.now() - t0,
   };
   fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  return { outDir, manifest };
+  const warnings = [];
+  if (corpusRelease && corpusRelease !== String(family).toLowerCase()) {
+    warnings.push(`--family ${family} does not match the corpus frontmatter release "${corpusRelease}"; the family label and raw_url values are unverified`);
+  }
+  return { outDir, manifest, warnings };
 }
 
-module.exports = { buildIndex };
+module.exports = { buildIndex, GENERATOR };

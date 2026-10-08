@@ -132,7 +132,7 @@ Applying a docs update requires an approved documentation-maintenance request, n
 
 1. Confirm the displayed checkout/release branch are clean. Bind Git cwd explicitly.
 2. Run `git -C "<checkout>" pull --ff-only`; require real completion evidence.
-3. Rebuild into a temporary sibling index, run its lookup benchmark, replace the active index only after successful validation.
+3. Rebuild into a temporary sibling index, run its lookup benchmark, replace the active index only after successful validation. A lookup `warnings` entry naming `sn-doc-md@0.1.0` is a reason to offer this rebuild even when the corpus commit is unchanged.
 4. Record the source/indexed commit in advisor state through the approved workflow. Do not bundle the corpus/index. Unknown completion does not authorize repeating a pull/build.
 
 ## State Rules

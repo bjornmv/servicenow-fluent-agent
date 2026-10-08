@@ -14,7 +14,7 @@ async function main() {
     }
     if (cmd === 'build') {
       const res = await buildIndex(args);
-      console.log(JSON.stringify({ ok: true, outDir: res.outDir, manifest: res.manifest }, null, 2));
+      console.log(JSON.stringify({ ok: true, outDir: res.outDir, warnings: res.warnings || [], manifest: res.manifest }, null, 2));
       return;
     }
     if (cmd === 'search') {
@@ -34,14 +34,26 @@ async function main() {
       if (args.id !== undefined) rows = [ds.readById(args.id)].filter(Boolean);
       else if (args.path) rows = ds.readByPath(args.path);
       else throw new Error('missing --id or --path');
-      if (args.json) console.log(JSON.stringify({ ok: true, rows }, null, 2));
+      if (!rows.length) {
+        // A miss is a failure, not an empty document: never report ok with no rows.
+        const what = args.id !== undefined ? `chunk id ${args.id}` : `path ${args.path}`;
+        const error = `no indexed content for ${what}; use the numeric id or source_rel of a kind "content" search result`;
+        if (args.json) console.log(JSON.stringify({ ok: false, error, rows: [] }, null, 2));
+        else console.error(`ERROR: ${error}`);
+        process.exitCode = 1;
+        return;
+      }
+      if (args.json) console.log(JSON.stringify({ ok: true, ...ds.indexInfo(), rows }, null, 2));
       else {
+        const max = Number(args.max_chars || 12000);
         for (const r of rows) {
           console.log(`# ${r.title}${r.heading && r.heading !== r.title ? ' / ' + r.heading : ''}`);
+          console.log(`Id: ${r.id}`);
           console.log(`Path: ${r.source_rel}`);
           if (r.canonical_url) console.log(`Canonical: ${r.canonical_url}`);
           console.log('');
-          console.log(r.text.slice(0, Number(args.max_chars || 12000)));
+          console.log(r.text.slice(0, max));
+          if (r.text.length > max) console.log(`\n[truncated: ${max} of ${r.text.length} characters shown; use --json or a larger --max_chars]`);
           console.log('\n---\n');
         }
       }
@@ -66,11 +78,12 @@ function printSearch(res) {
   console.log(`Query: ${res.query}`);
   if (res.keywords) console.log(`Keywords: ${res.keywords}`);
   console.log(`Intent: ${res.intent} | ${res.elapsed_ms} ms | candidates=${res.total_candidates}`);
+  for (const w of res.warnings || []) console.log(`Warning: ${w}`);
   console.log('');
   for (let i = 0; i < res.results.length; i++) {
     const r = res.results[i];
     console.log(`${i + 1}. [${r.score}] ${r.heading || r.title}`);
-    console.log(`   ${r.source_rel}`);
+    console.log(`   id: ${r.id} | kind: ${r.kind} | ${r.source_rel}`);
     if (r.canonical_url) console.log(`   ${r.canonical_url}`);
     if (r.why && r.why.length) console.log(`   why: ${r.why.join('; ')}`);
     if (r.snippet) console.log(`   ${r.snippet}`);
@@ -83,10 +96,13 @@ function usage() {
 
 Commands:
   paths  [--docs <repo>] [--index <index>] (report paths only; no filesystem changes)
-  build  [--docs <ServiceNowDocs root or markdown dir>] [--out <index dir>] --family australia [--force]
+  build  [--docs <ServiceNowDocs root or markdown dir>] [--out <index dir>] [--family australia] [--force]
+         (--force only replaces an existing recognized index)
   search [--index <index dir>] --query <text> [--keywords <terms>] [--limit 10] [--json]
-  read   [--index <index dir>] --id <chunk id> [--json]
-  read   [--index <index dir>] --path <markdown/source/path.md> [--json]
+         (when --keywords is given, it alone supplies the retrieval terms)
+  read   [--index <index dir>] --id <chunk id> [--json] [--max_chars 12000]
+  read   [--index <index dir>] --path <source_rel, relative to markdown/> [--json]
+         (--path returns every chunk of the page; a miss exits 1)
   test   [--index <index dir>] [--json]
 
 Defaults: %LOCALAPPDATA%\\SNDocs\\repo and %LOCALAPPDATA%\\SNDocs\\index.

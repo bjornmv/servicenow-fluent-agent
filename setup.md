@@ -132,7 +132,7 @@ if (Test-Path -LiteralPath $Index) {
 | Recognized but outdated/unknown revision | Ask: reuse with that limitation (recommended when appropriate), or approve rebuild? |
 | Unexpected identity or unreadable manifest | Stop for review; preserve it. |
 
-Identity requires `schema_version: 1`, `generator` starting `sn-doc-md@`, matching `family` and resolved `docs_root`. Compare `git_head` with `$DocsHead`; empty means unknown, not current. An approved recognized-index rebuild adds `--force` to the build command; never delete a directory to make it succeed.
+Identity requires `schema_version: 1`, `generator` starting `sn-doc-md@`, matching `family` and resolved `docs_root`. Compare `git_head` with `$DocsHead`; empty means unknown, not current. An index whose `generator` is `sn-doc-md@0.1.0` stores `canonical_url`, titles and headings without underscores; treat it as outdated and offer the rebuild. An approved recognized-index rebuild adds `--force` to the build command; never delete a directory to make it succeed. Report any `warnings` in the build JSON (the family label differing from the corpus release).
 
 <!-- setup-block:index-build -->
 ```powershell

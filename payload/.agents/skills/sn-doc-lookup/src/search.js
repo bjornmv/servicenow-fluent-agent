@@ -6,6 +6,7 @@ const {
   extractPhrases,
   normalizeForMatch,
   makeSnippet,
+  normalizeSlashes,
   readOffsets,
   readLineAt,
 } = require('./common');
@@ -83,6 +84,22 @@ class DocSearch {
     this.content = new JsonlIndex(this.indexDir, 'content');
     this.toc = fs.existsSync(path.join(this.indexDir, 'toc.jsonl')) ? new JsonlIndex(this.indexDir, 'toc') : null;
     this.pathMap = JSON.parse(fs.readFileSync(path.join(this.indexDir, 'path-map.json'), 'utf8'));
+  }
+
+  // Provenance and known index defects, so callers need not open manifest.json.
+  indexInfo() {
+    const m = this.manifest;
+    const warnings = [];
+    if (m.generator === 'sn-doc-md@0.1.0') {
+      warnings.push('index built by sn-doc-md@0.1.0: canonical_url, title and heading values may have lost underscores; an approved rebuild corrects them');
+    }
+    if (m.corpus_release && m.corpus_release !== String(m.family || '').toLowerCase()) {
+      warnings.push(`index family label "${m.family}" differs from the corpus frontmatter release "${m.corpus_release}"`);
+    }
+    return {
+      index: { family: m.family || '', corpus_release: m.corpus_release || '', generator: m.generator || '', git_head: m.git_head || '' },
+      warnings,
+    };
   }
 
   idf(term, index = this.content) {
@@ -273,6 +290,7 @@ class DocSearch {
       title: x.row.title,
       heading: x.row.heading,
       source_rel: x.row.source_rel,
+      doc_chunks: (this.pathMap[x.row.source_rel] || []).length,
       canonical_url: x.row.canonical_url,
       product: x.row.product,
       topic_type: x.row.topic_type,
@@ -289,6 +307,7 @@ class DocSearch {
           title: t.row.title,
           heading: t.row.title,
           source_rel: t.row.target_rel,
+          doc_chunks: 0,
           canonical_url: '',
           product: '',
           topic_type: 'toc',
@@ -308,16 +327,32 @@ class DocSearch {
       chosen_terms: chosenTerms,
       elapsed_ms: Number((performance.now() - t0).toFixed(1)),
       total_candidates: candidates.size,
+      ...this.indexInfo(),
       results,
     };
   }
 
   readById(id) {
-    return this.content.row(Number(id));
+    const n = Number(id);
+    if (!Number.isInteger(n) || n < 0 || String(id).trim() === '') return null;
+    return this.content.row(n);
+  }
+
+  // source_rel keys are forward-slash paths relative to the markdown/ directory.
+  // Accept the common near-misses: backslashes, a leading ./ or markdown/, or an
+  // absolute path inside this index's markdown root.
+  normalizeSourceRel(sourceRel) {
+    let rel = normalizeSlashes(String(sourceRel || '').trim());
+    if (this.pathMap[rel]) return rel;
+    const root = normalizeSlashes(this.manifest.markdown_root || '').replace(/\/+$/, '');
+    if (root && rel.toLowerCase().startsWith(root.toLowerCase() + '/')) rel = rel.slice(root.length + 1);
+    rel = rel.replace(/^(?:\.\/)+/, '').replace(/^\/+/, '');
+    if (!this.pathMap[rel] && rel.toLowerCase().startsWith('markdown/')) rel = rel.slice('markdown/'.length);
+    return rel;
   }
 
   readByPath(sourceRel) {
-    const ids = this.pathMap[sourceRel] || [];
+    const ids = this.pathMap[this.normalizeSourceRel(sourceRel)] || [];
     return ids.map(id => this.content.row(id)).filter(Boolean);
   }
 }
