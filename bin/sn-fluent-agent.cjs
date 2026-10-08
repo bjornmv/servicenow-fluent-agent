@@ -481,6 +481,8 @@ function recordUpdateDecision() {
   if (!componentKeys.length) throw new Error('Specify at least one --component returned by check-updates.');
   const updated = recordDecision({ decision, componentKeys });
   console.log(`Recorded ${decision} for ${updated} update component(s).`);
+  // A key with no recorded notice is skipped by the library; never report that as a recorded decision.
+  if (updated < componentKeys.length) throw new Error(`Only ${updated} of ${componentKeys.length} update component(s) had a recorded notice; the others were not recorded.`);
 }
 
 function printInstallSummary(summary, receiptCount) {

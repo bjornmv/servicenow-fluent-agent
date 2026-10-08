@@ -114,6 +114,36 @@ test('mismatched lock, installed SDK, engine pin or competing manager blocks npm
   }
 });
 
+test('.nvmrc: only an exact x.y.z equal to the running Node passes; non-exact forms are named as a worker limit', t => {
+  const f = fixture(t);
+  const nvmrc = path.join(f.project, '.nvmrc');
+  const major = process.versions.node.split('.')[0];
+  for (const value of [major, 'v' + major, process.versions.node.split('.').slice(0, 2).join('.'), 'lts/*', 'node']) {
+    fs.writeFileSync(nvmrc, value + '\n');
+    assert.throws(() => preflight(f.options), /accepts only an exact x\.y\.z \.nvmrc.*not proof of a wrong Node/, value);
+  }
+  fs.writeFileSync(nvmrc, '0.0.1\n');
+  assert.throws(() => preflight(f.options), /Node does not match the exact \.nvmrc pin/);
+  for (const value of [process.versions.node, 'v' + process.versions.node + '\n']) {
+    fs.writeFileSync(nvmrc, value);
+    assert.equal(preflight(f.options).to, '4.13.3');
+  }
+});
+
+test('a failed npm run keeps the lock, the original manifest/lock copies and a failed result for review', t => {
+  const f = fixture(t);
+  const manifest = fs.readFileSync(path.join(f.project, 'package.json'));
+  const lockfile = fs.readFileSync(path.join(f.project, 'package-lock.json'));
+  const r = apply(f.options, () => ({ status: 1 }));
+  assert.equal(r.state, 'failed');
+  assert.equal(r.exitCode, 1);
+  assert.deepEqual(fs.readFileSync(path.join(f.runDir, 'package.json.before')), manifest);
+  assert.deepEqual(fs.readFileSync(path.join(f.runDir, 'package-lock.json.before')), lockfile);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.project, '.sn-sdk-update.lock'), 'utf8')).runDir, f.runDir);
+  assert.equal(status(f.runDir).state, 'failed');
+  assert.throws(() => preflight({ ...f.options, runDir: f.runDir + '-next' }), /Existing update lock/);
+});
+
 test('delayed process has durable request/logs, UNKNOWN status and refuses duplicate execution', t => {
   const f = fixture(t);
   apply(f.options, fakeSuccess(f, () => {

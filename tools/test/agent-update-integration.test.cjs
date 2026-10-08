@@ -317,3 +317,103 @@ test('isolated update preserves a customized installed file and verifier rejects
   assert.match(verified.output, /mismatched: 1/);
   assert.equal(hash(installed), customizedHash);
 });
+
+// Real installed-launcher process -> real checkout CLI -> real library, with a fixture home.
+// No network: the SDK fixture declares a range (never queried) and the docs path does not exist.
+function launcherFixture(t) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'advisor-launcher-e2e-'));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const home = path.join(base, 'home');
+  const agents = path.join(home, '.agents');
+  const project = path.join(base, 'project');
+  fs.mkdirSync(agents, { recursive: true });
+  fs.mkdirSync(project);
+  fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ devDependencies: { '@servicenow/sdk': '^4.0.0' } }));
+  const receipt = path.join(agents, '.servicenow-fluent-agent-install.json');
+  fs.writeFileSync(receipt, JSON.stringify({ repoRoot: root }));
+  const stateFile = path.join(agents, '.servicenow-fluent-agent-update.json');
+  const env = { ...gitEnvironment(base), HOME: home, USERPROFILE: home };
+  const run = (...args) => spawnSync(process.execPath, [path.join(root, 'payload/.agents/tools/sn-update-advisor.cjs'), ...args],
+    { cwd: base, env, encoding: 'utf8', shell: false, timeout: 30000 });
+  return { base, home, project, receipt, stateFile, run };
+}
+
+test('installed launcher end to end: check exit status reflects whether the check ran and succeeded', t => {
+  const f = launcherFixture(t);
+  const quiet = f.run('check', '--only', 'sdk', '--project', f.project);
+  assert.equal(quiet.status, 0, quiet.stderr);
+  assert.equal(quiet.stdout, '');
+  assert.equal(quiet.stderr, '');
+  const sdkKey = `sdk:${path.resolve(f.project).toLowerCase()}`;
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(f.stateFile, 'utf8')).components), [sdkKey]);
+
+  const shown = f.run('state');
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(shown.stdout).components), [sdkKey]);
+
+  const bareDocs = f.run('check', '--only', 'docs', '--docs');
+  assert.equal(bareDocs.status, 1);
+  assert.equal(bareDocs.stdout, '');
+  assert.match(bareDocs.stderr, /Update check failed: checkout CLI exited 1 \(.*Missing value for --docs/);
+
+  const missingProject = f.run('check', '--only', 'sdk');
+  assert.equal(missingProject.status, 1);
+  assert.match(missingProject.stderr, /SDK checks require an explicit project/);
+
+  const docs = path.join(f.base, 'no-such-checkout');
+  const failed = f.run('check', '--only', 'docs', '--docs', docs);
+  assert.equal(failed.status, 1, 'a discovery failure is not a quiet success');
+  assert.equal(failed.stdout, '');
+  assert.match(failed.stderr, /Update check failed for docs:.*lastCheckFailedAt/);
+  const notDue = f.run('check', '--only', 'docs', '--docs', docs);
+  assert.equal(notDue.status, 0, 'a component that is not due is not contacted, so nothing new failed');
+
+  fs.unlinkSync(f.receipt);
+  const noReceipt = f.run('check', '--only', 'agent');
+  assert.equal(noReceipt.status, 1);
+  assert.equal(noReceipt.stdout, '');
+  assert.match(noReceipt.stderr, /Update check not run: the install receipt/);
+});
+
+test('installed launcher end to end: malformed state is preserved byte for byte', t => {
+  const f = launcherFixture(t);
+  fs.writeFileSync(f.stateFile, '{bad');
+  for (const args of [['check', '--only', 'sdk', '--project', f.project], ['decision', 'skip', '--component', 'agent'], ['state']]) {
+    const r = f.run(...args);
+    assert.equal(r.status, 1, args.join(' '));
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /left unchanged; do not reset it/);
+    assert.equal(fs.readFileSync(f.stateFile, 'utf8'), '{bad');
+  }
+});
+
+test('installed launcher end to end: decisions are recorded for a shown notice and refused otherwise', t => {
+  const f = launcherFixture(t);
+  const available = { id: '2222222222222222222222222222222222222222', label: 'ServiceNow Fluent Agent', current: '111111111111', available: '222222222222' };
+  const initial = JSON.stringify({ version: 1, components: { agent: { lastCheckedAt: '2026-01-01T00:00:00.000Z', available }, 'docs:c:\\docs': { lastCheckedAt: '2026-01-01T00:00:00.000Z' } } }, null, 2) + '\n';
+  fs.writeFileSync(f.stateFile, initial);
+  for (const key of ['Agent', 'docs:c:\\docs', 'sdk:c:\\\\escaped']) {
+    const refused = f.run('decision', 'skip', '--component', key);
+    assert.equal(refused.status, 1, key);
+    assert.equal(refused.stdout, '', 'the CLI line "Recorded skip for 0 update component(s)." must never be reached');
+    assert.match(refused.stderr, /decision not recorded: no recorded notice for .*Components with a recorded notice: agent\./);
+    assert.equal(fs.readFileSync(f.stateFile, 'utf8'), initial);
+  }
+  const unsupported = f.run('decision', 'later', '--component', 'agent');
+  assert.equal(unsupported.status, 1);
+  assert.equal(fs.readFileSync(f.stateFile, 'utf8'), initial);
+
+  const recorded = f.run('decision', 'skip', '--component', 'agent');
+  assert.equal(recorded.status, 0, recorded.stderr);
+  assert.match(recorded.stdout, /^Recorded skip for 1 update component\(s\)\.\s*$/);
+  const agent = JSON.parse(fs.readFileSync(f.stateFile, 'utf8')).components.agent;
+  assert.equal(agent.lastDecision, 'skip');
+  assert.deepEqual(agent.skippedRelease, available);
+
+  // The checkout CLI itself (no launcher guard) must not report an unmatched key as a recorded decision.
+  const direct = spawnSync(process.execPath, [path.join(root, 'bin/sn-fluent-agent.cjs'), 'update-decision', 'remind', '--component', 'agent', '--component', 'docs:c:\\docs'],
+    { cwd: f.base, env: { ...gitEnvironment(f.base), HOME: f.home, USERPROFILE: f.home }, encoding: 'utf8', shell: false, timeout: 30000 });
+  assert.equal(direct.status, 1);
+  assert.match(direct.stdout, /^Recorded remind for 1 update component\(s\)\./);
+  assert.match(direct.stderr, /Only 1 of 2 update component\(s\) had a recorded notice/);
+});

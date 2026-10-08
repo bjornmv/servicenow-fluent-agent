@@ -69,7 +69,9 @@ function preflight(options) {
   const nvmrc = path.join(project, '.nvmrc');
   if (fs.existsSync(nvmrc)) {
     const version = fs.readFileSync(nvmrc, 'utf8').trim().replace(/^v/, '');
-    requireThat(exactVersion(version) && version === process.versions.node,
+    requireThat(exactVersion(version),
+      'This worker accepts only an exact x.y.z .nvmrc (no major-only, range or alias value); stop for environment review, this is not proof of a wrong Node');
+    requireThat(version === process.versions.node,
       'Node does not match the exact .nvmrc pin; stop for environment review, never switch/install Node automatically');
   }
   regular(npmCli);
