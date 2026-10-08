@@ -443,6 +443,39 @@ test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exc
   assert.match(worker, /Confirm-NoDeploymentBlocks \$auditStart/);
 });
 
+test('skill pins, switches and outcome markers are the ones the worker implements', () => {
+  const value = name => worker.match(new RegExp(`^\\$${name} = '([^']+)'`, 'm'))[1];
+  for (const name of ['expectedHash', 'url', 'pinned']) assert.ok(skill.includes(value(name)), name);
+  const excluded = worker.match(/^\$excludedFiles = @\(([^)]+)\)/m)[1].split(',').map(entry => entry.trim().replace(/'/g, ''));
+  assert.equal(excluded.length, 2);
+  for (const file of excluded) assert.ok(skill.includes(`--exclude=${file}`), file);
+  assert.match(skill, /-File \$Worker -InstallIfMissing\n/);
+  assert.match(skill, /scripts\\Ensure-MinGit254\.ps1/);
+  assert.match(skill, /cache\\MinGit-2\.54\.0-64-bit\.zip/);
+  assert.match(worker, /Join-Path \$CacheDirectory 'MinGit-2\.54\.0-64-bit\.zip'/);
+  const parameters = worker.slice(worker.indexOf('param('), worker.indexOf(')', worker.indexOf('[string]$GitExecutable')));
+  const modes = skill.slice(skill.indexOf('## Scope limits and explicit modes'));
+  for (const name of ['InstallIfMissing', 'StageOnly', 'ValidateOnly', 'ReplaceFullGit', 'RefreshEnvironment', 'GitExecutable']) {
+    assert.ok(parameters.includes(`$${name}`), `worker lacks -${name}`);
+    assert.ok(modes.includes(`-${name}`), `skill modes omit -${name}`);
+  }
+  assert.match(skill, /-ReplaceFullGit`[^\n]*Never use this for automatic setup/);
+  assert.match(skill, /Never run the worker with no mode switch/);
+  for (const marker of ['SKIP:', 'STAGED:', 'VALIDATED STAGING ONLY:', 'SUCCESS:', 'ENVIRONMENT UPDATED', 'FAILED:', 'ABSENT-ONLY SETUP:', 'Staged native Git version/init/status passed']) {
+    assert.ok(skill.includes(marker), `skill omits ${marker}`);
+    assert.ok(worker.includes(marker), `worker never logs ${marker}`);
+  }
+  for (const name of ['GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_COUNT', 'GIT_SSL_NO_VERIFY']) {
+    assert.ok(skill.includes(`\`${name}\``) && new RegExp(`\\$env:${name}\\b`).test(worker), name);
+  }
+  // Refusal to start is a policy block: no bypass, in the skill or the setup page.
+  for (const text of [skill, gitSetup]) {
+    assert.match(text, /Set-ExecutionPolicy` at any scope/);
+    assert.match(text, /Unblock-File/);
+    for (const [, block] of text.matchAll(/```(?:powershell|text)\n([\s\S]*?)```/g)) assert.doesNotMatch(block, /-ExecutionPolicy|Unblock-File|Set-ExecutionPolicy/i);
+  }
+});
+
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
   for (const entry of ['VERSION', 'tools/setup-guide-metrics.cjs', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);

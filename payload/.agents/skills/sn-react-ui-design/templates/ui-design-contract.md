@@ -28,7 +28,7 @@ Actual approval or delegation reference: <decision / pending>
 - Chosen structure and actual approval/delegation: <...>
 - Navigation vocabulary; first-screen regions; primary/contextual actions: <...>
 - Required columns/fields, secondary details and narrow-screen priority: <...>
-- Components/tokens and verified versions/imports/runtime constraints: <reuse documented decisions; link rather than duplicate>
+- Components/tokens, verified versions/imports/runtime constraints and any deviation from the SDK UI Page guides: <reuse documented decisions; link rather than duplicate>
 - Material copy decisions/glossary: <inline or existing reference>
 
 ## State and safety — affected domains only
@@ -58,7 +58,7 @@ Cover applicable layout, focus/accessibility, state continuity/invalidation, saf
 
 Link results rather than copying the review: <actual review/artifact paths>
 - Source / local-rendered / target installation and runtime status: <separate results or pending>
-- Existing target compatibility evidence and whether invalidated: <...>
+- Existing target compatibility evidence (`docs/ui-runtime-compatibility.md`) and whether invalidated: <...>
 - Independent critique or self-review; blockers/gaps: <...>
 - User design approval: <actual decision / pending>
 - Deployment authorization and target: <separate actual decision / not requested>

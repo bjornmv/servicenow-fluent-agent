@@ -1,12 +1,12 @@
 # React behavior and ServiceNow boundaries
 
-Use for interaction/state changes or behavioral review. Apply affected sections; this is not a requirement to rewrite unrelated behavior. Inspect project versions and official local docs before using component, provider, client or server APIs.
+Use for interaction/state changes or behavioral review. Apply affected sections; this is not a requirement to rewrite unrelated behavior. Inspect project versions, and the SDK guides and component docs named in SKILL.md's components order, before using component, provider, client or server APIs.
 
 ## Runtime and components
 
-Reuse the supported React host, component library and tokens. A package named `@servicenow/*` does not guarantee its providers work in a direct UI Page. Prefer semantic HTML for simple controls and approved accessible components for complex pickers/dialogs; don't invent imports or add a UI kit to restyle a page.
+Reuse the supported React host, component library and tokens, chosen in SKILL.md's components order. The SDK's `ui-page-guide` defaults to `@servicenow/react-components` (`NowRecordListConnected` for record lists, `RecordProvider` for record forms), but a package named `@servicenow/*` does not guarantee its providers work in a direct UI Page: a runtime-dependent family is used only once it is proven on this hosting type (`sn-ui-page-vite`'s gate). Otherwise use semantic HTML for simple controls and approved accessible components for complex pickers/dialogs. Don't invent imports, props or events, and don't add a UI kit to restyle a page.
 
-Scope styles to the app root/modules; preserve host controls, portals and inherited themes. No global resets that damage the ServiceNow shell. Keep dev proxies, localhost assets and relaxed security out of production; no injected live-edit helpers, weakened CSP or disabled browser security. Scaffolding/HMR/hosting changes route through `sn-ui-page-vite` as described in SKILL.md, not for ordinary UI changes.
+Scope styles under an app-root class with prefixed/BEM class names; preserve host controls, portals and inherited themes. The SDK's default UI Page build supports neither CSS Modules nor CSS `@import` (import plain `.css` files via ESM); on an approved Vite path, verify CSS Modules before relying on them. No global resets that damage the ServiceNow shell. Keep dev proxies, localhost assets and relaxed security out of production; no injected live-edit helpers, weakened CSP or disabled browser security. Scaffolding/HMR/hosting changes route through `sn-ui-page-vite` as described in SKILL.md; ordinary UI changes do not load it, except for the compatibility-gate triggers named there.
 
 ## Separate state by meaning
 
@@ -45,9 +45,9 @@ Scope styles to the app root/modules; preserve host controls, portals and inheri
 ## Semantics and focus
 
 - Links navigate; buttons act. Native buttons already support keyboard activation; redundant Space/Enter handlers can fire twice. Use persistent input labels, associated hints/errors (`aria-describedby`) and accurate `aria-invalid`.
-- Use semantic tables with header relationships and named sort controls/`aria-sort`. Selectable rows do not require `role="grid"`; a grid requires its complete composite keyboard model.
+- Hand-built tables are semantic, with header relationships and named sort controls/`aria-sort`. Selectable rows do not require `role="grid"`; a grid requires its complete composite keyboard model.
 - Follow the supported component/APG pattern for custom tabs/comboboxes/dialogs. Ordinary navigation needs links, not ARIA tabs.
-- Modals need a name, appropriate initial focus, containment, background isolation, suitable Escape behavior and focus return to the trigger/logical fallback. Never hide a focused ancestor with `aria-hidden`. Nonmodal drawers must not trap focus or inert the background.
+- Modals need a name, appropriate initial focus, containment, background isolation, suitable Escape behavior and focus return to the trigger/logical fallback. Never hide a focused ancestor with `aria-hidden`. Nonmodal drawers must not trap focus or inert the background. Use the project's dialog component (`Modal` on `@servicenow/react-components` pages), not `window.confirm()`/`window.alert()`, which the SDK's `ui-page-patterns-guide` rules out for unsaved-change warnings.
 - Keep focus stable on refresh, density changes and contextual-bar appearance. Announce useful status/counts politely without rereading the list on every keystroke. Critical errors cannot be toast-only.
 - Preserve visible/unobscured focus, contrast, zoom and motion preferences. Adding an `aria-label` does not repair a broken interaction.
 

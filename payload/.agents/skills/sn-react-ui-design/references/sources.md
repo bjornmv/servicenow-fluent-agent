@@ -42,6 +42,7 @@ The WAI Understanding pages and APG patterns explain implementation and interpre
 ## Existing local workflows
 
 - [React UI Page / Vite](../../sn-ui-page-vite/SKILL.md): authoritative local routing for the official SDK integration and conditional target-runtime compatibility slice.
+- SDK bundled UI Page guides (`now-sdk explain ui-page-guide`, `ui-page-patterns-guide`, `ui-page-theming-guide`): the source for component, token and CSS-build facts. Deliberate adaptation: the project's proven convention and the target-runtime gate take precedence over the guides' absolutes, and the guides are not uniform themselves (`ui-page-guide` forbids hand-built record tables, `ui-page-theming-guide` requires semantic `<table>` markup for tables).
 - [Lux / AIUX](../../sn-lux/SKILL.md): use for actual Lux/AIUX (Lit) surfaces, not because a page has "Experience" in its name.
 - [Fluent explanation](../../sn-explain/SKILL.md) and [build/install](../../sn-build-install/SKILL.md): retain their authoring/deployment boundaries; this skill does not invent platform APIs.
 

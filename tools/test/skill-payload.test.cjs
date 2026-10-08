@@ -61,6 +61,64 @@ test('thin authoring wrappers and ambiguous export name are retired, with type t
   for (const type of ['graphql-api', 'playbook', 'test-suite']) assert.ok(skillFiles.some(f => f.endsWith(path.join(`sn-add-${type}`, 'SKILL.md'))));
 });
 
+test('every relative Markdown link and heading anchor in the payload resolves, references and templates included', () => {
+  const slug = text => text.replace(/`/g, '').trim().toLowerCase().replace(/[^\w\- ]/g, '').replace(/ /g, '-');
+  const headings = file => new Set([...fs.readFileSync(file, 'utf8').matchAll(/^#{1,6} (.+)$/gm)].map(([, text]) => slug(text)));
+  let checked = 0;
+  for (const file of files.filter(f => f.endsWith('.md'))) {
+    const text = fs.readFileSync(file, 'utf8').replace(/```[\s\S]*?```/g, '');
+    for (const [, link, anchor] of text.matchAll(/\]\((?!https?:|#)([^)#\s]+\.md)(?:#([^)]*))?\)/g)) {
+      const target = path.resolve(path.dirname(file), link);
+      assert.ok(fs.existsSync(target), `${rel(file)}: broken ${link}`);
+      if (anchor) assert.ok(headings(target).has(anchor), `${rel(file)}: missing heading #${anchor} in ${link}`);
+      checked += 1;
+    }
+    for (const [, anchor] of text.matchAll(/\]\(#([^)]*)\)/g)) assert.ok(headings(file).has(anchor), `${rel(file)}: missing heading #${anchor}`);
+  }
+  assert.ok(checked > 100, 'link scan found too few links to be meaningful');
+});
+
+test('authoring skills keep their verified guardrails, stop branches and hand-offs', () => {
+  const skill = name => read(`payload/.agents/skills/${name}/SKILL.md`);
+  const record = skill('sn-add-record');
+  for (const phrase of ['Do not install directly from this skill', 'sn-build-install', 'sn-transform', 'UNBUILT', 'not that the record is correct']) assert.ok(record.includes(phrase), phrase);
+  const table = read('payload/.agents/skills/sn-add-record/references/table.md');
+  assert.ok(table.includes("{ label: '...' }") && table.includes('object form'));
+  const rule = read('payload/.agents/skills/sn-add-record/references/business-rule.md');
+  for (const phrase of ["$id: Now.ID[", 'serverModulesDir', 'not compiled']) assert.ok(rule.includes(phrase), phrase);
+
+  const graphql = skill('sn-add-graphql-api');
+  assert.match(graphql, /`requiresAuthentication`, `requiresAclAuthorization`, and `requiresSncInternalRole` enabled unless/);
+  assert.match(graphql, /Never widen roles or lower security/);
+  assert.match(graphql, /\]\(\.\.\/sn-rest\/SKILL\.md\)/);
+  assert.match(graphql, /`content` on `sys_module`/);
+  assert.match(graphql, /not an `export function` module/);
+  assert.doesNotMatch(graphql, /roles: \['catalog_reader'\]/);
+
+  const playbook = skill('sn-add-playbook');
+  assert.match(playbook, /always takes three arguments/);
+  assert.match(playbook, /`view: true` plus `launch: true`/);
+  assert.match(playbook, /`publicAccess: true`[^\n]*only with explicit approval/);
+  assert.match(playbook, /Build and install never activate a playbook/);
+  assert.match(playbook, /Obtain explicit approval before enabling Autonomous mode/);
+
+  const suite = skill('sn-add-test-suite');
+  assert.match(suite, /A green build does not validate membership/);
+  assert.match(suite, /When execution is authorized/);
+  assert.match(suite, /never use `new TestSuite\(\)`/);
+  assert.doesNotMatch(suite, /new TestSuite\(\{/);
+
+  // A failed explain lookup exits non-zero with this text; each explain-first skill must stop on it.
+  for (const text of [graphql, playbook, suite, skill('sn-explain')]) assert.match(text, /No matching topics/);
+  const explain = skill('sn-explain');
+  assert.match(explain, /^## Missing topic or older SDK/m);
+  assert.match(explain, /\*\*Always pass `--format raw`\*\*/);
+  assert.match(explain, /do NOT invent fields/);
+  assert.match(explain, /\]\(\.\.\/sn-add-record\/SKILL\.md\)/);
+  assert.doesNotMatch(explain, /platform-view-guide/);
+  for (const line of explain.split('\n').filter(l => /now-sdk explain --list/.test(l) && !/bare|without a keyword|hint to run/.test(l))) assert.match(line, /--format raw/, line);
+});
+
 test('payload enumeration excludes development tests but retains setup docs acceptance tests', () => {
   const rels = files.map(rel);
   assert.ok(rels.includes('.agents/skills/sn-doc-lookup/test/run-tests.js'));

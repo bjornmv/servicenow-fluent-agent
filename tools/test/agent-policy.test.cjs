@@ -210,6 +210,37 @@ test('UI and authentication details remain in their specialized owners', () => {
   assert.match(skill('sn-auth'), /inventory, not a connection test/);
 });
 
+test('build-diagnosis and Lux skills keep reproduced diagnostics and safety polarity', () => {
+  const fix = skill('sn-fix-build');
+  assert.match(fix, /Table definition should be exported as a named export/);
+  assert.match(fix, /Node kind "BarBarToken"/);
+  assert.match(fix, /Build completed successfully/);
+  assert.match(fix, /sn-build-install\/SKILL\.md#automation-ownership/);
+  assert.match(fix, /Do not externalize a documented `Test\(\.\.\.\)`/);
+  assert.match(fix, /Never change `legacyChoices`/);
+  const fluent = read('payload/.agents/instructions/fluent.instructions.md');
+  for (const kind of ['BarBarToken', 'AmpersandAmpersandToken', 'ConditionalExpression', 'SpreadAssignment', 'SpreadElement']) {
+    assert.ok(fix.includes(`"${kind}"`) && fluent.includes(`"${kind}"`), kind);
+  }
+  // GraphQL: Now.include is a raw script, never offered as an equal alternative to an imported module function.
+  for (const text of [fix, fluent, skill('sn-build-install'), read('payload/.agents/instructions/scripts.instructions.md')]) {
+    assert.doesNotMatch(text, /imported server functions? \(preferred\) or `Now\.include/);
+    assert.doesNotMatch(text, /\(preferred\), or use `Now\.include`/);
+  }
+
+  const lux = skill('sn-lux'), luxBuild = skill('sn-lux-build');
+  for (const pattern of [/vendorprefix/, /not evidence of reservation/, /--ignore-scripts/, /--parentScopeName/, /packageSourceCodeOnInstance/]) assert.match(lux, pattern);
+  const packs = read('payload/.agents/skills/sn-lux/references/official-skills.md');
+  assert.match(packs, /^## Required task routes$/m);
+  assert.match(packs, /^## Leave evidence, not a reading claim$/m);
+  for (const pattern of [/Do not use `--reinstall`/, /--demoData=false/, /Do not automatically clear `deleted: true`/, /has two causes/, /needs the user's go-ahead for that alias/]) assert.match(luxBuild, pattern);
+  for (const asset of ['assets/now.prebuild.mjs', 'assets/scripts/normalize-aiux-assets.mjs']) {
+    assert.ok(fs.existsSync(path.join(root, 'payload/.agents/skills/sn-lux-build', asset)), asset);
+  }
+  assert.match(read('payload/.agents/skills/sn-lux-build/references/validation-and-troubleshooting.md'), /^## Windows asset 404$/m);
+  assert.match(policy, /AIUX \(`aiux\.json`\) project builds only with its project-local SDK/);
+});
+
 test('generation detects source-contract or output drift in an isolated fixture', t => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-policy-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));

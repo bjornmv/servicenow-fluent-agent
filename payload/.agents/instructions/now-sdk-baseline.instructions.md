@@ -16,4 +16,5 @@ Consult the task's skill for its procedure:
 - [Command policy](../reference/sdk-commands.md) for permitted execution and recovery.
 - [Fluent rules](fluent.instructions.md) and [sn-explain](../skills/sn-explain/SKILL.md) for authoring.
 - [sn-build-install](../skills/sn-build-install/SKILL.md) for automation checks, deployment approvals and verification.
+- [sn-lux](../skills/sn-lux/SKILL.md) and [sn-lux-build](../skills/sn-lux-build/SKILL.md) for Lux (AIUX) projects.
 - [sn-rest](../skills/sn-rest/SKILL.md) for bounded instance reads.

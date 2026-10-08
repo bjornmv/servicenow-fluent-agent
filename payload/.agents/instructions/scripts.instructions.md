@@ -4,7 +4,7 @@ description: src/scripts, src/server, and src/ui are full TypeScript/JS/HTML/CSS
 ---
 # src/scripts/**, src/server/**, and src/ui/** — full code, not Fluent
 
-These files are not ordinary Fluent record declarations. They are TypeScript / JavaScript / HTML / CSS. Most record scripts are referenced from `.now.ts` with `Now.include`; API-specific modules can instead be imported as documented. The documented `GraphQLApi` form prefers named resolver functions imported from `src/server`, while `Now.include` remains supported. Path depth by layout:
+These files are not ordinary Fluent record declarations. They are TypeScript / JavaScript / HTML / CSS. Most record scripts are referenced from `.now.ts` with `Now.include`; API-specific modules can instead be imported as documented. The documented `GraphQLApi` form prefers named resolver functions imported from `src/server`; `Now.include` there is only for a raw resolver script file, not a module that exports functions. A `Now.include` target is inlined verbatim and is not compiled, so it must be plain JavaScript: TypeScript belongs in server modules (`src/server`), not in included `src/scripts/` files. Path depth by layout:
 
 - Directly under `src/fluent/` (e.g. `src/fluent/foo.now.ts`) → `../scripts/<file>.js` or `../ui/<file>.js`.
 - Under `src/fluent/<folder>/` (e.g. `src/fluent/admin/foo.now.ts`) → `../../scripts/<file>.js` or `../../ui/<file>.js`.
@@ -22,7 +22,7 @@ Conventions:
 - One script file per record. Name it after the record it backs (e.g. `set_priority_on_insert.js`).
 - If a script needs to be shared, make it a Script Include and reference it — don't `Now.include` the same file into two records.
 
-Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw` and the matching `-guide`. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
+Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw`, adding the guide only for net-new or complex composition (see [sn-explain](../skills/sn-explain/SKILL.md)). Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
 
 ## Service Portal widget gotchas
 

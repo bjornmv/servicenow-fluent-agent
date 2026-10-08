@@ -157,7 +157,7 @@ The advisor records its non-sensitive timing and decision state in `%USERPROFILE
 ### Test agent updates without changing your installation
 
 ```text
-node --test tools/test/update-advisor.test.cjs tools/test/agent-update-integration.test.cjs
+npm run test:update-advisor
 ```
 
 Requires an existing Git executable; never bootstraps Git. The integration test creates a local bare remote with two revisions at the same package version, an older checkout, and temporary home/receipt/advisor state. It exercises production detection, approval recording, a test-driver fast-forward, and production payload installation/verification; it checks backups and preserved local edits. All test directories are removed afterward. Reminder timing is simulated, not a seven-day wait.
@@ -229,9 +229,9 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 ## Skill and instruction maintenance
 
 - Descriptions are version-neutral, explicit **Use when** triggers. `argument-hint`, `compatibility`, and `metadata.version: '1'` are consistent; the latter identifies the skill format, not the distribution or SDK version. Body **Verified against** lines record historical evidence, not runtime pins or newly tested compatibility. Respect each project's SDK and engines.
-- `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
+- `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery and the missing-topic / older-SDK stop branch. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
 - `sn-doc-export` creates PDF/DOCX/HTML and can capture Service Portal screenshots from the confirmed instance; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
-- `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums.
+- `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums. Maintain the skill and its script in `payload/.agents/skills/win-git-bootstrap/` and install that reviewed subtree to the live profile.
 - Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. REST CLI tests use mocked transport and credentials, not live instance access.
 
 ### Runtime prompt boundaries
@@ -259,7 +259,10 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 | Install errors, history, content proof and Studio commit reminder | `sn-build-install` |
 | Automation source/XML classification and deployment scan | `sn-build-install`, linked from `sn-transform` and Fluent file instructions |
 | OAuth inventory versus connectivity evidence | `sn-auth` |
-| Lux assets, tombstones and runtime checks | `sn-lux` / `sn-lux-build` |
+| Lux classification, prerequisites, scaffold and official AIUX/Horizon pack routing | `sn-lux` (+ `references/official-skills.md`) |
+| Lux build, preview, assets, tombstones and runtime checks | `sn-lux-build` |
+| GraphQL script forms, ACL paths and security flags | `sn-add-graphql-api` |
+| ATF execution, App Repo publish/install/rollback approvals and CI variables | `sn-cicd` |
 | React design and Vite compatibility | `sn-react-ui-design` / `sn-ui-page-vite` |
 | `move --ids` membership warning | `reference/sdk-commands.md` |
 | `transform --force` missing-parent meaning | `sn-transform` |

@@ -44,7 +44,7 @@ The value above authenticates the **worker script bytes**, not the MinGit ZIP. T
 
 Read the saved script before executing it, using a file-reading tool with bounded ranges rather than dumping it into the terminal. In PowerShell diagnostics, assume ConstrainedLanguage: use cmdlets and plain strings, not `[pscustomobject]` construction or non-core static methods. Do not repeatedly pass the whole script to `Select-String -InputObject`; each match can echo the whole file and bury the result. If using a local payload/installed-skill copy instead, set `$BootstrapPath` to its absolute path and compare it with the same expected script hash. A mismatch is a stop/review condition, not a reason to skip validation.
 
-If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If `RemoteSigned`, Mark-of-the-Web or application control prevents execution, request the organization's approval/signing process. Do not remove the zone marker, pass `-ExecutionPolicy Bypass`, elevate, or retry through another interpreter.
+If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If execution policy (`Restricted`, `AllSigned`, or `RemoteSigned` with Mark-of-the-Web) or application control prevents execution, the worker never ran and wrote no log; request the organization's approval/signing process. Do not remove the zone marker (`Unblock-File`), run `Set-ExecutionPolicy` at any scope, pass `-ExecutionPolicy`, elevate, or retry through another interpreter.
 
 ## 3. Run the reviewed script in absent-only mode
 
@@ -66,7 +66,7 @@ The worker installs only the pinned MinGit **2.54.0.windows.1** ZIP, with Unix `
 
 ## 4. Verify, then return to setup
 
-Read `%LOCALAPPDATA%\Git254Bootstrap\logs\mingit-*.log` and distinguish `SKIP` from `SUCCESS`. A zero exit code alone does not identify which action occurred.
+Read `%LOCALAPPDATA%\Git254Bootstrap\logs\mingit-*.log` and distinguish `SKIP` from `SUCCESS`. A zero exit code alone does not identify which action occurred. A nonzero exit with `FAILED:` does not prove nothing changed: if `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` now exists, Git was deployed and a later step failed; do not re-run `-InstallIfMissing` (it would only log `SKIP`), follow the skill's verification section.
 
 After an actual fresh install:
 

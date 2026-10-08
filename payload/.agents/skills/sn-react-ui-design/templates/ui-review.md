@@ -7,7 +7,7 @@ Scope / revision / environment: <...>
 Evidence level: <source-only / saved / local rendered / target rendered>
 Contract criteria: <path + IDs, or scoped review criteria>
 Role / fixture/query / theme / locale / viewport / zoom / scroll: <tested context>
-Allowed interactions/writes: <normally no live mutations>
+Allowed interactions/writes: <normally no live mutations; a write through a local dev-server page reaches the live instance>
 
 ## Verdict and findings
 

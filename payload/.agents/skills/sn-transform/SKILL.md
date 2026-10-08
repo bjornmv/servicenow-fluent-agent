@@ -57,7 +57,7 @@ Use `dependencies --add` to type-reference an OOB Action / Trigger / ACL / table
 Classify every generated file before generic cleanup, using [Automation ownership](../sn-build-install/SKILL.md#automation-ownership) for flows and actions:
 
 - Transformed `Flow(...)`, `Subflow(...)`, or `Action(...)` under `src/fluent/generated/automation/flow/`: preserve SDK callback syntax and apply the deletion / `--skip-flow-activation` guardrail below.
-- `Test(...)`, `PlaybookDefinition(...)`, and `wfa.playbook.*`: preserve callbacks and helper assignments documented by their exact SDK API/guide; they are DSL construction syntax, not ordinary record script bodies.
+- `Test(...)`, `PlaybookDefinition(...)`, and `wfa.playbook.*`: preserve callbacks and helper assignments documented by their exact SDK API/guide; they are DSL construction syntax, not ordinary record script bodies. A playbook that transforms to `Record(...)` output instead of `PlaybookDefinition(...)` contains activities Fluent cannot represent (Questionnaire or non-Core): do not hand-convert it; it is managed in Workflow Studio (`playbook-unsupported-features-guide`).
 - `GraphQLApi(...)`: resolver scripts may be a named imported server function (preferred), `Now.include(...)`, or a string; only an inline function expression is a build error.
 - Ordinary declarative records: apply the ordinary [Fluent rules](../../instructions/fluent.instructions.md).
 

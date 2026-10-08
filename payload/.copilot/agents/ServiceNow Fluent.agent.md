@@ -32,11 +32,11 @@ Read the matching skill and only its task-relevant references.
 | --- | --- |
 | New app; adopt/refresh an app | `sn-new-app`; `sn-download` |
 | Existing instance/XML record | `sn-transform` |
-| Ordinary Fluent record | `sn-add-record`, then `sn-explain` |
+| Ordinary Fluent record | `sn-add-record` (uses `sn-explain`) |
 | GraphQL; Playbook; ATF suite | `sn-add-graphql-api`; `sn-add-playbook`; `sn-add-test-suite` |
 | Fluent compile failure | `sn-fix-build` and `fluent.instructions.md` |
 | Build/install; ATF/App Repo promotion | `sn-build-install`; `sn-cicd` |
-| Lux / AIUX authoring; build/runtime diagnosis | `sn-lux`; `sn-lux-build` |
+| Lux / AIUX authoring; build/preview/deploy/runtime | `sn-lux`; `sn-lux-build` |
 | React UI design; Vite/HMR, runtime gate | `sn-react-ui-design`; `sn-ui-page-vite` |
 | Official product documentation | `sn-doc-lookup` |
 | PDF/DOCX/HTML documentation export | `sn-doc-export` |

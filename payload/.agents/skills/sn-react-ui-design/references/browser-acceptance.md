@@ -4,29 +4,29 @@ Use for rendered review or substantial-change verification. A source-only review
 
 ## Evidence and scope
 
-Distinguish **source/logic**, **local rendered**, **target rendered** and **user approval/delegation**. jsdom/VM tests have no reliable layout engine. Local fixtures/HMR prove only tested local behavior; installed content markers do not prove usable UI. Reuse valid target-runtime compatibility evidence under `sn-ui-page-vite`'s conditional gate; a visual patch does not require an upload. After authorized deployment, validate the changed artifact on its actual target separately.
+Distinguish **source/logic**, **local rendered**, **target rendered** and **user approval/delegation**. jsdom/VM tests have no reliable layout engine. A local `now-sdk run dev` page proves only tested local behavior, and it is a live, credentialed view of the instance as the SDK alias user, not a fixture (SKILL.md, Local render); installed content markers do not prove usable UI. Reuse valid target-runtime compatibility evidence under `sn-ui-page-vite`'s conditional gate; a visual patch does not require an upload. After authorized deployment, validate the changed artifact on its actual target separately.
 
 Use contract criteria and a risk-based matrix. For substantial changes include applicable cases below; for a focused fix test affected risks only. Mark unavailable required checks **not tested**, not “not applicable.”
 
 | Dimension | Cases to consider |
 |---|---|
 | Data | Empty, no matches, one row, 20+ representative mixed rows, long/unbroken identifiers, missing fields, mixed eligibility; peak volume separately for performance |
-| Async | Initial load, refresh/load-more, denied, error/timeout, stale response, partial result, pending/uncertain write; simulate safely in local fixtures, not by disrupting production |
-| Viewport | 1366×768, 1920×1080 or baseline, 390×844, actual embedded shell; same before/after dimensions |
+| Async | Initial load, refresh/load-more, denied, error/timeout, stale response, partial result, pending/uncertain write; simulate only with a mock/fixture layer the project already has (this skill adds none), never by disrupting production or the instance behind a local page; otherwise **not tested** |
+| Viewport | 1366×768, 1920×1080 or the contract's primary desktop viewport, 390×844, actual embedded shell (target only; a local dev-server page has none); same before/after dimensions |
 | Accessibility | Actual 200% browser zoom/text enlargement as appropriate, 320 CSS px reflow (or equivalent 400% zoom from 1280px), keyboard, reduced motion, forced colors, required themes |
-| Role | Intended ordinary operator plus relevant read-only/denied paths; admin-only testing is insufficient; don't change real roles/ACLs to stage evidence |
+| Role | Intended ordinary operator plus relevant read-only/denied paths; admin-only testing is insufficient; a local dev-server page shows only the SDK alias user; don't change real roles/ACLs to stage evidence |
 | Locale | Long translations, platform locale/time zone, RTL when supported |
 
 DPR changes and screenshot resizing are **not browser zoom**. Record the method and limitations.
 
 ## Browser procedure
 
-1. Use browser capabilities actually exposed by VS Code, following their tool instructions. If browser capability is unavailable, report the gap without installing/downloading tools automatically.
-2. Open an agent-owned page in the approved browser context; preserve user tabs and sessions. Browser login is separate from SDK OAuth; let the user authenticate without collecting credentials. After navigation, wait for load **and meaningful data readiness**, not just a mounted root or arbitrary sleep.
+1. Use browser capabilities actually exposed by VS Code, following their tool instructions. First list the browser tools in your current tool list and state which of these you have: navigate and screenshot, viewport resize, real key input, media emulation, script evaluation. Rows needing a missing capability are **not tested** (name it); a check the user performs and reports is recorded as user-observed, separate from agent evidence. If browser capability is unavailable, report the gap without installing/downloading tools automatically.
+2. Open an agent-owned page in the approved browser context; preserve user tabs and sessions. The installed target page needs a browser login, separate from SDK OAuth; let the user authenticate without collecting credentials. A local dev-server page has no browser login and acts as the SDK alias user. After navigation, wait for load **and meaningful data readiness**, not just a mounted root or arbitrary sleep.
 3. Use bounded accessibility-tree or DOM inspection for structure (roughly 300–800 nodes), then the available browser scripting/Playwright capability for specific state/geometry. Use inspected selectors/stable attributes, not guessed CSS. Do not dump DOM or broad network payloads.
 4. At initial scroll after data/fonts settle, measure first useful content, complete rows where applicable, usable viewport, overflow and primary-action position. Capture screenshots for actual visual hierarchy, legibility, spacing, colors and focus review, not data extraction.
 5. Exercise real controls. Keyboard evidence requires actual browser keyboard-input sequences through the available automation tool; forced `.focus()`, synthetic events, direct handler calls, force-enabling controls or bulk filling cannot establish a keyboard-only task passed.
-6. Diagnose broken/silent actions with bounded console/network records; include response bodies only when necessary. For target runtime verification, check new uncaught errors during the tested flow and distinguish pre-existing errors.
+6. Diagnose broken/silent actions with bounded console/network records; include response bodies only when necessary. For target runtime verification, check new uncaught errors during the tested flow and distinguish pre-existing errors. On a local dev-server page, empty data or 401s after a long session usually mean the proxy's credential, read once at start, has expired: restart the dev server before reporting a UI defect.
 7. Save only approved/sanitized evidence in the project's existing location; record paths only when files exist. Keep private/transient artifacts out of source control as appropriate. Never send private screenshots, URLs, records or source to external design services.
 
 ## Geometry without false passes
@@ -68,7 +68,7 @@ Run approved accessibility tooling if present; adding dependencies needs normal 
 
 ## Critique and report
 
-Compare like-for-like task/data/query/role/viewport/zoom/theme/scroll state; label missing baselines. Review hierarchy, task visibility, copy, continuity and accessibility, not just screenshot differences. Revise failures within authorized scope; for review-only work propose fixes. Seek independent critique for substantial work when available, otherwise label self-review.
+Compare like-for-like task/data/query/role/viewport/zoom/theme/scroll state; label missing baselines. Review hierarchy, task visibility, copy, continuity and accessibility, not just screenshot differences. Revise failures within authorized scope; for review-only work propose fixes.
 
 Prefer observable tasks: locate a tagged record, identify its assignee, prepare three records for an operation and cancel safely. Agent execution is not a human usability study. Measure time, scrolling, corrections and comprehension with representative users when available; never invent percentage improvements.
 
