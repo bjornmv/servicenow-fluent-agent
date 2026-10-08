@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * capture.js — automated Service Portal screenshot helper for sn-doc-export.
+ * capture.cjs — automated Service Portal screenshot helper for sn-doc-export.
  *
  * Reuses:
  *   - puppeteer (bundled inside md-to-pdf's node_modules)
@@ -8,45 +8,50 @@
  *     env var or standard install paths) — same reason: locked-down boxes block
  *     the puppeteer-cached Chromium.
  *   - the OAuth bearer token now-sdk stored, refreshed through a cheap REST
- *     read, then fetched via the bundled sn-rest.js.
+ *     read, then read from the bundled sn-rest.js in a child process. The token
+ *     is never printed or written to disk by this helper.
+ *
+ * Credential scope: the bearer is attached ONLY to https requests whose origin
+ * equals the configured instance origin. A --url on another host is refused,
+ * and third-party subresources and cross-origin redirect hops (for example an
+ * SSO identity provider) never receive the header.
  *
  * Two modes:
  *   1. CLI quick-capture:
- *      node capture.js --url <full-url> --out <png> [--alias ven06834] [--width 1400] [--height 900]
- *   2. Programmatic — `require('./capture').createSession({alias, instance})`
+ *      node capture.cjs --url <path-or-instance-url> --out <png> [--alias <alias>] [--instance https://<host>]
+ *   2. Programmatic — `require('./capture.cjs').createSession({alias, instance})`
  *      returns { browser, page, navigate, shot, close } so recipe scripts can
  *      drive multi-step flows.
  */
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const APPDATA = process.env.APPDATA || '';
+const USAGE = 'Usage: node capture.cjs --url <path|instance-url> --out <file.png> [--alias <a>] [--instance https://<host>] [--width N] [--height N] [--full-page] [--selector <css>] [--headed] [--force]';
 
-function npmCmd() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
-}
-
-let globalRootCache;
-function globalNodeModulesRoot() {
-  if (globalRootCache !== undefined) return globalRootCache;
-  if (process.platform === 'win32' && APPDATA) {
-    const guess = path.join(APPDATA, 'npm', 'node_modules');
-    if (fs.existsSync(guess)) {
-      globalRootCache = guess;
-      return globalRootCache;
-    }
+// Global node_modules candidates, resolved without spawning a package-manager
+// launcher. NODE_PATH is honoured by require.resolve itself.
+function globalNodeModulesRoots() {
+  const roots = [];
+  const add = (p) => { if (p && !roots.includes(p) && fs.existsSync(p)) roots.push(p); };
+  const prefix = process.env.npm_config_prefix;
+  const nodeDir = path.dirname(process.execPath);
+  if (process.platform === 'win32') {
+    if (process.env.APPDATA) add(path.join(process.env.APPDATA, 'npm', 'node_modules'));
+    if (prefix) add(path.join(prefix, 'node_modules'));
+    add(path.join(nodeDir, 'node_modules'));
+  } else {
+    if (prefix) add(path.join(prefix, 'lib', 'node_modules'));
+    add(path.join(nodeDir, '..', 'lib', 'node_modules'));
   }
-  const r = spawnSync(npmCmd(), ['root', '-g'], { encoding: 'utf8', shell: true });
-  globalRootCache = r.status === 0 ? r.stdout.trim() : null;
-  return globalRootCache;
+  return roots;
 }
 
 function loadPuppeteer() {
   const bases = [process.cwd(), __dirname];
-  const gRoot = globalNodeModulesRoot();
-  if (gRoot) {
+  for (const gRoot of globalNodeModulesRoots()) {
     bases.push(path.dirname(gRoot));
     bases.push(path.join(gRoot, 'md-to-pdf'));
   }
@@ -61,7 +66,7 @@ function loadPuppeteer() {
       // Try the next resolution base.
     }
   }
-  throw new Error('puppeteer not found. Install md-to-pdf globally or in the project first.');
+  throw new Error('puppeteer not found. It ships with md-to-pdf; see install.md section 2 (installation needs approval).');
 }
 
 function findBrowser() {
@@ -83,16 +88,93 @@ function findBrowser() {
   return null;
 }
 
-function snRestPath() {
-  return path.join(process.env.USERPROFILE || '', '.agents', 'skills', 'sn-rest', 'sn-rest.js');
+// ---- credential scope (pure helpers; unit-tested without a browser) ----
+
+/** Normalise the configured instance to its https origin. Anything else is refused. */
+function instanceOrigin(instance) {
+  const raw = String(instance || '').trim();
+  if (!raw) throw new Error('Could not determine instance URL — pass --instance https://<host>');
+  let u;
+  try {
+    u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    throw new Error('Instance is not a valid URL — pass --instance https://<host>');
+  }
+  if (u.protocol !== 'https:') throw new Error(`Instance must use https (got ${u.protocol}//${u.host}); the bearer is never sent over another scheme.`);
+  if (u.username || u.password) throw new Error('Instance URL must not contain credentials.');
+  return u.origin;
 }
 
-function runSnRest(args) {
+/** Resolve --url against the instance origin. Absolute URLs on any other origin are refused. */
+function resolveTarget(urlOrPath, origin) {
+  const raw = String(urlOrPath || '').trim();
+  if (!raw) throw new Error('navigate: empty URL');
+  let u;
+  try {
+    u = new URL(raw, `${origin}/`);
+  } catch {
+    throw new Error(`navigate: not a valid URL or path: ${raw}`);
+  }
+  if (u.origin !== origin) {
+    throw new Error(`navigate: refusing ${u.origin} — the URL must be a path or a URL on the instance origin ${origin}`);
+  }
+  if (u.username || u.password) throw new Error('navigate: URL must not contain credentials.');
+  return u.href;
+}
+
+/** True only for an https request whose origin is exactly the instance origin. */
+function shouldAttachBearer(requestUrl, origin) {
+  try {
+    const u = new URL(requestUrl);
+    return u.protocol === 'https:' && u.origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Headers for one intercepted request: Authorization is added for the scoped origin and removed everywhere else. */
+function scopedHeaders(requestUrl, headers, scopeOrigin, token, attach = shouldAttachBearer) {
+  const out = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    if (k.toLowerCase() !== 'authorization') out[k] = v;
+  }
+  if (attach(requestUrl, scopeOrigin)) out.Authorization = `Bearer ${token}`;
+  return out;
+}
+
+/**
+ * Attach the bearer per request instead of page-wide. Every request, including
+ * each redirect hop, is intercepted as its own request, so a hop to another
+ * origin is continued without the header. `attach` is injectable for tests.
+ */
+async function installScopedBearer(page, scopeOrigin, token, attach = shouldAttachBearer) {
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    if (req.isInterceptResolutionHandled && req.isInterceptResolutionHandled()) return;
+    let headers;
+    try {
+      headers = scopedHeaders(req.url(), req.headers(), scopeOrigin, token, attach);
+    } catch {
+      req.abort().catch(() => {});
+      return;
+    }
+    req.continue({ headers }).catch(() => {});
+  });
+}
+
+// ---- token retrieval (child process; never printed) ----
+
+function snRestPath() {
+  return path.join(process.env.USERPROFILE || os.homedir(), '.agents', 'skills', 'sn-rest', 'sn-rest.js');
+}
+
+function runSnRest(args, { secret = false } = {}) {
   const snRest = snRestPath();
   if (!fs.existsSync(snRest)) throw new Error(`sn-rest not found at ${snRest}`);
   const r = spawnSync(process.execPath, [snRest, ...args], { encoding: 'utf8' });
   if (r.status !== 0) {
-    throw new Error(`sn-rest exit ${r.status}: ${r.stderr || r.stdout}`);
+    // Never echo the child's stdout for a secret-bearing call.
+    throw new Error(`sn-rest exit ${r.status}: ${secret ? (r.stderr || '').trim() : (r.stderr || r.stdout)}`);
   }
   return (r.stdout || '').trim();
 }
@@ -110,7 +192,7 @@ function getToken(alias, instance) {
   if (alias) { args.unshift('--alias', alias); }
   if (instance) { args.push('--instance', instance); }
   refreshToken(alias, instance);
-  const tok = runSnRest(args);
+  const tok = runSnRest(args, { secret: true });
   if (!tok) throw new Error('sn-rest returned empty token');
   return tok;
 }
@@ -134,12 +216,12 @@ async function createSession({
   headless = true,
   outDir = process.cwd(),
 } = {}) {
+  // Validate the credential scope before any token is read or browser launched.
+  const origin = instanceOrigin(instance || instanceFromAlias(alias));
   const puppeteer = loadPuppeteer();
   const exe = findBrowser();
   if (!exe) throw new Error('No installed Chrome/Edge found — set SN_DOC_BROWSER');
-  const inst = instance || instanceFromAlias(alias);
-  if (!inst) throw new Error('Could not determine instance URL — pass --instance');
-  const token = getToken(alias, inst);
+  const token = getToken(alias, origin);
 
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -151,16 +233,21 @@ async function createSession({
   });
   const page = (await browser.pages())[0] || await browser.newPage();
   await page.setViewport({ width, height });
-  await page.setExtraHTTPHeaders({ Authorization: `Bearer ${token}` });
+  await installScopedBearer(page, origin, token);
 
   async function navigate(urlOrPath) {
-    const url = /^https?:/i.test(urlOrPath) ? urlOrPath : `${inst}${urlOrPath.startsWith('/') ? '' : '/'}${urlOrPath}`;
+    const url = resolveTarget(urlOrPath, origin);
     const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     if (!response) throw new Error(`navigation produced no HTTP response: ${url}`);
     const status = response.status();
     if (status >= 400) throw new Error(`navigation failed HTTP ${status}: ${page.url()}`);
     const title = await page.title();
     const finalUrl = page.url();
+    let finalOrigin = null;
+    try { finalOrigin = new URL(finalUrl).origin; } catch { /* handled below */ }
+    if (finalOrigin !== origin) {
+      throw new Error(`navigation left the instance origin (sign-in or external redirect): ${finalUrl}`);
+    }
     if (/login|signin|saml/i.test(`${finalUrl} ${title}`)) {
       throw new Error(`navigation landed on a sign-in page: ${finalUrl}`);
     }
@@ -172,8 +259,11 @@ async function createSession({
     return response;
   }
 
-  async function shot(name, { fullPage = false, selector = null } = {}) {
+  async function shot(name, { fullPage = false, selector = null, force = false } = {}) {
     const file = path.join(outDir, name.endsWith('.png') ? name : `${name}.png`);
+    if (fs.existsSync(file) && !force) {
+      throw new Error(`Output exists: ${file}. Re-run with --force only after confirming overwrite.`);
+    }
     if (selector) {
       const el = await page.$(selector);
       if (!el) throw new Error(`shot: selector not found: ${selector}`);
@@ -187,46 +277,64 @@ async function createSession({
 
   async function close() { await browser.close(); }
 
-  return { browser, page, navigate, shot, close, instance: inst };
+  return { browser, page, navigate, shot, close, instance: origin };
 }
 
 // ---- CLI ----
 function parseArgs(argv) {
-  const out = { width: 1400, height: 900, fullPage: false, headless: true };
+  const out = { width: 1400, height: 900, fullPage: false, headless: true, force: false };
+  const value = (i, flag) => {
+    if (i >= argv.length) throw new Error(`${flag} needs a value`);
+    return argv[i];
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--url') out.url = argv[++i];
-    else if (a === '--out') out.out = argv[++i];
-    else if (a === '--alias') out.alias = argv[++i];
-    else if (a === '--instance') out.instance = argv[++i];
-    else if (a === '--width') out.width = parseInt(argv[++i], 10);
-    else if (a === '--height') out.height = parseInt(argv[++i], 10);
+    if (a === '--url') out.url = value(++i, a);
+    else if (a === '--out') out.out = value(++i, a);
+    else if (a === '--alias') out.alias = value(++i, a);
+    else if (a === '--instance') out.instance = value(++i, a);
+    else if (a === '--width') out.width = parseInt(value(++i, a), 10);
+    else if (a === '--height') out.height = parseInt(value(++i, a), 10);
     else if (a === '--full-page') out.fullPage = true;
     else if (a === '--headed') out.headless = false;
-    else if (a === '--selector') out.selector = argv[++i];
+    else if (a === '--force') out.force = true;
+    else if (a === '--selector') out.selector = value(++i, a);
+    else throw new Error(`Unknown argument: ${a}`);
+  }
+  if (!Number.isInteger(out.width) || out.width <= 0 || !Number.isInteger(out.height) || out.height <= 0) {
+    throw new Error('--width and --height must be positive integers');
   }
   return out;
 }
 
 async function cliMain() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.url || !args.out) {
-    console.error('Usage: node capture.js --url <url|path> --out <file.png> [--alias <a>] [--instance <url>] [--width N] [--height N] [--full-page] [--selector <css>] [--headed]');
+  let args;
+  try {
+    args = parseArgs(process.argv.slice(2));
+    if (!args.url || !args.out) throw new Error('--url and --out are required');
+  } catch (e) {
+    console.error(`[FAIL] ${e.message}`);
+    console.error(USAGE);
     process.exit(2);
   }
-  const outDir = path.dirname(path.resolve(args.out));
-  const name = path.basename(args.out);
+  const outFile = path.resolve(args.out.endsWith('.png') ? args.out : `${args.out}.png`);
+  if (fs.existsSync(outFile) && !args.force) {
+    console.error(`[FAIL] Output exists: ${outFile}. Re-run with --force only after confirming overwrite.`);
+    process.exit(2);
+  }
+  // With an explicit --instance, refuse a bad scope before any token is read.
+  if (args.instance) resolveTarget(args.url, instanceOrigin(args.instance));
   const session = await createSession({
     alias: args.alias || null,
     instance: args.instance,
     width: args.width,
     height: args.height,
     headless: args.headless,
-    outDir,
+    outDir: path.dirname(outFile),
   });
   try {
     await session.navigate(args.url);
-    await session.shot(name, { fullPage: args.fullPage, selector: args.selector });
+    await session.shot(path.basename(outFile), { fullPage: args.fullPage, selector: args.selector, force: args.force });
   } finally {
     await session.close();
   }
@@ -236,4 +344,7 @@ if (require.main === module) {
   cliMain().catch((e) => { console.error('[FAIL]', e.message); process.exit(1); });
 }
 
-module.exports = { createSession, loadPuppeteer, findBrowser, getToken };
+module.exports = {
+  createSession, loadPuppeteer, findBrowser,
+  instanceOrigin, resolveTarget, shouldAttachBearer, scopedHeaders, installScopedBearer, parseArgs,
+};

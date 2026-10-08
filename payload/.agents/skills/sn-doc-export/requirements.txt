@@ -1,9 +1,9 @@
-# sn-doc Python dependencies
-# Mirrors requirements-sn-doc.txt from the explicitly configured SN_AGENT_HOME.
-# Dependency floors were historically verified on Windows; recheck the selected backend.
+# sn-doc-export optional Python backend dependencies
+# Recheck against the requirements of the explicitly configured SN_AGENT_HOME backend.
+# myst-parser 5.x is the first line that accepts docutils 0.22 and it needs Python 3.11+.
 
 docutils>=0.22
-myst-parser>=4.0
+myst-parser>=5.0
 python-docx>=1.2
 lxml>=4.9
 weasyprint>=68
