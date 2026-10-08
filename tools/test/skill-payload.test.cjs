@@ -42,7 +42,7 @@ test('every runtime skill has consistent portable trigger metadata', () => {
 test('payload is free of personal examples, and SDK version claims are historical evidence only', () => {
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
-    assert.doesNotMatch(text, /C:\\Personal\\|bvelsrud|Pelican/, file);
+    assert.doesNotMatch(text, /C:\\Personal\\|bvelsrud|Pelican|ven06834|dev426577|1535598|AssetApp/, file);
     for (const line of text.split('\n').filter(l => /(?:now-sdk|SDK)\s+4\.11/.test(l))) assert.match(line, /^Verified against:/, file);
   }
   assert.match(read('payload/.agents/skills/win-git-bootstrap/SKILL.md'), /Routine Git-dependent work does not trigger/);

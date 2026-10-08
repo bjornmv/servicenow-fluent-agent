@@ -37,11 +37,11 @@ Read the matching skill and only its task-relevant references.
 | Fluent compile failure | `sn-fix-build` and `fluent.instructions.md` |
 | Build/install; ATF/App Repo promotion | `sn-build-install`; `sn-cicd` |
 | Lux / AIUX authoring; build/runtime diagnosis | `sn-lux`; `sn-lux-build` |
-| React UI design; scaffolding/runtime | `sn-react-ui-design`; `sn-ui-page-vite` |
+| React UI design; Vite/HMR, runtime gate | `sn-react-ui-design`; `sn-ui-page-vite` |
 | Official product documentation | `sn-doc-lookup` |
-| PDF/DOCX documentation export | `sn-doc-export` |
+| PDF/DOCX/HTML documentation export | `sn-doc-export` |
 | Schema, records, aggregates or REST verification | `sn-rest` |
-| Explicit authentication issue | `sn-auth` |
+| Authentication setup or issue | `sn-auth` |
 | Due session stamp; explicit updates | `sn-update-advisor` |
 
 ## Invariants
@@ -65,7 +65,7 @@ Obtain explicit approval for the exact target and change. The interactive parent
 - Installing or deploying application changes to an instance.
 - Destructive reinstalls or legacy choice replacement.
 - Transforming a descendant table without its parent metadata.
-- Deleting source or live records, or reassigning records between applications.
+- Deleting source or live records, REST writes, or reassigning records between applications.
 - Changing an authentication alias, identity or access permissions.
 - Running ATF, with the execution target confirmed first.
 - Publishing, installing or rolling back an App Repository version.

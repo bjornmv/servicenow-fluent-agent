@@ -15,7 +15,7 @@ Use the build error from the argument, or the last terminal output if none was p
 2. Classify the file before mapping the error: ordinary declarative record, documented ATF/automation/Playbook callback DSL, GraphQL imported-script form, or transformed/Fluent-locked automation. See [Fluent rules](../../instructions/fluent.instructions.md).
 3. Run `now-sdk explain <recordtype>-api --format raw` to confirm the exact shape before editing (the **sn-explain** skill).
 4. Apply ONE coherent fix. Do not externalize a documented `Test(...)`, automation, or Playbook builder callback. For ordinary record script fields, move executable logic to an external module. For GraphQL, use a named imported server function (preferred) or `Now.include`; inline resolver functions are invalid.
-5. Rebuild: `now-sdk build`. Report the new output. If it still fails, repeat with the next error. Use `--legacyChoices` only for an explicitly confirmed legacy-choice migration, never as a parser-error workaround.
+5. Rebuild: `now-sdk build`. Report the new output. If it still fails, repeat with the next error. Never change `legacyChoices` / `--legacyChoices` as a parser-error workaround; the default is already the legacy v3 output (see **sn-build-install** Choice compatibility).
 
 ## Error → cause → fix
 

@@ -82,7 +82,7 @@ Save work and restart affected terminal applications from a refreshed launcher, 
 
 ## Skills are instructions, not registered tools
 
-This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration.
+This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration. The helper takes an instance-relative path only, and `--instance` must match the instance stored with the alias.
 
 REST guidance includes bounded table reads, schema/inheritance discovery, pagination and contributor aggregates. The CLI does not automatically enforce schema validation, output budgets or interactive write approval: the skill explicitly requires those workflow gates and does not promise protections that only exist in another execution environment. Never expose tokens or reinterpret a missing tool-search result as an authentication failure.
 
@@ -230,7 +230,7 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 
 - Descriptions are version-neutral, explicit **Use when** triggers. `argument-hint`, `compatibility`, and `metadata.version: '1'` are consistent; the latter identifies the skill format, not the distribution or SDK version. Body **Verified against** lines record historical evidence, not runtime pins or newly tested compatibility. Respect each project's SDK and engines.
 - `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
-- `sn-doc-export` creates PDF/DOCX; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
+- `sn-doc-export` creates PDF/DOCX/HTML and can capture Service Portal screenshots from the confirmed instance; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
 - `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums.
 - Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. REST CLI tests use mocked transport and credentials, not live instance access.
 

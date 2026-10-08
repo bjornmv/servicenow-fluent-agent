@@ -63,7 +63,7 @@ Dependency installation/upgrades, global tool changes, lifecycle scripts and net
 - Confirm the installed SDK's query help before using version-specific flags.
 - Specify fields, an encoded query and a bounded limit when reading table data, normally with `--no-count` to avoid unnecessary total-count work.
 - `--select` selects the output envelope, not the table fields, so it does not replace a narrow field projection.
-- Use the `sn-rest` skill for the bundled REST helper's distinct CLI syntax rather than transferring SDK flags to it.
+- Use the `sn-rest` skill for the bundled REST helper's distinct CLI syntax rather than transferring SDK flags to it. Routine instance reads go through that skill; use `now-sdk query` when the user asks for it, with the same explicit-field and small-limit bounds.
 
 ## Record reassignment
 

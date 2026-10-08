@@ -103,6 +103,49 @@ test('incident diagnostics remain in owning skills rather than either runtime pr
   assert.match(skill('sn-transform'), /only after explicit confirmation/);
 });
 
+test('adoption chain keeps its verified SDK command shapes and stop rules', () => {
+  const download = skill('sn-download'), transform = skill('sn-transform'), build = skill('sn-build-install');
+  const fluent = read('payload/.agents/instructions/fluent.instructions.md');
+  // init: --from conflicts with --appName/--scopeName; a new app needs all four prompt-skipping flags.
+  assert.doesNotMatch(download, /now-sdk init --from[^\n]*--(?:appName|scopeName)/);
+  for (const line of skill('sn-new-app').split('\n').filter(l => /^\s*now-sdk init /.test(l))) {
+    for (const flag of ['--template', '--appName', '--packageName', '--scopeName']) assert.ok(line.includes(flag), line);
+    assert.doesNotMatch(line, /--from/);
+  }
+  // download only unpacks raw XML; it is never pointed at the project root.
+  for (const text of [download, transform]) assert.doesNotMatch(text, /now-sdk download \.(?:\s|$)/m);
+  assert.match(download, /REQUIRED before any `transform`/);
+  assert.match(download, /Do NOT run `now-sdk install`/);
+  // transform: --table alone is a local filter, the bare --auth form is a whole-app sync.
+  assert.match(transform, /Never run `--table` without either `--id` or `--from/);
+  assert.match(transform, /NOT interactive/);
+  assert.match(transform, /Do not pass sys_ids as positional arguments/);
+  assert.match(transform, /do NOT run a plain install/);
+  // --skip-flow-activation skips publishing; it does not preserve a published flow.
+  for (const text of [transform, build]) {
+    assert.ok(text.includes('--skip-flow-activation'));
+    assert.doesNotMatch(text, /published flow on the instance is preserved/);
+  }
+  assert.match(build, /does not keep a flow published/);
+  // Choice output defaults to the destructive v3 format.
+  assert.match(build, /The default is `true`: version 3 `sys_choice_set`/);
+  assert.match(fluent, /default choice output is v3 `sys_choice_set`/);
+  assert.doesNotMatch(fluent + skill('sn-fix-build'), /v4 additive choice handling by default/);
+  assert.match(build, /Installation completed\\\. Access the application at:/);
+});
+
+test('authentication and Vite guidance keep their verified failure rules', () => {
+  const auth = skill('sn-auth'), vite = skill('sn-ui-page-vite');
+  assert.match(auth, /`now-sdk auth --print` — NEVER run it/);
+  assert.match(auth, /exit code 0 does not mean success/);
+  assert.match(auth, /NEVER pass `all` as the value/);
+  assert.match(vite, /Vite 8 and later: `oxc: false`/);
+  assert.match(vite, /add `rollup` 4\.x as a devDependency/);
+  assert.match(vite, /now-sdk run dev --auth <alias>/);
+  assert.match(vite, /## Conditional target-runtime compatibility slice/);
+  assert.doesNotMatch(read('payload/.agents/reference/platform-banners.md'), /reads the keychain token/);
+});
+
 test('automation guardrail is independently usable from skills and file instructions', () => {
   const build = skill('sn-build-install'), transform = skill('sn-transform');
   const fluent = read('payload/.agents/instructions/fluent.instructions.md');

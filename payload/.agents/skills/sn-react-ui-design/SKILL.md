@@ -17,7 +17,7 @@ Confirm the requested project, surface and operation using minimal entry/manifes
 - Actual Lux/AIUX (Lit): switch to `sn-lux` and stop this workflow. Portal/UI Builder needs its supported workflow. In mixed projects verify the surface; `aiux.json` and “Experience” alone don't identify it.
 - **Operation limits override every path below:** plan proposes; review reports/proposes corrections without edits or unrequested report files; implement changes authorized source; verify tests authorized behavior. Source-only review needs no browser. Otherwise state the available review evidence level.
 - After routing, inspect affected files/tests and existing instructions/contract. Expand to data clients, lockfiles or other surfaces only when needed. Preserve unrelated work and proven architecture.
-- Load available companion skill entries conditionally: `sn-ui-page-vite` for scaffolding/hosting/HMR, `sn-explain` before Fluent edits, `sn-build-install` for build/install operations. No framework migration merely for styling.
+- Load available companion skill entries conditionally: `sn-ui-page-vite` for Vite/HMR integration and the target-runtime compatibility gate, `sn-explain` before Fluent edits, `sn-build-install` for build/install operations. No framework migration merely for styling.
 
 ## Choose the smallest path
 
