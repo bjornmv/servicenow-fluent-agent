@@ -1,105 +1,50 @@
-# Repair Git selection in VS Code on a corporate Windows machine
+# Repair Git selection in VS Code
 
-**Give this guide to the agent working on the affected computer.** It is a targeted repair procedure, not a request to reinstall the entire ServiceNow Fluent Agent setup.
+For an agent working on the affected **local Windows x64 computer**. The approved **MinGit 2.54.0.windows.1** works; the problem is selecting it instead of system Git. This is a VS Code settings repair, not a full installation.
 
-## Goal and boundaries
-
-The organization's approved **MinGit 2.54.0.windows.1** works, but an existing system Git is selected or prevents setup from continuing. Make the agent use the approved per-user Git **inside VS Code**:
-
-- A `git` PowerShell function selects the approved executable directly, alongside the existing working `now-sdk` function.
-- A VS Code terminal PATH override makes native Git calls and Node processes launched from those terminals select the same installation.
-- `git.path` selects it for VS Code's built-in Source Control.
-
-The expected executable is:
-
-```text
-%LOCALAPPDATA%\Programs\Git\cmd\git.exe
-```
-
-Treat the organization's approval of this distribution as a supplied task fact. Do not restart a generic whitelisting investigation merely because a different system Git is blocked. **If the approved executable itself is denied, stop and report the actual denial.** A function or PATH change is not permission to evade application control.
-
-Do not uninstall or alter system Git, edit Windows User/Machine PATH, edit the user's PowerShell `$PROFILE`, change security policy, elevate, change credentials, or upgrade tools. Preserve the existing `now-sdk` resolver, other agents/extensions, repositories, `.gitconfig` and `.ssh`. Do not use `-ReplaceFullGit`, execution-policy overrides, binary renaming, security exclusions or an alternate interpreter to get around a refusal.
-
-**Scope:** local Windows x64 VS Code. Other terminal applications, remote/WSL/container environments, and arbitrary extensions that launch Git independently are not covered by a successful terminal test.
-
-**Implementation status:** this document adds instructions, not a new installer switch. The current absent-only bootstrap cannot install alongside an existing system Git. Section 2 distinguishes an existing approved copy from the additional reviewed worker change required when that copy is missing.
-
-## Prompt to give the agent
+## Agent prompt
 
 ```text
 Fix Git in VS Code by following this complete guide:
 https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md
 ```
 
-If the GitHub page is truncated, read the complete raw file:
+If the page is truncated, read the [complete raw file](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/docs/fix-vscode-git.md).
 
-<https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/docs/fix-vscode-git.md>
+## Boundaries
 
-## 1. Inspect and propose the repair
+Use the approved executable at `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`. Preserve system Git, Windows User/Machine PATH, the user's PowerShell `$PROFILE`, the working `now-sdk` function, credentials, repositories and unrelated settings. No elevation, security-policy changes, execution-policy overrides, binary renaming, certificate-verification disabling or tool upgrades.
 
-Work as the intended user, not Administrator or SYSTEM. Confirm local Windows x64 and the actual VS Code configuration profile in use.
+Do not reopen the whitelisting investigation for an unselected system Git. If the **approved executable itself** is denied, stop and report the denial; do not route around it. Never expose tokens or dump whole environment/configuration files into chat.
 
-1. Resolve the approved executable to an absolute path using this user's `LOCALAPPDATA`. Do not select the first Git on PATH or infer that a registry entry proves usability.
-2. Read command resolution without launching system Git:
+This repair covers the chosen PowerShell profile, native/Node children of its VS Code terminals, and built-in Source Control. It does not configure remote/WSL/container sessions, other terminal applications or every extension's independent Git process.
+
+## 1. Inspect, then obtain approval
+
+Work as the intended user, not Administrator or SYSTEM.
+
+1. Resolve the approved path using this user's `LOCALAPPDATA`. Inspect its directory and available provenance/ownership marker; do not overwrite an unexpected or modified installation. Invoke **that exact executable** for `--version`, requiring native exit 0 and `git version 2.54.0.windows.1`. A different version needs review, not replacement.
+2. Inspect command resolution without launching system Git:
 
    ```powershell
    Get-Command git, git.exe -All -ErrorAction SilentlyContinue |
        Select-Object CommandType, Name, Source
    ```
 
-3. Inspect the approved directory and available setup provenance/ownership marker. An ownership marker is useful evidence, not a replacement for archive integrity or executable verification. Do not overwrite an existing unexpected, modified or unowned installation.
-4. If the approved executable exists, invoke **that exact path**, not bare `git`, to check its version. Require attributable native completion and the approved `git version 2.54.0.windows.1` result. An unexpected version needs review, not an automatic upgrade/downgrade.
-5. In VS Code, use **Preferences: Open User Settings (JSON)** to identify the settings file for the active configuration profile. Do not assume every user uses the default `%APPDATA%\Code\User\settings.json`; named VS Code profiles can have another user-settings file.
-6. Inspect effective `terminal.integrated.profiles.windows`, default/automation profile settings, `terminal.integrated.env.windows`, and `git.path`, including workspace/profile overrides and extension environment contributions. Identify the profile providing the working `now-sdk` function, normally **PowerShell with now-sdk**. Resolve conflicts explicitly without editing repository settings. Check Settings Sync scope so this machine-specific repair is not unintentionally propagated; do not silently change Sync preferences.
-7. Check for an existing `git` alias/function, profile-specific PATH overrides, or `GIT_EXEC_PATH`/Git configuration overrides that would defeat the selection. Do not dump credentials or whole environment/configuration files into chat. Preserve unexplained customization and ask about conflicts rather than removing it.
+3. Use **Preferences: Open User Settings (JSON)** to find the active VS Code configuration profile's settings file. Do not assume the default `%APPDATA%\Code\User\settings.json` applies to named profiles.
+4. Inspect effective terminal profiles, default/automation profiles, terminal environment and `git.path`, including workspace overrides. Identify the working **PowerShell with now-sdk** profile (or its actual name). Review conflicting `git` aliases/functions, profile-specific PATH, `GIT_EXEC_PATH`, extension environment contributions and Settings Sync scope. Preserve unexplained customizations; ask before resolving conflicts or changing Sync preferences. Do not edit repository settings.
 
-Report the selected Git path/version, actual settings file, terminal profile, whether installation is needed, and the proposed settings changes. **Ask for approval before mutations.** This guide does not authorize changing unrelated setup components or silently editing installed agent policies.
+**If the approved copy is missing:** stop with **Action needed: approved per-user Git deployment**. Installation is a separate approved task using the [bootstrap safeguards](../payload/.agents/skills/win-git-bootstrap/SKILL.md). The current absent-only worker does not support installation alongside system Git. Do not rerun it blindly, invent a coexistence flag, use `-ReplaceFullGit`, hand-extract around its safeguards or adapt an installer during this repair.
 
-## 2. Ensure the approved per-user copy exists
+Otherwise, report the verified Git path/version, actual settings file, terminal profile and three proposed changes below. **Ask for approval before mutations.** Do not silently change installed agent policies to override conflicting instructions.
 
-### A. It already exists and runs
+## 2. Back up and change three settings
 
-Use it. Do not reinstall, run the absent-only installer, or execute every other discovered Git to decide whether this one may be selected. A known blocked, unselected system copy must not veto the approved choice.
+Create a new timestamped backup of the actual settings file. Preserve JSONC comments, unrelated keys and existing environment mappings; do not round-trip the whole file through a JSON-only serializer. Check for concurrent edits before writing.
 
-### B. It is missing
+### A. Add a Git function beside `now-sdk`
 
-Obtain approval for a **side-by-side per-user installation**, leaving system Git and Windows PATH untouched.
-
-The existing worker is [Ensure-MinGit254.ps1](../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1). Its inventory probes all discovered executables: a suitable existing Git can cause a successful skip, a blocked candidate aborts, and older/conflicting installations prevent absent-only installation. **Do not rerun it expecting a different result, invent a supported flag, delete its stop checks, or use `-ReplaceFullGit`.** `-StageOnly` only downloads/verifies the archive; it is not a completed installation.
-
-If an organization-provided deployment of the approved package is available, use that approved route. Otherwise, a coding agent may **propose a narrowly scoped opt-in coexistence adaptation of a separate working copy of the worker**. Obtain approval before writing that adaptation, then show its diff/test evidence and obtain separate execution approval. This guide cannot override conflicting higher-priority agent or execution policies; surface such a conflict for an authorized decision rather than silently changing them. Keep the original published/installed worker unchanged; do not modify its distribution checksum or claim the adapted copy has the original checksum.
-
-That adaptation must:
-
-- Require an explicit side-by-side selection; retain absent-only behavior by default. Record unselected system installations without executing known-blocked binaries. Do not uninstall, repair or reconfigure them.
-- Deploy only to the reviewed per-user target. If the target already exists unexpectedly, stop rather than overwriting it or trying another location to escape policy.
-- Retain the pinned official archive and checksum, selective extraction, ownership safeguards, single-worker lock, non-elevated context, busy-process checks, native completion evidence, and Defender/AppLocker/Code Integrity checks. Unreadable security evidence is not permission to skip those checks.
-- Preserve staged and final-path verification, Windows OpenSSH and Schannel with certificate verification enabled. Configure only the new distribution's own Git settings, never the user's shared Git configuration.
-- Omit Windows PATH registration/environment publishing **only in the new explicit VS Code-only mode**. Selection is configured in section 3, not through registry PATH edits.
-- Have review/test evidence for the new branch, including coexistence with a blocked unselected system Git, an occupied target, and a denied selected executable. Do not present mocked checks as corporate-machine acceptance.
-
-Use only this package; no full Git installer, package-manager "latest" fallback or unfiltered extraction:
-
-```text
-Version: 2.54.0.windows.1
-Archive: MinGit-2.54.0-64-bit.zip
-URL: https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/MinGit-2.54.0-64-bit.zip
-SHA-256: 04F937E1F0918B17B9BE6F2294CB2BB66E96E1D9832D1C298E2DE088A1D0E668
-Extraction: Windows System32\tar.exe
-Exclude BEFORE extraction: usr/bin/find.exe and usr/bin/sort.exe
-```
-
-**This is an additional engineering/approval step, not a ready-made command in this guide.** If the agent cannot safely review and validate the adaptation, report **Action needed: approved side-by-side deployment support**, and stop. Do not improvise a second installer or hand-extract the archive around the worker's safeguards.
-
-After deployment, independently verify the final executable/version and relevant security results before continuing. A ZIP in a cache or a successful staging result is not an installed Git.
-
-## 3. Make the scoped VS Code settings changes
-
-Back up the actual user-settings file to a new timestamped file. Save the original values of the affected keys for rollback. Preserve JSONC comments, unrelated settings and existing environment mappings; do not round-trip the whole file through a JSON-only serializer. Refuse to overwrite concurrent user edits.
-
-### A. Add the Git function beside the existing SDK function
-
-Keep the current terminal executable and `now-sdk` startup definition unchanged. In the setup-created profile, append the following PowerShell source to the **existing `-Command` string**, with a separating newline:
+Keep the current terminal executable and SDK initialization. Append this source to the profile's **existing `-Command` string**, separated by a newline:
 
 ```powershell
 # sn-fluent-agent:approved-user-git:start
@@ -118,19 +63,15 @@ function global:git {
 # sn-fluent-agent:approved-user-git:end
 ```
 
-This is **PowerShell source for the profile's command string**, not a replacement for the complete `args` array or `settings.json`. Serialize/escape it correctly as a JSON string. Keep native stdout/stderr and nonzero `$LASTEXITCODE`; do not add inline `exit`, a shell trampoline or a system-Git fallback. **Capture and check `$LASTEXITCODE` immediately after each call.** A function is not a transparent substitute for native `$?` or PowerShell 7 `&&`/`||` success semantics. For scripts requiring those semantics, invoke the verified executable directly. Windows PowerShell 5.1's native argument-marshalling limitations remain: test actual invocations containing empty arguments or embedded quotes rather than assuming `@args` fixes them.
+This is PowerShell source to serialize/escape inside a JSON string, **not** a replacement `args` array or settings file. Insert the block once; leave an identical existing block unchanged and review a modified one. Do not use the historical `sn-fluent-agent:git-path` markers, which current setup treats as legacy cleanup targets.
 
-Make the insertion idempotent: update one known, unchanged owned block rather than appending duplicates. A modified existing block needs review. Do not reuse the historical `sn-fluent-agent:git-path` markers, which older setup versions treat as legacy cleanup targets.
+An existing `git` alias takes precedence over the function. Ask about that conflict or a custom startup layout rather than deleting customization or replacing `now-sdk`. With approval, make the repaired profile the default for intended agent terminals; other custom/automation profiles do not automatically gain this function.
 
-If the existing profile uses a custom startup file/command layout that cannot safely accept this addition, explain the conflict and ask before adapting it. Do not replace the working SDK initialization with a guessed template. An existing PowerShell alias named `git` takes precedence over a function; resolve that conflict explicitly, not by silently deleting user customizations.
+**Callers must capture `$LASTEXITCODE` immediately.** Preserve stdout/stderr and nonzero native exits; do not add `exit` or a fallback. The wrapper does not preserve native `$?` or PowerShell 7 `&&`/`||` semantics; use the verified executable directly when those matter. Windows PowerShell 5.1's empty-argument/embedded-quote limitations still apply; test such invocations separately.
 
-Select this profile as the default for the intended agent terminals with approval. Do not claim that this installs the function into every other custom/extension-created PowerShell profile.
+### B. Prepend Git to VS Code's terminal PATH
 
-### B. Select the same Git for native terminal and Node calls
-
-A function alone does not affect Node's `execFile('git', ...)`. Configure **VS Code's** `terminal.integrated.env.windows` to put the approved `cmd` directory first in the effective terminal PATH. This remains inside VS Code; it does not write Windows User/Machine PATH.
-
-For an otherwise uncustomized terminal environment, the relevant setting is:
+The function does not affect Node's `execFile('git', ...)`. For an otherwise uncustomized terminal environment, merge this setting:
 
 ```jsonc
 "terminal.integrated.env.windows": {
@@ -138,101 +79,67 @@ For an otherwise uncustomized terminal environment, the relevant setting is:
 }
 ```
 
-Merge this into the actual file; do not replace the whole settings object. If there is already a PATH expression, preserve its existing tail/customizations and prepend the approved directory once. Preserve one case-insensitive PATH key rather than creating both `PATH` and `Path`. Review profile-specific overrides that could replace this value. Do not remove unrelated directories or Git's required helpers.
+If a PATH expression already exists, prepend the approved directory once and preserve its tail. Keep only one case-insensitive PATH key; do not create both `PATH` and `Path`. Resolve profile-specific overrides that would replace it. This setting affects VS Code terminals, not Windows User/Machine PATH or the entire extension host.
 
-### C. Select it for VS Code Source Control
+### C. Select Git for built-in Source Control
 
-Set user-level `git.path` to the **resolved absolute executable**, for example:
+Set user-level `git.path` to the verified **absolute executable**, replacing this illustration:
 
 ```jsonc
 "git.path": "C:\\Users\\<actual-user>\\AppData\\Local\\Programs\\Git\\cmd\\git.exe"
 ```
 
-Replace the illustration with the verified real path. Do not assume `${env:...}` expands in `git.path`, and do not put this machine-specific choice in the application's repository settings.
+Do not assume `${env:...}` expands here. Keep this machine-specific choice out of repository settings.
 
-Do not run the distribution's `configure-git` command as a shortcut for this repair: its current purpose includes Windows User PATH/environment registration, which is outside this VS Code-only change.
+## 3. Pause, restart and create a NEW terminal
 
-## 4. Activate the repair: restart, then create a NEW terminal
-
-**A newly created terminal is required after the settings change.** The old terminal does not acquire the new function or PATH. Merely hiding/reopening the terminal panel, switching tabs, or reconnecting to a restored terminal is not enough. A restart alone is not proof either: VS Code can restore old terminals. A fresh terminal tests the shell changes; restarting VS Code also lets its Git extension reload the selected executable. Neither action replaces verification.
-
-### Agent: pause for the user handoff
-
-After saving and checking the settings, report **Settings saved; waiting for restart and fresh-terminal verification**, not **Repair complete**. Summarize the approved Git path, active VS Code configuration profile, repaired terminal profile, settings backup and checks still pending. Keep this summary in chat so the user can carry it into a new session if needed. Do not exit VS Code yourself or start another installation while waiting.
+After saving and checking settings, report **Settings saved; waiting for restart and fresh-terminal verification**. Summarize the Git path, VS Code configuration profile, terminal profile and backup in chat for use after restart. Do not close VS Code yourself.
 
 Give the user these steps:
 
-1. **Save your work.** Let running terminal commands and agent operations finish. Do not terminate a busy terminal to activate this repair.
-2. **Restart VS Code normally:** close VS Code when all affected windows are safe to close, then reopen the same folder and configuration profile. Do not force-kill processes. If other work prevents a restart, defer it and leave extension-refresh acceptance pending.
-3. **Create a NEW terminal:** choose **Terminal -> New Terminal** using the repaired **PowerShell with now-sdk** profile (or the actual profile name reported by the agent). Do not reuse a restored terminal. The terminal dropdown lets you select the profile if necessary; closing the panel does not terminate its old terminal.
-4. Tell the agent: **Continue Git verification using a new terminal.** If a new chat is needed, give it this guide and the saved handoff summary. Do not rerun the normal installer as part of this restart.
+1. **Save your work and let running commands finish.** Never kill a busy terminal for this repair.
+2. **Restart VS Code normally** when affected windows are safe to close. Reopen the same folder and configuration profile. If other work prevents restarting, defer it and leave extension-refresh acceptance pending.
+3. **Create a NEW terminal** using **Terminal -> New Terminal** and the repaired profile. Use the terminal dropdown if needed. Do not reuse a restored terminal: reopening the panel or restarting VS Code alone does not guarantee fresh terminal initialization.
+4. Tell the agent: **Continue Git verification using a new terminal.** For a new chat, supply this guide and the handoff summary. Do not rerun installation.
 
-### Agent: verify your own fresh terminal too
+The agent must also create/select a fresh **execution-tool terminal** using supported host controls; the user's new terminal may not be the one its tool uses. Retire only a known-idle old terminal. If this is unsupported, ask for the required user action and report that check as pending; do not add a terminal-management extension or keep retrying in the stale terminal.
 
-A user's new terminal is not necessarily the terminal your execution tool uses. Retire only a known-idle old agent terminal through supported host controls, then create/select a fresh one using the repaired profile. If you cannot do that, request the supported user action and report agent-terminal verification as pending. Do not keep retrying Git in the stale terminal or add an extension just to manage terminals.
+## 4. Verify in that fresh environment
 
-Verify these independently from the actual fresh environment:
+Capture actual results and native exit codes. Accepted settings, blank tool output or a version string alone are not full acceptance. Missing completion evidence stays **UNKNOWN**; recover the original operation before retrying.
 
-1. **PowerShell function:** `Get-Command git` reports `Function`, with the reviewed resolver. Run `git --version`; require the approved version and native exit 0. Check argument forwarding and nonzero native exit propagation rather than swallowing failures.
-2. **Native terminal selection:** `Get-Command git.exe -CommandType Application` resolves to the approved absolute executable, not system Git.
-3. **Node child selection:** from the same fresh terminal, verify bare Git's executable-helper path as well as its version. Version alone cannot distinguish two installations of the same release. `--exec-path` identifies the helper directory, not conclusively the launched executable; native lookup can consider locations before PATH. Controlled setup/update helpers should use the verified absolute executable where supported. After resolving any `GIT_EXEC_PATH` override, this check supplies additional evidence about native calls from the terminal:
+1. **Function:** `Get-Command git` must report `Function` with the reviewed definition. `git --version` must return the approved version and immediate `$LASTEXITCODE` 0. Check paths with spaces and nonzero native exit propagation.
+2. **Native lookup:** `Get-Command git.exe -CommandType Application` must resolve to the approved absolute path.
+3. **Node child:** after resolving any `GIT_EXEC_PATH` override, run this in the same terminal. It asserts both the version and helper directory, bounds child execution and rejects missing/nonzero Node completion:
 
    ```powershell
-   node.exe -e "const cp=require('node:child_process'); const p=require('node:path'); const expected=p.win32.join(process.env.LOCALAPPDATA,'Programs','Git','mingw64','libexec','git-core'); const actual=cp.execFileSync('git',['--exec-path'],{encoding:'utf8'}).trim(); if(p.win32.normalize(actual).toLowerCase()!==p.win32.normalize(expected).toLowerCase()) throw new Error('Node selected an unexpected Git helper path'); console.log(cp.execFileSync('git',['--version'],{encoding:'utf8'}).trim()); console.log('Node Git helper path: '+actual);"
-   if ($LASTEXITCODE -ne 0) { throw 'Node Git selection check failed; stop.' }
+   $global:LASTEXITCODE = $null
+   node.exe -e "const cp=require('node:child_process'); const p=require('node:path'); const run=a=>cp.execFileSync('git',[a],{encoding:'utf8',timeout:10000}).trim(); const version=run('--version'); if(version!=='git version 2.54.0.windows.1') throw new Error('Unexpected Git version: '+version); const expected=p.win32.join(process.env.LOCALAPPDATA,'Programs','Git','mingw64','libexec','git-core'); const actual=run('--exec-path'); if(p.win32.normalize(actual).toLowerCase()!==p.win32.normalize(expected).toLowerCase()) throw new Error('Unexpected Git helper path'); console.log(version); console.log('Node Git helper path: '+actual);"
+   if ($global:LASTEXITCODE -ne 0) { throw 'Node Git check failed or did not complete; stop.' }
    ```
 
-4. **Local Git behavior:** use a new isolated temporary directory for `git init` and `git status`, handling paths with spaces. Review inherited Git overrides first; use an explicitly empty template directory and command-scoped hook/fsmonitor suppression so the test does not run user-configured helpers. Do not change global configuration. Never initialize over the user's actual project, change its remotes, commit, push or discard work as a test. Remove only the disposable test directory after verifying ownership and completion.
-5. **VS Code Source Control:** use **Git: Show Git Output** and verify the selected executable/version. Do not enable automatic fetch or alter repository configuration to make this check pass.
-6. **SDK regression:** `Get-Command now-sdk` still reports the intended function, and its existing version command works from the intended project/terminal. Do not install, authenticate, build or deploy an application to test this repair.
-7. **Agent execution:** confirm the agent's own next terminal operation uses the verified fresh environment. A manually opened terminal passing does not prove an extension reused the same profile/environment. If the host cannot select a fresh agent terminal, report that acceptance as unverified and ask for the supported user action.
+   `--exec-path` identifies helpers, not conclusively the launched executable; native lookup can search locations before PATH. Use the verified absolute executable in controlled setup/update helpers where supported.
+4. **Local behavior:** use a new disposable directory for `git init`/`git status`. Review inherited Git overrides first; use an explicitly empty template directory and command-scoped hook/fsmonitor suppression. Do not initialize, commit or change remotes in the user's project. Remove only the verified disposable directory you created.
+5. **Source Control:** **Git: Show Git Output** must identify the approved executable/version. Do not enable automatic fetch to force a check.
+6. **SDK:** `Get-Command now-sdk` must still identify the intended function; run its existing version command from the intended project. No dependency installation, authentication, build or deployment is needed.
 
-For an approved public network smoke test, this disables Git credential helpers and keeps certificate checking enabled. Existing URL rewrites, extra authorization headers and proxy configuration still apply; review relevant overrides without exposing secrets. Do not describe this as guaranteed unauthenticated merely because credential helpers are disabled:
+Record which checks ran in the **agent's own** fresh terminal. Manual-terminal success is not proof of agent-terminal success. Network/private-repository authentication, SSH, signing and LFS are separate tests, not requirements for this selection repair.
 
-```powershell
-git -c credential.helper= -c http.sslBackend=schannel -c http.sslVerify=true ls-remote https://github.com/bjornmv/servicenow-fluent-agent.git HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Public HTTPS Git check failed; inspect the error, do not change policy or reinstall.' }
-```
+## 5. Report, stop and retain rollback
 
-Network/proxy failures are separate from executable selection. Public HTTPS success does not establish private repository authentication, SSH, signing, LFS or arbitrary hooks. A blocked helper or DLL still requires diagnosis; do not route around it or modify security controls.
+Report the selected path/version, changed settings/backup, checks passed, and anything **Action needed**, **Unverified** or **UNKNOWN**. Confirm the preservation boundaries only where established. Do not call the repair complete while required checks remain pending.
 
-Capture actual output and native exit codes. A blank tool result, accepted settings file, existing package directory or successful `git --version` alone is **not** full acceptance. Recover the original operation before retrying an uncertain installation.
+**Do not automatically rerun normal installation or `configure-git`.** In the current implementation, both configure Windows User PATH/environment. Normal installation does so even with `--no-vscode-settings`; `--git-exe` selects Git but does not disable that work. The current terminal settings code also removes recognized legacy Git overrides; this guide uses a different marker, not a guarantee of compatibility with future versions.
 
-## 5. Finish, resume carefully and retain rollback
+If setup previously stopped, identify the last completed stage and review the exact installer version before proposing a separately approved resumption. It must preserve the repair, retain approved Git selection and avoid actions outside the agreed scope. Do not replay completed stages, invent skip flags or silently alter managed installer files. Restarting VS Code does not make an incompatible installer safe to rerun.
 
-Report:
-
-- **Complete:** approved executable/version, changed settings file/keys, backup path, and each passing verification above.
-- **Action needed:** any missing approved installation, settings conflict, denied executable/helper, or host action required.
-- **Could not verify:** fresh agent-terminal, Source Control or network behavior that was not actually exercised; preserve **UNKNOWN** for missing native completion.
-
-State explicitly that system Git, Windows User/Machine PATH, existing `now-sdk`, credentials and repositories were preserved. If any of those assertions cannot be established, say so. Stop after this repair; do not automatically restart the full installer or publish local changes.
-
-### Should the user restart VS Code and rerun the normal installation?
-
-**Restart: yes, after saving the repair. Rerun the normal installation: not as the default next step.** A restart activates settings; it does not change installer behavior. If setup was already complete, no reinstall is needed to repair Git selection.
-
-The current normal Windows installer calls `configureWindowsGit`, which registers/checks Windows User PATH and publishes an environment update. This also happens with `--no-vscode-settings`; `--git-exe` selects an executable but does not disable that environment work. Those actions exceed this VS Code-only repair. Older settings cleanup also has legacy Git-override rules. A successful fresh-terminal check is not authorization to run those installation paths.
-
-If the original setup stopped partway through, identify its last completed stage and report the remaining work separately. Do not repeat completed installation steps merely because VS Code was restarted. Before proposing a normal setup/update rerun, inspect the exact version to be used and confirm it:
-
-- explicitly retains the approved Git selection without executing known-blocked, unselected system Git;
-- preserves the repaired `git`/`now-sdk` startup definitions, terminal PATH and `git.path`;
-- performs no Windows User/Machine PATH change or other action outside the approved scope.
-
-If it does not meet those conditions, stop and explain that a compatible installer change or separately approved installation plan is required. Do not invent a skip flag or silently edit managed installer/agent files. Only after that review and separate user approval may unfinished setup resume; repeat fresh-terminal and Source Control verification after any settings changes.
-
-For later setup/update operations, retain the approved absolute Git selection or use the verified terminal environment. Do not send the repaired machine back through the old probe-every-installation branch.
-
-### Rollback
-
-For rollback, restore only the owned changes to the affected settings keys, using the backup if no intervening edits occurred. Do not overwrite later user changes, uninstall system Git, or delete a per-user Git now shared by other work. Removing a newly installed per-user copy is a separate approved action.
+For rollback, restore only the owned settings changes, using the backup if there have been no intervening edits. Preserve later user changes. Do not uninstall system Git or delete the shared per-user copy; removal is a separate approved task.
 
 ## References
 
-- [VS Code terminal profiles and environment settings](https://code.visualstudio.com/docs/terminal/profiles)
+- [VS Code terminal profiles and environment](https://code.visualstudio.com/docs/terminal/profiles)
 - [VS Code Git selection and Git Output](https://code.visualstudio.com/docs/sourcecontrol/troubleshooting)
 - [PowerShell command precedence](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_command_precedence)
-- [Existing bootstrap skill and safety boundaries](../payload/.agents/skills/win-git-bootstrap/SKILL.md)
 - [Current terminal settings implementation](../lib/vscode-terminal.cjs)
+- [Current Windows Git environment implementation](../lib/windows-git-environment.cjs)
 - [Technical guide](technical-guide.md)
