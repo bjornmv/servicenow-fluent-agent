@@ -1,6 +1,6 @@
 # Repair Git selection in VS Code
 
-For an agent working on the affected **local Windows x64 computer**. The approved **MinGit 2.54.0.windows.1** works; the problem is selecting it instead of system Git. This is a VS Code settings repair, not a full installation.
+For an agent working on the affected **local Windows x64 computer**. Install the approved **MinGit 2.54.0.windows.1** if missing, select it instead of system Git, and finish configuration and checks in the current session. The user's final VS Code restart is only a precaution to refresh running components—not another agent task.
 
 ## Agent prompt
 
@@ -23,7 +23,7 @@ This repair covers the chosen PowerShell profile, native/Node children of its VS
 
 Work as the intended user, not Administrator or SYSTEM.
 
-1. Resolve the approved path using this user's `LOCALAPPDATA`. Inspect its directory and available provenance/ownership marker; do not overwrite an unexpected or modified installation. Invoke **that exact executable** for `--version`, requiring native exit 0 and `git version 2.54.0.windows.1`. A different version needs review, not replacement.
+1. Resolve the approved path using this user's `LOCALAPPDATA`. If it exists, inspect its directory/provenance and invoke **that exact executable** for `--version`, requiring native exit 0 and `git version 2.54.0.windows.1`. Do not replace a different, broken or modified installation. If the target directory is absent, include installation in the plan.
 2. Inspect command resolution without launching system Git:
 
    ```powershell
@@ -34,9 +34,27 @@ Work as the intended user, not Administrator or SYSTEM.
 3. Use **Preferences: Open User Settings (JSON)** to find the active VS Code configuration profile's settings file. Do not assume the default `%APPDATA%\Code\User\settings.json` applies to named profiles.
 4. Inspect effective terminal profiles, default/automation profiles, terminal environment and `git.path`, including workspace overrides. Identify the working **PowerShell with now-sdk** profile (or its actual name). Review conflicting `git` aliases/functions, profile-specific PATH, `GIT_EXEC_PATH`, extension environment contributions and Settings Sync scope. Preserve unexplained customizations; ask before resolving conflicts or changing Sync preferences. Do not edit repository settings.
 
-**If the approved copy is missing:** stop with **Action needed: approved per-user Git deployment**. Installation is a separate approved task using the [bootstrap safeguards](../payload/.agents/skills/win-git-bootstrap/SKILL.md). The current absent-only worker does not support installation alongside system Git. Do not rerun it blindly, invent a coexistence flag, use `-ReplaceFullGit`, hand-extract around its safeguards or adapt an installer during this repair.
+Report whether Git needs installing, the selected path, actual settings file, terminal profile and proposed changes. **Ask for approval before mutations**, covering installation when needed and the settings repair together. Do not silently change installed agent policies to override conflicting instructions.
 
-Otherwise, report the verified Git path/version, actual settings file, terminal profile and three proposed changes below. **Ask for approval before mutations.** Do not silently change installed agent policies to override conflicting instructions.
+### Install the approved copy when missing
+
+Use the worker's explicit **`-InstallForVSCode`** mode. Unlike ordinary absent-only setup, it leaves unrelated system Git unprobed and untouched, installs only into the absent per-user target, and makes **no Windows PATH changes**. It retains the pinned ZIP/hash, pre-extraction exclusions, staging tests, Windows OpenSSH/Schannel, deployment lock and security checks. An occupied target or a denied selected executable still stops safely.
+
+After approval, download and verify the reviewed worker, then run it synchronously:
+
+```powershell
+$work = Join-Path $env:TEMP ('sn-vscode-git-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + $PID)
+New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
+$worker = Join-Path $work 'Ensure-MinGit254.ps1'
+Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1' -OutFile $worker -UseBasicParsing -TimeoutSec 120
+$expected = '03ba1af2e4cae5555af7aeec6a7dfcf7a3f81271018f7cdeb2446fd51fc620b8'
+if ((Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash -ne $expected) { throw 'Worker hash mismatch; do not execute.' }
+$global:LASTEXITCODE = $null
+& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -File $worker -InstallForVSCode
+if ($global:LASTEXITCODE -ne 0) { throw 'Git installation failed or did not complete; inspect its logs.' }
+```
+
+Wait for native exit 0 and the worker's actual `SUCCESS` or verified-existing `SKIP` result. Logs are under `%LOCALAPPDATA%\Git254Bootstrap\logs`. Verify the final executable/version before configuring VS Code. A missing installation is part of this job, not a reason to defer work until after restart. On a genuine failure, retain evidence and report it; do not claim completion, reinstall blindly, use `-ReplaceFullGit` or bypass safeguards.
 
 ## 2. Back up and change three settings
 
@@ -91,20 +109,9 @@ Set user-level `git.path` to the verified **absolute executable**, replacing thi
 
 Do not assume `${env:...}` expands here. Keep this machine-specific choice out of repository settings.
 
-## 3. Pause, restart and create a NEW terminal
+## 3. Verify now, before handing back control
 
-After saving and checking settings, report **Settings saved; waiting for restart and fresh-terminal verification**. Summarize the Git path, VS Code configuration profile, terminal profile and backup in chat for use after restart. Do not close VS Code yourself.
-
-Give the user these steps:
-
-1. **Save your work and let running commands finish.** Never kill a busy terminal for this repair.
-2. **Restart VS Code normally** when affected windows are safe to close. Reopen the same folder and configuration profile. If other work prevents restarting, defer it and leave extension-refresh acceptance pending.
-3. **Create a NEW terminal** using **Terminal -> New Terminal** and the repaired profile. Use the terminal dropdown if needed. Do not reuse a restored terminal: reopening the panel or restarting VS Code alone does not guarantee fresh terminal initialization.
-4. Tell the agent: **Continue Git verification using a new terminal.** For a new chat, supply this guide and the handoff summary. Do not rerun installation.
-
-The agent must also create/select a fresh **execution-tool terminal** using supported host controls; the user's new terminal may not be the one its tool uses. Retire only a known-idle old terminal. If this is unsupported, ask for the required user action and report that check as pending; do not add a terminal-management extension or keep retrying in the stale terminal.
-
-## 4. Verify in that fresh environment
+Save and read back the settings, then perform these checks **in the current session**. Prefer a fresh agent-controlled terminal using the repaired profile. If the tool cannot create one, launch a child PowerShell with the saved profile command and matching process-only PATH for the command checks; distinguish that evidence from an actual VS Code terminal test. Do not kill busy terminals, add extensions or make verification depend on restarting VS Code. Until the current terminal refreshes, use the verified absolute Git path rather than retrying blocked system Git.
 
 Capture actual results and native exit codes. Accepted settings, blank tool output or a version string alone are not full acceptance. Missing completion evidence stays **UNKNOWN**; recover the original operation before retrying.
 
@@ -120,14 +127,20 @@ Capture actual results and native exit codes. Accepted settings, blank tool outp
 
    `--exec-path` identifies helpers, not conclusively the launched executable; native lookup can search locations before PATH. Use the verified absolute executable in controlled setup/update helpers where supported.
 4. **Local behavior:** use a new disposable directory for `git init`/`git status`. Review inherited Git overrides first; use an explicitly empty template directory and command-scoped hook/fsmonitor suppression. Do not initialize, commit or change remotes in the user's project. Remove only the verified disposable directory you created.
-5. **Source Control:** **Git: Show Git Output** must identify the approved executable/version. Do not enable automatic fetch to force a check.
+5. **Source Control:** read back `git.path` and confirm it points to the verified executable. Check **Git: Show Git Output** if the extension has already adopted it; otherwise state that the saved selection takes effect on the user's final restart. Do not require a restart to finish this job or enable automatic fetch to force a check.
 6. **SDK:** `Get-Command now-sdk` must still identify the intended function; run its existing version command from the intended project. No dependency installation, authentication, build or deployment is needed.
 
-Record which checks ran in the **agent's own** fresh terminal. Manual-terminal success is not proof of agent-terminal success. Network/private-repository authentication, SSH, signing and LFS are separate tests, not requirements for this selection repair.
+Record the environment actually tested; a child-process test is not proof about every running extension. Network/private-repository authentication, SSH, signing and LFS are outside this repair.
 
-## 5. Report, stop and retain rollback
+## 4. Finish, then leave the restart to the user
 
-Report the selected path/version, changed settings/backup, checks passed, and anything **Action needed**, **Unverified** or **UNKNOWN**. Confirm the preservation boundaries only where established. Do not call the repair complete while required checks remain pending.
+Conclude installation, saved-settings checks and command tests **before** the restart. Report the selected path/version, installation result if applicable, settings backup and checks passed. Disclose genuine failures or untested host behavior without converting the restart into a follow-up workflow. Do not promise that a hard-coded Git path in an unrelated extension is fixed by terminal PATH.
+
+End with this one user action:
+
+> Save your work, close old terminals once their jobs finish, and fully restart VS Code so its terminals and Git integration pick up the changes.
+
+Closing old terminals avoids VS Code reconnecting to stale persistent sessions. The agent does not restart VS Code, wait for the user to return, or request another chat. There is no post-restart agent task.
 
 **Do not automatically rerun normal installation or `configure-git`.** In the current implementation, both configure Windows User PATH/environment. Normal installation does so even with `--no-vscode-settings`; `--git-exe` selects Git but does not disable that work. The current terminal settings code also removes recognized legacy Git overrides; this guide uses a different marker, not a guarantee of compatibility with future versions.
 

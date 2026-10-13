@@ -13,12 +13,22 @@ Use this skill only during authorized Windows agent setup or explicit Git bootst
 
 ## Decision rule
 
+For the explicitly requested [VS Code-only Git repair](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md), use the exception below. All other setup retains this absent-only decision rule.
+
 1. Check `git.exe --version` using a direct approved executable tool. If PATH lookup fails, check `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`, standard Program Files locations and Git uninstall registrations; the bundled worker also checks these.
 2. A working stable Git **>=2.54.0** is left unchanged. If it is only missing from the current process PATH, use its verified absolute path rather than installing a second copy.
 3. If Git is **genuinely absent**, run the bundled worker with **`-InstallIfMissing`**. Wait for completion before using Git.
 4. If an executable exists but cannot run, registration exists without a verified executable, the target directory already exists, or an older Git is installed, **stop and explain/ask**. A permission error, EPERM, spawn failure or application-control block is not "not installed". Do not retry through another launcher or automatically upgrade, downgrade, repair, uninstall or migrate it.
 
 A newer working version satisfies the requested minimum-version check, but the worker warns that it is not the pinned build; this does not imply application-control approval. Never download another/newer version as a fallback.
+
+## Explicit VS Code-only installation
+
+When the user requests approved per-user Git alongside an unrelated system installation, use **`-InstallForVSCode`** alone. This is a supported opt-in mode, not automatic fallback after a policy denial. Select only `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`; keep an existing exact pinned copy, or install when that target is genuinely absent. A blocked/different selected executable, occupied target or associated per-user registration remnant stops the operation. Unselected system Git is not executed or altered.
+
+The mode retains the fixed ZIP/hash, extraction exclusions, non-elevated execution, lock, staging/final checks, Windows SSH/Schannel and security checks. It does **not** register Windows PATH or publish an environment update. Configure the VS Code terminal environment and `git.path` as described in the repair guide; this explicitly approved workflow permits its Git function beside `now-sdk`. Finish installation and pre-restart checks in the current session. The user's final restart is only for refreshing existing hosts, not an agent follow-up session.
+
+Do not combine this mode with `-InstallIfMissing`, staging, migration, environment-refresh or `-GitExecutable` flags. An older installed worker might not support it: use the guide's hash-verified worker rather than inventing flags or editing the installed script. Never bypass a denied selected executable.
 
 ## Run the bundled worker
 
@@ -38,7 +48,7 @@ Use the approved VS Code terminal with a suitable timeout and wait for native co
 
 Use the invocation shown above rather than adding a `2>&1` capture around child PowerShell with `$ErrorActionPreference = 'Stop'`: Windows PowerShell 5.1 can treat native stderr as a terminating `NativeCommandError` before the caller reads `$LASTEXITCODE`. The worker redirects the expected `ssh -V` banner to per-run `ssh-*.stdout.log` / `ssh-*.stderr.log` files, checks the exit code, and records success in the main log. A banner on stderr alone is not an SSH failure. Launch errors and missing/nonzero exit codes still stop deployment; do not suppress real failures or change security policy.
 
-This skill is also usable directly from the Agent distribution payload before it is copied to the profile. Resolve the adjacent script, keeping `-InstallIfMissing`.
+This skill is also usable directly from the Agent distribution payload before it is copied to the profile. Ordinary absent-only setup uses the adjacent script with `-InstallIfMissing`; only the explicitly approved VS Code-only workflow uses `-InstallForVSCode`.
 
 ## Pinned package and extraction requirements
 
@@ -49,7 +59,7 @@ This skill is also usable directly from the Agent distribution payload before it
 - Use Windows `%WINDIR%\System32\tar.exe` with **`--exclude=usr/bin/find.exe`** and **`--exclude=usr/bin/sort.exe`** before `-xf`.
 - Verify the filtered archive list before writing and confirm excluded paths are absent afterward.
 - Never use unfiltered `Expand-Archive`, extract-then-delete, a full Git EXE installer, a "latest" URL, winget/chocolatey defaults, or renaming blocked binaries as a fallback.
-- Deploy only into `%LOCALAPPDATA%\Programs\Git`; add only its `cmd` directory to the user PATH.
+- Deploy only into `%LOCALAPPDATA%\Programs\Git`; ordinary setup adds only its `cmd` directory to user PATH. Explicit `-InstallForVSCode` leaves Windows PATH unchanged.
 - Select Windows OpenSSH explicitly through `core.sshCommand`; use `http.sslBackend=schannel` with certificate verification enabled. Do not invoke bundled SSH or curl utilities.
 
 These constraints are implemented in the bundled script; do not improvise another installer. Omission of optional utilities avoids attempting their installation; it is not a security-policy exemption or permission to execute them elsewhere.
@@ -62,7 +72,7 @@ The native Windows `setx.exe` updater receives **only** a short owned `SN_FLUENT
 
 For an explicitly requested environment-only repair of a verified existing Git, run the same worker with `-RefreshEnvironment -GitExecutable <absolute git.exe path>`, or the Agent distribution's `node bin/sn-fluent-agent.cjs configure-git --git-exe <absolute path>`. This does not download/extract/reinstall Git or alter Git configuration. Do not combine it with installation/staging/migration switches. The full Agent installer performs this environment step automatically and removes known legacy Git-specific profile workarounds with a settings backup.
 
-Do not add Git PATH code, aliases or overrides to a particular shell/profile. Native update success does not prove that every running host adopted the environment: save work and restart affected applications from a refreshed launcher. Verify bare `git --version` in the actual terminal hosts used; do not label a simulated shell or absolute-path check as universal acceptance.
+Outside the explicitly approved VS Code-only repair above, do not add Git PATH code, aliases or overrides to a particular shell/profile. Native update success does not prove that every running host adopted the environment: save work and restart affected applications from a refreshed launcher. Verify bare `git --version` in the actual terminal hosts used; do not label a simulated shell or absolute-path check as universal acceptance.
 
 ## Verification and reporting
 
@@ -76,6 +86,7 @@ Do not add Git PATH code, aliases or overrides to a particular shell/profile. Na
 
 ## Scope limits and explicit modes
 
+- `-InstallForVSCode`: explicit approved per-user installation/selection at the exact pin; unselected system Git and Windows PATH remain untouched. See the exception above.
 - `-StageOnly`: download/hash-check only; no deployment.
 - `-ValidateOnly`: selectively extract/configure/test a separate stage; no uninstall, promotion or PATH changes.
 - `-ReplaceFullGit`: potentially uninstalls existing full Git. **Never use this for automatic setup. Requires separate explicit user approval.**

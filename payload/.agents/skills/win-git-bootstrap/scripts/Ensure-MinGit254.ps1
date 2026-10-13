@@ -8,6 +8,10 @@ policy changes, update checker or execution of bundled SSH/Bash/curl.
 .PARAMETER InstallIfMissing
 Agent-setup mode: install only if Git is genuinely absent. Never update,
 repair, replace or migrate an existing installation automatically.
+.PARAMETER InstallForVSCode
+Explicit approved per-user deployment for VS Code only. Select only the managed
+Git path at the exact pinned version; never probe other Git installations or
+change Windows PATH. This does not configure VS Code or grant policy approval.
 .PARAMETER ReplaceFullGit
 Explicit one-time migration of the registered per-user full Git at the managed
 path. Stage/configure/test MinGit before invoking its signed uninstaller.
@@ -25,6 +29,7 @@ uninstall, promote the directory or change the user PATH.
 [CmdletBinding()]
 param(
     [switch]$InstallIfMissing,
+    [switch]$InstallForVSCode,
     [switch]$StageOnly,
     [switch]$ValidateOnly,
     [switch]$ReplaceFullGit,
@@ -46,6 +51,9 @@ $fullGitKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1
 $runId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $log = Join-Path $LogDirectory "mingit-$runId.log"
 $stage = Join-Path $env:LOCALAPPDATA "Git254Bootstrap\staging\mingit-$runId"
+# A sibling stage permits no-clobber Rename-Item promotion in the explicit mode.
+# Move-Item to an appeared directory could instead nest the stage inside it.
+if ($InstallForVSCode) { $stage = "$target.stage-mingit-$runId" }
 $windowsSsh = Join-Path $env:SystemRoot 'System32\OpenSSH\ssh.exe'
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 # Deliberately omit these optional Unix utilities BEFORE extraction. Never
@@ -103,6 +111,43 @@ function Read-GitVersion {
         throw "Unrecognized stable Git version at '$Executable': $text"
     }
     return @{ Path = $Executable; Version = [version]$Matches[1]; FullVersion = $Matches[1] + $Matches[2] }
+}
+function Confirm-InstallMode {
+    param([bool]$HasGitExecutable = $false)
+    if ($InstallForVSCode -and ($InstallIfMissing -or $StageOnly -or $ValidateOnly -or $ReplaceFullGit -or $RefreshEnvironment -or $HasGitExecutable)) {
+        throw 'InstallForVSCode must be used alone, without other modes or GitExecutable.'
+    }
+    if (($InstallIfMissing -and ($StageOnly -or $ValidateOnly -or $ReplaceFullGit)) -or ($StageOnly -and ($ValidateOnly -or $ReplaceFullGit)) -or ($ValidateOnly -and $ReplaceFullGit)) {
+        throw 'InstallIfMissing, StageOnly, ValidateOnly and ReplaceFullGit are mutually exclusive.'
+    }
+    if ($RefreshEnvironment -and ($InstallIfMissing -or $StageOnly -or $ValidateOnly -or $ReplaceFullGit)) { throw 'RefreshEnvironment cannot be combined with installation/staging/migration modes.' }
+    if ($GitExecutable -and -not $RefreshEnvironment) { throw 'GitExecutable is only supported with RefreshEnvironment.' }
+}
+function Get-VSCodeGit {
+    param([switch]$RequireAbsent)
+    # No PATH lookup, system registration reads or unselected executable probes.
+    if ($RequireAbsent -and (Test-Path -LiteralPath $target)) {
+        throw 'VS Code target appeared during preparation; refusing to replace or repair it.'
+    }
+    if (Test-Path -LiteralPath $targetGit -PathType Leaf) {
+        if ($RequireAbsent) { throw 'VS Code target executable appeared during preparation.' }
+        $git = Read-GitVersion $targetGit
+        if ($git.FullVersion -ne $pinned) { throw 'Selected VS Code Git is not the exact pinned build. No replacement is allowed.' }
+        return $git
+    }
+    if (Test-Path -LiteralPath $target) {
+        throw 'VS Code target exists without a verified executable. No overwrite or repair is allowed.'
+    }
+    foreach ($key in @($fullGitKey, 'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
+        if (-not (Test-Path -LiteralPath $key)) { continue }
+        $record = Get-ItemProperty -LiteralPath $key
+        # Unknown/relative/unexpanded locations cannot certify target absence.
+        $location = ([string]$record.InstallLocation).Trim().Trim('"').Replace('/', '\').TrimEnd('\')
+        $uninstall = ([string]$record.UninstallString).Replace('/', '\')
+        if ($location -notmatch '^[A-Za-z]:\\' -or $location -match '[%\r\n]|(^|\\)\.{1,2}(\\|$)' -or $location -ieq $target -or $uninstall.IndexOf($target + '\', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            throw 'Per-user Git registration remains associated with the VS Code target or has an unverifiable location. Stop for review.'
+        }
+    }
 }
 function Get-Inventory {
     $paths = @()
@@ -272,11 +317,7 @@ try {
     New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
     Write-Log "MinGit check: minimum $minimum; only downloadable build $pinned."
     if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'Use 64-bit Windows PowerShell on Windows x64.' }
-    if (($InstallIfMissing -and ($StageOnly -or $ValidateOnly -or $ReplaceFullGit)) -or ($StageOnly -and ($ValidateOnly -or $ReplaceFullGit)) -or ($ValidateOnly -and $ReplaceFullGit)) {
-        throw 'InstallIfMissing, StageOnly, ValidateOnly and ReplaceFullGit are mutually exclusive.'
-    }
-    if ($RefreshEnvironment -and ($InstallIfMissing -or $StageOnly -or $ValidateOnly -or $ReplaceFullGit)) { throw 'RefreshEnvironment cannot be combined with installation/staging/migration modes.' }
-    if ($GitExecutable -and -not $RefreshEnvironment) { throw 'GitExecutable is only supported with RefreshEnvironment.' }
+    Confirm-InstallMode -HasGitExecutable ($PSBoundParameters.Keys -contains 'GitExecutable')
     if ($RefreshEnvironment) {
         if (-not $GitExecutable -or $GitExecutable -notmatch '^[A-Za-z]:[\\/]' -or (Split-Path -Leaf $GitExecutable) -ine 'git.exe' -or $GitExecutable -match '[;\r\n%]') { throw 'RefreshEnvironment requires a safe absolute GitExecutable path to an existing git.exe.' }
         $git = Read-GitVersion $GitExecutable
@@ -288,7 +329,12 @@ try {
         exit 0
     }
     if ($StageOnly) { Get-Archive; Write-Log 'STAGED: ZIP verified; installed Git unchanged.'; exit 0 }
-    $inventory = @(Get-Inventory)
+    if ($InstallForVSCode) {
+        $inventory = @(Get-VSCodeGit)
+        Write-Log 'EXPLICIT VS CODE MODE: only the approved per-user target is selected; other Git installations and Windows PATH remain untouched.'
+    } else {
+        $inventory = @(Get-Inventory)
+    }
     foreach ($git in $inventory) { Write-Log "Found $($git.FullVersion): $($git.Path)" }
     if (-not $ReplaceFullGit -and -not $ValidateOnly -and $inventory.Count -gt 0 -and $inventory[0].Version -ge $minimum) {
         if ($inventory[0].FullVersion -ne $pinned) { Write-Log 'WARNING: Existing version satisfies threshold but is not the pinned build; no application-control approval is implied.' }
@@ -309,6 +355,9 @@ try {
     if ($env:GIT_SSH -or $env:GIT_SSH_COMMAND -or $env:GIT_CONFIG_SYSTEM -or $env:GIT_CONFIG_NOSYSTEM -or $env:GIT_CONFIG_COUNT -or $env:GIT_SSL_NO_VERIFY) {
         throw 'Git environment overrides are present. Review them before deployment; values were not logged.'
     }
+    if ($InstallForVSCode -and ($env:GIT_DIR -or $env:GIT_WORK_TREE -or $env:GIT_COMMON_DIR -or $env:GIT_INDEX_FILE -or $env:GIT_OBJECT_DIRECTORY -or $env:GIT_ALTERNATE_OBJECT_DIRECTORIES -or $env:GIT_CONFIG_GLOBAL -or $env:GIT_CONFIG_PARAMETERS -or $env:GIT_EXEC_PATH -or $env:GIT_TEMPLATE_DIR)) {
+        throw 'Git repository/configuration overrides are present. Review them before VS Code deployment; values were not logged.'
+    }
     $groups = & "$env:SystemRoot\System32\whoami.exe" /groups /fo csv /nh 2>&1
     if ($LASTEXITCODE -ne 0 -or ($groups -join ' ') -match 'S-1-16-(12288|16384|20480)') {
         throw 'Cannot verify a non-elevated user context. Do not run as Administrator or SYSTEM.'
@@ -328,7 +377,7 @@ try {
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -ne 'CN=Johannes Schindelin, O=Johannes Schindelin, S=Nordrhein-Westfalen, C=DE') {
             throw 'Registered uninstaller signature/publisher verification failed.'
         }
-    } elseif (-not $ValidateOnly -and (Test-Path -LiteralPath $target)) {
+    } elseif (-not $ValidateOnly -and -not $InstallForVSCode -and (Test-Path -LiteralPath $target)) {
         $marker = Join-Path $target $markerName
         if (-not (Test-Path -LiteralPath $marker)) { throw 'Target already exists and is not managed MinGit. Full Git migration requires explicit -ReplaceFullGit.' }
         $ownership = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
@@ -337,6 +386,7 @@ try {
     # Directory creation without -Force is an atomic single-worker lock.
     New-Item -ItemType Directory -Path $lock -ErrorAction Stop | Out-Null
     $lockAcquired = $true
+    if ($InstallForVSCode) { $null = Get-VSCodeGit -RequireAbsent }
     Get-Archive
     $auditStart = Get-Date
     if (-not (Test-Path -LiteralPath $tar -PathType Leaf)) { throw 'Windows tar.exe is required for pre-extraction exclusions. No unfiltered-extraction fallback.' }
@@ -375,8 +425,17 @@ try {
     foreach ($key in $settings.Keys) { $null = Invoke-Git $stageGit @('config', '--file', $config, '--replace-all', $key, $settings[$key]) }
     # Small offline base-Git test before disturbing the existing installation.
     $testRepo = Join-Path $stage '.bootstrap-probe'
-    $null = Invoke-Git $stageGit @('init', '--quiet', $testRepo)
-    $null = Invoke-Git $stageGit @('-C', $testRepo, 'status', '--porcelain')
+    if ($InstallForVSCode) {
+        $emptyTemplate = Join-Path $stage '.bootstrap-empty-template'
+        New-Item -ItemType Directory -Path $emptyTemplate -ErrorAction Stop | Out-Null
+        $probeOptions = @('-c', "core.hooksPath=$emptyTemplate", '-c', 'core.fsmonitor=false')
+        $null = Invoke-Git $stageGit ($probeOptions + @('init', '--quiet', "--template=$emptyTemplate", $testRepo))
+        $null = Invoke-Git $stageGit ($probeOptions + @('-C', $testRepo, 'status', '--porcelain'))
+        Remove-Item -LiteralPath $emptyTemplate -Recurse -Force
+    } else {
+        $null = Invoke-Git $stageGit @('init', '--quiet', $testRepo)
+        $null = Invoke-Git $stageGit @('-C', $testRepo, 'status', '--porcelain')
+    }
     Remove-Item -LiteralPath $testRepo -Recurse -Force
     @{ Distribution = 'MinGit'; Version = $pinned; ArchiveSHA256 = $expectedHash; OmittedFiles = $excludedFiles; ManagedBy = 'Ensure-MinGit254.ps1' } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage $markerName) -Encoding utf8
@@ -396,18 +455,25 @@ try {
             throw "Full Git removal is incomplete (exit $($process.ExitCode)). Verified stage retained at $stage. Do not force removal."
         }
     }
-    if (Test-Path -LiteralPath $target) {
-        $backup = "$target.before-mingit-$runId"
-        Move-Item -LiteralPath $target -Destination $backup
-        Write-Log "Retained previous directory/residual files at $backup"
+    if ($InstallForVSCode) {
+        $null = Get-VSCodeGit -RequireAbsent
+        # Same-parent rename fails if ANY target appeared after the last check;
+        # never back up, replace, or move the stage inside an occupied target.
+        Rename-Item -LiteralPath $stage -NewName (Split-Path -Leaf $target) -ErrorAction Stop
+    } else {
+        if (Test-Path -LiteralPath $target) {
+            $backup = "$target.before-mingit-$runId"
+            Move-Item -LiteralPath $target -Destination $backup
+            Write-Log "Retained previous directory/residual files at $backup"
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Move-Item -LiteralPath $stage -Destination $target
     }
-    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
-    Move-Item -LiteralPath $stage -Destination $target
     if ((Read-GitVersion $targetGit).FullVersion -ne $pinned) { throw 'Final-path Git verification failed. Inspect logs; no automatic fallback or policy bypass.' }
     foreach ($key in @('http.sslBackend', 'core.sshCommand')) {
         if ((Invoke-Git $targetGit @('config', '--system', '--get', $key)) -ne $settings[$key]) { throw "Installed system setting mismatch: $key" }
     }
-    Add-UserGitPath (Join-Path $target 'cmd')
+    if (-not $InstallForVSCode) { Add-UserGitPath (Join-Path $target 'cmd') }
     Confirm-NoDeploymentBlocks $auditStart
     Write-Log "SUCCESS: Official MinGit $pinned deployed at $target. Only native Git was exercised; private authentication is untested."
     Write-Log 'Check security events for this deployment interval before calling it warning-free. No automatic update or reboot.'
