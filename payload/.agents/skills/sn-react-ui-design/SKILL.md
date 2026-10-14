@@ -1,6 +1,6 @@
 ---
 name: sn-react-ui-design
-description: Use when designing, restyling, implementing, reviewing or verifying the layout, accessibility, copy, state and interactions of a ServiceNow React UI Page (JSX/TSX, CSS) in a now-sdk project; not Vite/HMR scaffolding or hosting (sn-ui-page-vite), Lux/AIUX, Service Portal or UI Builder.
+description: Designs and reviews React UI Pages (layout, accessibility, states). Use when designing, styling or reviewing a page; not Vite (sn-ui-page-vite).
 argument-hint: <React surface, operation, requested change and acceptance criteria>
 compatibility: ServiceNow React UI Page project with its existing tooling; browser access for rendered verification; installs nothing.
 metadata:

@@ -1,6 +1,6 @@
 ---
 name: sn-rest
-description: Use when discovering ServiceNow schemas, reading bounded records or aggregates, or verifying instance content with existing OAuth; writes require explicit user approval.
+description: Queries and changes live instance data over REST with existing OAuth. Use when reading schemas, records, counts or deployed content, or making an approved change; not app source (sn-add-record).
 argument-hint: <confirmed instance, alias, table or API, fields, filters and read/write intent>
 compatibility: VS Code PowerShell terminal on Windows with Node.js, the bundled sn-rest.js helper, an installed ServiceNow SDK and an existing SDK OAuth alias.
 metadata:

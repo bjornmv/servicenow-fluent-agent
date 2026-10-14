@@ -1,6 +1,6 @@
 ---
 name: sn-doc-export
-description: Use when writing or exporting a project document deliverable such as a runbook, release notes, user or admin guide from Markdown to PDF, Word/DOCX or HTML, optionally with Service Portal screenshots; not for searching official product documentation.
+description: Renders project documents to PDF, DOCX or HTML, optionally with instance screenshots. Use when writing a runbook, release notes or guide; not doc search (sn-doc-lookup).
 argument-hint: <document kind, source, output formats and destination>
 compatibility: Node.js and renderer packages; installed browser for Node PDF/HTML and screenshots; optional Python backend needs explicit absolute SN_AGENT_HOME and its dependencies.
 metadata:

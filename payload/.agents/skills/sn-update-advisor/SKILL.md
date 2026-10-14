@@ -1,6 +1,6 @@
 ---
 name: sn-update-advisor
-description: Use when the session-start update gate reports due, or the user asks to check for or apply updates to the ServiceNow Fluent agent package, a project's pinned @servicenow/sdk, or the local ServiceNowDocs checkout and index; checks never authorize installation.
+description: Checks and applies updates to this agent, the project SDK and local docs. Use when the session-start update check is due or the user asks about updates.
 argument-hint: <component, absolute project/checkout path, and check or approved update intent>
 compatibility: Node.js and installed advisor launcher; approved package-manager/Git tooling only for the requested component; interactive parent owns mutations.
 metadata:

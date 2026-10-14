@@ -1,6 +1,6 @@
 ---
 name: sn-lux
-description: "Use when scaffolding (javascript.aiux / javascript.aiux-extension templates), authoring, extending or reviewing ServiceNow Lux (AIUX) experiences in aiux.json projects: Lit pages and AIUX widgets, routed to the official project-local AIUX skills. Not React UI Pages, Service Portal or UI Builder."
+description: Creates and extends Lux (AIUX, AI Experience) apps from the javascript.aiux templates. Use when creating an app or extending or reviewing its pages and widgets; not build or deploy issues (sn-lux-build).
 argument-hint: "<Lux/AIUX experience, page, widget or extension request>"
 compatibility: AIUX project with matching official project-local reference packs and the Node/package-manager versions its package.json declares; npm registry access to scaffold; authorized instance for runtime work.
 metadata:

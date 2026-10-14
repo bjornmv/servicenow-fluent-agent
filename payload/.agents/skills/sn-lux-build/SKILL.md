@@ -1,6 +1,6 @@
 ---
 name: sn-lux-build
-description: "Use when building, previewing, deploying or verifying a ServiceNow Lux (AIUX) app in an aiux.json project, or diagnosing 'Could not resolve aiux-sdk/build' or 'aiux-sdk/serve', a page that never hydrates, a 'was not pre-fetched' console error or unexpected delete entries; not for React UI Pages."
+description: Builds, previews, deploys and verifies Lux (AIUX) apps. Use when building or debugging one, or proving a deployed page renders; not page authoring (sn-lux).
 argument-hint: "<Lux/AIUX build, deploy, verify or runtime problem>"
 compatibility: Windows-native AIUX project with compatible dependencies; authorized OAuth target and browser access for deployed verification.
 metadata:

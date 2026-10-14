@@ -1,6 +1,6 @@
 ---
 name: sn-download
-description: Use when pulling a whole existing scoped application from a ServiceNow instance into a new local now-sdk project (adopt, import, clone or convert an instance-built app with init --from), or syncing instance-side changes into its existing project; for individual records or local XML use sn-transform.
+description: Pulls a whole existing instance app into a now-sdk project. Use when adopting an instance-built app or resyncing it; not single records such as one flow or playbook (sn-transform).
 argument-hint: <app name, scope or 32-character sys_id — leave blank to list and pick>
 compatibility: Project-compatible now-sdk and Node; authorized instance and OAuth alias; empty folder for adoption.
 metadata:

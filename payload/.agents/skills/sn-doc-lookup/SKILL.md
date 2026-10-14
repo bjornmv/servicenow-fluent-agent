@@ -1,6 +1,6 @@
 ---
 name: sn-doc-lookup
-description: Use when answering ServiceNow product documentation questions or finding official citations through the local Markdown corpus and prebuilt index; no web access or SDK maintenance required; Fluent record field/syntax shapes come from sn-explain.
+description: Searches official ServiceNow product documentation offline, with citations. Use when answering product documentation questions or when the local docs search fails; not Fluent syntax (sn-explain).
 argument-hint: <ServiceNow docs question or search terms>
 compatibility: Node.js and an existing ServiceNowDocs corpus/index; explicit paths required outside the Windows default layout.
 metadata:

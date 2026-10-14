@@ -1,6 +1,6 @@
 ---
 name: sn-transform
-description: Use when converting existing instance records or metadata XML into Fluent source with now-sdk transform, or type-referencing other-scope records with now-sdk dependencies; review generated syntax and preserve automation guardrails. Not for downloading or scaffolding a whole app (sn-download).
+description: Converts instance records or metadata XML into Fluent source and adds type definitions for other-scope records. Use when bringing in a flow, playbook or other record built on the instance; not a whole app (sn-download).
 argument-hint: <--table/--id, --ids sys_ids, or local XML file/dir — e.g. --table sys_script --id abc123, --ids abc123, or --from metadata/update>
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized instance access unless using local XML.
 metadata:

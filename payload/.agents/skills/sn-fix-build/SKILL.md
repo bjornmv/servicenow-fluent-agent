@@ -1,6 +1,6 @@
 ---
 name: sn-fix-build
-description: Use when `now-sdk build` fails on a `.now.ts` Fluent file (`error TS...`, `is not allowed in Fluent files`, `Plugin ... failed to transform`, `Failed to determine ID`); classify the file and map each diagnostic to its cause and fix. Not for install failures, missing dependencies or Lux/Vite bundling errors.
+description: Maps now-sdk build diagnostics to causes and fixes. Use when a build fails with TS or Fluent compile errors in a .now.ts file; not install failures (sn-build-install) or Vite bundling (sn-ui-page-vite).
 argument-hint: <paste the full now-sdk build output, or leave blank to run the build>
 compatibility: ServiceNow Fluent project (now.config.json); project-compatible now-sdk and Node; VS Code PowerShell with the now-sdk function.
 metadata:

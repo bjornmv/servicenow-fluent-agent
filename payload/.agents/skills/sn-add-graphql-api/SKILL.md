@@ -1,6 +1,6 @@
 ---
 name: sn-add-graphql-api
-description: Use when adding, changing or securing a scripted GraphQL API in a Fluent project with GraphQLApi, covering the SDL schema, resolvers, type resolvers, and schema-gate and field ACLs.
+description: Authors scripted GraphQL APIs in Fluent (schema, resolvers, ACLs). Use when adding, changing or securing one.
 argument-hint: <API name, namespace, schema fields, roles/security requirements>
 compatibility: ServiceNow Fluent project whose now-sdk documents GraphQLApi (explain graphqlapi-api succeeds); Node; authorized instance access for deployment.
 metadata:

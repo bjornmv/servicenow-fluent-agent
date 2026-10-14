@@ -1,6 +1,6 @@
 ---
 name: sn-new-app
-description: Use when scaffolding (creating, starting, bootstrapping) a brand-new scoped ServiceNow Fluent application in an empty folder with now-sdk init; not for adopting an existing instance app (sn-download) or Lux/AIUX apps (sn-lux).
+description: Scaffolds a new scoped Fluent app with now-sdk init. Use when starting an app in an empty folder; not Lux or AIUX apps (sn-lux) or adopting an instance app (sn-download).
 argument-hint: <app name, scope feature suffix, template, confirmed instance and alias>
 compatibility: Installed now-sdk and a Node version that satisfies its engine; empty target directory; authorized ServiceNow instance and OAuth alias.
 metadata:

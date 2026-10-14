@@ -1,6 +1,6 @@
 ---
 name: sn-explain
-description: Use when researching a Fluent record type, column/variable type or SDK topic with now-sdk explain before authoring or editing it, or when an explain lookup fails or the project SDK lacks a topic; summarize exact documented fields and syntax without inventing API shapes.
+description: Looks up Fluent record types, field types and SDK topics with now-sdk explain. Use when about to author a record type; not product docs (sn-doc-lookup).
 argument-hint: <record type or topic, e.g. business rule, table, catalog item>
 compatibility: ServiceNow Fluent project and its installed SDK documentation; now-sdk explain is a local read-only lookup through the approved SDK launcher and needs no instance access or authentication.
 metadata:

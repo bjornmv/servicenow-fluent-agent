@@ -1,6 +1,6 @@
 ---
 name: sn-build-install
-description: Use when running now-sdk build after Fluent edits, deploying approved changes to a dev/test instance with a local now-sdk install, checking an install that failed, hung or ended with unknown status, or proving deployed content; compile errors go to sn-fix-build, App Repository promotion to sn-cicd.
+description: Builds a Fluent app and installs it to a dev or test instance. Use when building, deploying, or checking whether a failed, hung or unclear install landed; not compile errors (sn-fix-build).
 argument-hint: '[optional: records/tables to verify]'
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; installation requires an authorized target and OAuth alias.
 metadata:

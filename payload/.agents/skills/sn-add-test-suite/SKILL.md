@@ -1,6 +1,6 @@
 ---
 name: sn-add-test-suite
-description: Use when authoring or changing a Fluent ATF TestSuite with ordered membership and nesting; not for running suites (sn-cicd).
+description: Authors Fluent ATF test suites. Use when creating or changing a suite; not running tests (sn-cicd).
 argument-hint: <suite name + tests/filter + optional parent>
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; ATF execution requires separate target authorization.
 metadata:

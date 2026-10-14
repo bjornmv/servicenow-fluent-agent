@@ -1,6 +1,6 @@
 ---
 name: sn-add-playbook
-description: Use when creating or changing a ServiceNow Playbook in Fluent (PlaybookDefinition, wfa.playbook) with triggers, lanes/stages, activities, permissions, variants, public access, outputs and agentic controls; not for Flows/Subflows or for importing a playbook that exists only on the instance.
+description: Authors ServiceNow Playbooks in Fluent. Use when creating or changing a playbook; not Flows or Subflows (sn-add-record).
 argument-hint: <record-driven/on-demand playbook + stages/activities/permissions>
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; target playbook capabilities must be confirmed.
 metadata:

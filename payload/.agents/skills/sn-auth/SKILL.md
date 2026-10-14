@@ -1,6 +1,6 @@
 ---
 name: sn-auth
-description: Use when setting up or repairing the now-sdk connection to a user-authorized ServiceNow instance, such as a first OAuth login with auth --add, listing, switching or deleting aliases, and 401, refresh-failed or missing-credential errors.
+description: Connects the now-sdk to an instance. Use when logging in, fixing auth errors or managing aliases; not CI credentials (sn-cicd).
 argument-hint: <user-confirmed ServiceNow instance URL and alias>
 compatibility: Project-compatible now-sdk and Node; interactive user terminal and browser for OAuth; authorized ServiceNow instance.
 metadata:

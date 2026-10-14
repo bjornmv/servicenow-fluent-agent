@@ -1,6 +1,6 @@
 ---
 name: sn-ui-page-vite
-description: Use when scaffolding or adapting a React UI Page with the official SDK Vite integration (local dev server with hot reload via now-sdk run dev, now.dev.mjs, now.prebuild.mjs, ServiceNow Vite plugins), or deciding whether a one-time target-instance runtime compatibility check is needed. Ordinary JSX, CSS and copy work belongs to sn-react-ui-design.
+description: Sets up React UI Pages with Vite, a hot-reload dev server and a runtime compatibility check. Use when adding or adapting that setup; not styling (sn-react-ui-design).
 argument-hint: <new/adapt existing UI Page + endpoint and client entry>
 compatibility: ServiceNow Fluent React UI Page project; compatible SDK, Node and Vite dependencies; browser access for runtime verification.
 metadata:

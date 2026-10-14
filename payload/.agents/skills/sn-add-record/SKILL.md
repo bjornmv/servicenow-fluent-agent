@@ -1,6 +1,6 @@
 ---
 name: sn-add-record
-description: Use when adding or editing a hand-authored Fluent record (.now.ts) in a now-sdk project, such as a table, column, business rule, client script, script include, ACL, role, UI action or property; hand-authored Flow, Subflow, Action and single ATF Test also start here. Not for GraphQL, Playbook, ATF suite or Vite UI Page authoring, nor for importing existing instance records, which have their own skills.
+description: Authors Fluent records such as tables, business rules, ACLs, UI actions, flows, single ATF tests and Service Portal widgets. Use when adding or editing one; not imports (sn-transform).
 argument-hint: <record type, name, scope and required behavior>
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authoring and deployment require separate authorization.
 metadata:
