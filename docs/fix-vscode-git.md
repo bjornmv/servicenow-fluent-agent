@@ -46,7 +46,7 @@ After approval, download and verify the reviewed worker, then run it synchronous
 $work = Join-Path $env:TEMP ('sn-vscode-git-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + $PID)
 New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
 $worker = Join-Path $work 'Ensure-MinGit254.ps1'
-Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1' -OutFile $worker -UseBasicParsing -TimeoutSec 120
+Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1' -OutFile $worker -UseBasicParsing -TimeoutSec 120
 $expected = '03ba1af2e4cae5555af7aeec6a7dfcf7a3f81271018f7cdeb2446fd51fc620b8'
 if ((Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash -ne $expected) { throw 'Worker hash mismatch; do not execute.' }
 $global:LASTEXITCODE = $null

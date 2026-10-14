@@ -28,7 +28,7 @@ When the user requests approved per-user Git alongside an unrelated system insta
 
 The mode retains the fixed ZIP/hash, extraction exclusions, non-elevated execution, lock, staging/final checks, Windows SSH/Schannel and security checks. It does **not** register Windows PATH or publish an environment update. Configure the VS Code terminal environment and `git.path` as described in the repair guide; this explicitly approved workflow permits its Git function beside `now-sdk`. Finish installation and pre-restart checks in the current session. The user's final restart is only for refreshing existing hosts, not an agent follow-up session.
 
-Do not combine this mode with `-InstallIfMissing`, staging, migration, environment-refresh or `-GitExecutable` flags. An older installed worker might not support it: use the guide's hash-verified worker rather than inventing flags or editing the installed script. Never bypass a denied selected executable.
+Do not combine this mode with `-InstallIfMissing`, staging, migration, environment-refresh or `-GitExecutable` flags. A worker from an older release (for example the copy earlier versions installed under `~/.agents/skills/`) might not support it: use the guide's hash-verified worker rather than inventing flags or editing the installed script. Never bypass a denied selected executable.
 
 ## Run the bundled worker
 
@@ -51,7 +51,7 @@ In an install run the worker also stops, before any download, if a process named
 
 Use the invocation shown above rather than adding a `2>&1` capture around child PowerShell with `$ErrorActionPreference = 'Stop'`: Windows PowerShell 5.1 can treat native stderr as a terminating `NativeCommandError` before the caller reads `$LASTEXITCODE`. The worker redirects the expected `ssh -V` banner to per-run `ssh-*.stdout.log` / `ssh-*.stderr.log` files, checks the exit code, and records success in the main log. A banner on stderr alone is not an SSH failure. Launch errors and missing/nonzero exit codes still stop deployment; do not suppress real failures or change security policy.
 
-This skill is also usable directly from the Agent distribution payload before it is copied to the profile. Ordinary absent-only setup uses the adjacent script with `-InstallIfMissing`; only the explicitly approved VS Code-only workflow uses `-InstallForVSCode`. Never run the worker with no mode switch; that path omits the absent-only guards.
+Ordinary absent-only setup runs the worker with `-InstallIfMissing`; only the explicitly approved VS Code-only workflow uses `-InstallForVSCode`. Never run the worker with no mode switch; that path omits the absent-only guards.
 
 ## Pinned package and extraction requirements
 
