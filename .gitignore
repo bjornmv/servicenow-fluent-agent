@@ -4,7 +4,7 @@ npm-debug.log*
 *.tmp
 .DS_Store
 Thumbs.db
-payload/**/__pycache__/
-payload/**/*.pyc
+__pycache__/
+*.pyc
 _pages/
 _site/

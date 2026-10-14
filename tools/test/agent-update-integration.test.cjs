@@ -289,6 +289,9 @@ test('isolated reminder, skip, dirty checkout and failed discovery never apply a
   const dirtyEvidence = JSON.parse(fs.readFileSync(dirtyState)).components.agent;
   assert.equal(dirtyEvidence.lastCheckFailedAt, undefined, 'dirty suppression must not be a hidden discovery error');
   assert.equal(dirtyEvidence.lastCheckedAt, f.options.now.toISOString());
+  assert.equal(dirtyEvidence.available, undefined);
+  assert.equal(dirtyEvidence.blocked.id, f.newRevision, 'a withheld release is recorded, not silently dropped');
+  assert.match(dirtyEvidence.blocked.reason, /^local changes \(1\): M payload\//);
   assert.equal(hash(path.join(f.home, marker)), beforeHash);
   assert.match(fs.readFileSync(path.join(f.checkout, 'payload', marker), 'utf8'), /local checkout edit/);
   const failedState = path.join(f.base, 'failed-state.json');
@@ -416,4 +419,25 @@ test('installed launcher end to end: decisions are recorded for a shown notice a
   assert.equal(direct.status, 1);
   assert.match(direct.stdout, /^Recorded remind for 1 update component\(s\)\./);
   assert.match(direct.stderr, /Only 1 of 2 update component\(s\) had a recorded notice/);
+});
+
+test('untracked files outside payload/ do not withhold an agent update; untracked payload files do', async t => {
+  const f = createFixture(t);
+  const initial = await runInstaller(f, 'install');
+  assert.equal(initial.exitCode, 0, initial.output);
+  fs.mkdirSync(path.join(f.checkout, 'docs', 'drafts'), { recursive: true });
+  fs.writeFileSync(path.join(f.checkout, 'docs', 'drafts', 'mine.md'), 'local draft');
+  const offered = await checkUpdates({ ...f.options, statePath: path.join(f.base, 'untracked-docs.json') });
+  assert.equal(offered.length, 1);
+  assert.equal(offered[0].id, f.newRevision);
+
+  fs.writeFileSync(path.join(f.checkout, 'payload', 'unreviewed.md'), 'would be installed');
+  const withheldState = path.join(f.base, 'untracked-payload.json');
+  assert.deepEqual(await checkUpdates({ ...f.options, statePath: withheldState }), []);
+  const agent = JSON.parse(fs.readFileSync(withheldState)).components.agent;
+  assert.equal(agent.blocked.id, f.newRevision);
+  assert.match(agent.blocked.reason, /\?\? payload\/unreviewed\.md/);
+  assert.doesNotMatch(agent.blocked.reason, /docs\/drafts/);
+  assert.equal(agent.lastCheckFailedAt, undefined);
+  assert.equal(f.calls.some(call => call.args[0] === 'pull'), false);
 });

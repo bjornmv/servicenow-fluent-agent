@@ -80,6 +80,7 @@ Due startup checks use each resolved component's `--only` filter; explicit reque
 ## Reading results
 
 - `advisor-exit=0` with empty output from this **quiet check only** means no notice to present: nothing newer, not due, or withheld (see State). Not proof of being up to date; blank search/build/install output is never success. Non-zero → reason on stderr; report "not checked".
+- `advisor-exit=0` with an `Update not offered for <component>` line on stderr: a newer release exists but its checkout has local changes. Report the line verbatim and ask the user how to handle the listed changes. Do not commit, stash, discard or delete them yourself, and offer no update until a later check shows the notice.
 - Agent compares local `HEAD` with `origin` `main`; docs with `origin` of the current branch. A dirty checkout, or a detached docs `HEAD`, gives no notice even when the remote is ahead.
 - **Explicit "check now":** only this request licenses `--force`. Run that component's check with `--force`, then `state`. Keys: `agent`, `sdk:<lowercased absolute project path>`, `docs:<lowercased absolute checkout path>`. A recorded `available` is a known update even if the check printed nothing: report `current`/`available` and the recorded decision, and offer the three choices. No `available` means nothing newer; for agent/docs, first confirm `git -C "<path>" status --porcelain` prints nothing.
 - SDK `current` is the **project package.json declared pin** (`currentSource`), not the global or installed version; `available` is the npmjs.org `latest` dist-tag, fetched directly, not via the project's registry/proxy. Agent/docs versions are 12-character Git revisions; `id` is the full revision.
@@ -123,7 +124,7 @@ Approval covers only the displayed component, **absolute target path** and exact
 ### Agent package
 
 1. Bind every command to the receipt's `repoRoot` (`%USERPROFILE%\.agents\.servicenow-fluent-agent-install.json`), not the terminal's cwd.
-2. Confirm clean Git status and branch `main` (`git -C "<repoRoot>" branch --show-current`). After approval: `git -C "<repoRoot>" pull --ff-only origin main`. Then `git -C "<repoRoot>" rev-parse HEAD` must equal the notice's `id`; if `origin` moved further, report the actual revision before installing.
+2. Confirm a clean checkout on branch `main` (`git -C "<repoRoot>" branch --show-current`): `git -C "<repoRoot>" status --porcelain` may list only untracked (`??`) files outside `payload/`; any other line stops the update. Untracked payload files would be installed. After approval: `git -C "<repoRoot>" pull --ff-only origin main`. Then `git -C "<repoRoot>" rev-parse HEAD` must equal the notice's `id`; if `origin` moved further, report the actual revision before installing.
 3. Run `node "<repoRoot>\bin\sn-fluent-agent.cjs" install` without `--force`, with native completion evidence; then the same path with `verify` separately. When asking approval, say that `install` also re-applies the installer's VS Code user settings and, on Windows, its user PATH registration for Git. Stop if `skipped conflicts` or `skipped obsolete conflicts` is above 0 in the install summary or `verify` is non-zero; exit 0 alone is not enough.
 4. If completion capture fails, read the original receipt/logs and report UNKNOWN; do not repeat the installer. Ask the user to reload VS Code only after verification.
 

@@ -120,6 +120,21 @@ test('check failure, signal, launch error, absent receipt or absent CLI exit non
   }
 });
 
+test('a release withheld for local changes in this run is named on stderr; the check still exits 0', () => {
+  const blocked = { id: 'b'.repeat(40), label: 'ServiceNow Fluent Agent', current: '111111111111', available: 'bbbbbbbbbbbb',
+    reason: 'local changes (1): ?? payload/x.md', at: '2026-01-03T00:00:00.000Z' };
+  const fresh = runLauncher(['check', '--only', 'agent'], { status: 0, stdout: '', stderr: '' },
+    { states: [undefined, { version: 1, components: { agent: { lastCheckedAt: blocked.at, blocked } } }] });
+  assert.equal(fresh.status, 0);
+  assert.deepEqual(fresh.stdout, []);
+  assert.equal(fresh.stderr.length, 1);
+  assert.match(fresh.stderr[0], /^Update not offered for agent: ServiceNow Fluent Agent 111111111111 -> bbbbbbbbbbbb is available, but the checkout has local changes \(1\): \?\? payload\/x\.md\. Commit, stash or remove them, then check again\.$/);
+  const old = { version: 1, components: { agent: { lastCheckedAt: blocked.at, blocked } } };
+  const repeat = runLauncher(['check', '--only', 'agent'], { status: 0, stdout: '', stderr: '' }, { states: [old, old] });
+  assert.equal(repeat.status, 0);
+  assert.deepEqual(repeat.stderr, [], 'an earlier recorded block is not repeated');
+});
+
 test('a discovery failure recorded by this run is surfaced; an older recorded failure is not repeated', () => {
   const failedNow = { version: 1, components: { agent: { lastCheckedAt: '2026-01-03T00:00:00.000Z', lastCheckFailedAt: '2026-01-03T00:00:00.000Z' } } };
   const fresh = runLauncher(['check', '--only', 'agent'], undefined, { states: [undefined, failedNow] });

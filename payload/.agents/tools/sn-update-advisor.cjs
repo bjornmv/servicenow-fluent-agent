@@ -183,6 +183,14 @@ if (!invalid && result.stdout.trim()) {
 // and only recorded in state. Surface the ones this run recorded.
 const failed = Object.keys(after.components).filter((key) => after.components[key].lastCheckFailedAt &&
   after.components[key].lastCheckFailedAt !== (before.components[key] || {}).lastCheckFailedAt);
+// A newer release withheld because its checkout has local changes is not a failure, but it
+// must not be silent: name it so the user can commit, stash or remove the changes.
+for (const key of Object.keys(after.components)) {
+  const blocked = after.components[key].blocked;
+  if (!isRecord(blocked) || blocked.at === ((before.components[key] || {}).blocked || {}).at) continue;
+  console.error(`Update not offered for ${key}: ${blocked.label || key} ${blocked.current} -> ${blocked.available} is available, ` +
+    `but the checkout has ${blocked.reason}. Commit, stash or remove them, then check again.`);
+}
 if (invalid) console.error('Update check failed: the checkout CLI returned a response that is not a valid update notice.');
 if (failed.length) console.error(`Update check failed for ${failed.join(', ')}: the release source could not be read (lastCheckFailedAt recorded). No update status is known for it.`);
 if (invalid || failed.length) process.exitCode = 1;
