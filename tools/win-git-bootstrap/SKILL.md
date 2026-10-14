@@ -13,7 +13,7 @@ Use this skill only during authorized Windows agent setup or explicit Git bootst
 
 ## Decision rule
 
-For the explicitly requested [VS Code-only Git repair](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md), use the exception below. All other setup retains this absent-only decision rule.
+For the explicitly requested [VS Code-only Git repair](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md), use the scoped workflow below and the guide's single non-fatal preflight first; do not run this ordinary inventory before that check. All other setup retains this absent-only decision rule.
 
 1. Run `git.exe --version` in the approved terminal, or with the harness's approved direct-process tool. If PATH lookup fails, check `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`, `Git\cmd\git.exe` under `%ProgramFiles%` and `%ProgramFiles(x86)%`, and the `Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1` registrations (HKCU, HKLM and HKLM `Software\WOW6432Node`); the bundled worker also checks these.
 2. A working stable Git **>=2.54.0** is left unchanged. If it is only missing from the current process PATH, use its verified absolute path rather than installing a second copy.
@@ -24,9 +24,13 @@ A newer working version satisfies the requested minimum-version check, but the w
 
 ## Explicit VS Code-only installation
 
-When the user requests approved per-user Git alongside an unrelated system installation, use **`-InstallForVSCode`** alone. This is a supported opt-in mode, not automatic fallback after a policy denial. Select only `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`; keep an existing exact pinned copy, or install when that target is genuinely absent. A blocked/different selected executable, occupied target or associated per-user registration remnant stops the operation. Unselected system Git is not executed or altered.
+First follow the repair guide's **one bounded, non-fatal Git version check**. A responding Git means finish without installation, configuration changes or a restart request; do not enforce the pinned version on an already working copy. A missing/failed probe is captured as a diagnostic result and the agent continues the authorized repair, not an uncaught error or automatic end of the task. Do not relaunch a denied executable through another launcher. Unknown completion must be recovered before deployment.
+
+For that repair branch, use **`-InstallForVSCode`** alone. This supported opt-in mode selects only `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`; keep an existing exact pinned copy, or install when that target is genuinely absent. A blocked/different selected executable, occupied target or associated per-user registration remnant still stops deployment safely. The worker itself does not execute or alter unselected system Git; a failed preflight never authorizes overwriting it or bypassing security policy.
 
 The mode retains the fixed ZIP/hash, extraction exclusions, non-elevated execution, lock, staging/final checks, Windows SSH/Schannel and security checks. It does **not** register Windows PATH or publish an environment update. Configure the VS Code terminal environment and `git.path` as described in the repair guide; this explicitly approved workflow permits its Git function beside `now-sdk`. Finish installation and pre-restart checks in the current session. The user's final restart is only for refreshing existing hosts, not an agent follow-up session.
+
+Only this VS Code mode accepts the agent host's indexed `safe.bareRepository=explicit`, `credential.interactive=never` and `core.fsmonitor=false` settings. It validates the count/pairs and preserves them unchanged; unknown, malformed or weaker settings stop for review without logging values. Do not clear arbitrary `GIT_*` variables to make installation pass. Other override checks and default-mode behavior remain unchanged.
 
 Do not combine this mode with `-InstallIfMissing`, staging, migration, environment-refresh or `-GitExecutable` flags. A worker from an older release (for example the copy earlier versions installed under `~/.agents/skills/`) might not support it: use the guide's hash-verified worker rather than inventing flags or editing the installed script. Never bypass a denied selected executable.
 
@@ -47,7 +51,7 @@ Run the block as one command so the exit code belongs to this run. Use the appro
 
 The worker is an unsigned local script. If execution policy, Mark-of-the-Web or application control refuses to start it, the worker never ran and wrote no log for this run: this is a policy block, not a Git failure. Stop under rule 4, quote the error and ask the user to obtain the organization's approval/signing. Do not use `Unblock-File`, `Set-ExecutionPolicy` at any scope, `-ExecutionPolicy`, `-Command`/`-EncodedCommand`/stdin launching, another interpreter or elevation.
 
-In an install run the worker also stops, before any download, if a process named `git`, `ssh`, `git-bash` or `git-cmd` is running (it never kills applications; ask the user to close them; it checks again before deployment), if `GIT_SSH`, `GIT_SSH_COMMAND`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_COUNT` or `GIT_SSL_NO_VERIFY` is set (report the names, not the values; do not clear them to proceed without the user), or if the session is elevated.
+In an install run the worker also stops, before any download, if a process named `git`, `ssh`, `git-bash` or `git-cmd` is running (it never kills applications; ask the user to close them; it checks again before deployment), if `GIT_SSH`, `GIT_SSH_COMMAND`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_COUNT` or `GIT_SSL_NO_VERIFY` is set (report the names, not the values; do not clear them to proceed without the user; `-InstallForVSCode` accepts only the indexed agent-host settings described above), or if the session is elevated.
 
 Use the invocation shown above rather than adding a `2>&1` capture around child PowerShell with `$ErrorActionPreference = 'Stop'`: Windows PowerShell 5.1 can treat native stderr as a terminating `NativeCommandError` before the caller reads `$LASTEXITCODE`. The worker redirects the expected `ssh -V` banner to per-run `ssh-*.stdout.log` / `ssh-*.stderr.log` files, checks the exit code, and records success in the main log. A banner on stderr alone is not an SSH failure. Launch errors and missing/nonzero exit codes still stop deployment; do not suppress real failures or change security policy.
 
