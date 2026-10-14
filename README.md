@@ -20,7 +20,7 @@ If extraction is incomplete, use [setup.txt](https://bjornmv.github.io/serviceno
 
 The final step has the installing agent retire only its own idle setup shell after saving all results, then use `run_in_terminal` again to create a fresh SDK-profile terminal. It compares old/new PIDs and verifies Git, the `now-sdk` function and the payload without an extension or injected startup commands. This lifecycle is source-confirmed; a live Copilot run is still needed. If the handoff cannot be performed safely, report installation completion separately from pending terminal integration.
 
-Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step links to the separate [Windows Git setup procedure](git-setup.md), which reuses the packaged `win-git-bootstrap` skill and worker. Working Git is preserved; only genuinely missing Git is installed, using pinned MinGit 2.54.0.windows.1 with blocked Unix find/sort omitted before extraction.
+Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step links to the separate [Windows Git setup procedure](git-setup.md), which uses the setup-only `win-git-bootstrap` procedure and worker. Working Git is preserved; only genuinely missing Git is installed, using pinned MinGit 2.54.0.windows.1 with blocked Unix find/sort omitted before extraction.
 
 The Git page provides a directly downloadable, SHA-256-checked worker, so no Git clone is required to bootstrap Git. The Pages workflow publishes both pages and copies the canonical payload script to `/downloads/Ensure-MinGit254.ps1` in the same deployment. These URLs become available after the change is pushed and Pages deployment succeeds.
 
@@ -82,7 +82,7 @@ Save work and restart affected terminal applications from a refreshed launcher, 
 
 ## Skills are instructions, not registered tools
 
-This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration.
+This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration. The helper takes an instance-relative path only, and `--instance` must match the instance stored with the alias.
 
 REST guidance includes bounded table reads, schema/inheritance discovery, pagination and contributor aggregates. The CLI does not automatically enforce schema validation, output budgets or interactive write approval: the skill explicitly requires those workflow gates and does not promise protections that only exist in another execution environment. Never expose tokens or reinterpret a missing tool-search result as an authentication failure.
 
@@ -157,7 +157,7 @@ The advisor records its non-sensitive timing and decision state in `%USERPROFILE
 ### Test agent updates without changing your installation
 
 ```text
-node --test tools/test/update-advisor.test.cjs tools/test/agent-update-integration.test.cjs
+npm run test:update-advisor
 ```
 
 Requires an existing Git executable; never bootstraps Git. The integration test creates a local bare remote with two revisions at the same package version, an older checkout, and temporary home/receipt/advisor state. It exercises production detection, approval recording, a test-driver fast-forward, and production payload installation/verification; it checks backups and preserved local edits. All test directories are removed afterward. Reminder timing is simulated, not a seven-day wait.
@@ -229,9 +229,9 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 ## Skill and instruction maintenance
 
 - Descriptions are version-neutral, explicit **Use when** triggers. `argument-hint`, `compatibility`, and `metadata.version: '1'` are consistent; the latter identifies the skill format, not the distribution or SDK version. Body **Verified against** lines record historical evidence, not runtime pins or newly tested compatibility. Respect each project's SDK and engines.
-- `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
-- `sn-doc-export` creates PDF/DOCX; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
-- `win-git-bootstrap` is setup-only; its pinned worker remains at the existing path used by the installer and published checksums.
+- `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery and the missing-topic / older-SDK stop branch. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
+- `sn-doc-export` creates PDF/DOCX/HTML and can capture Service Portal screenshots from the confirmed instance; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
+- `win-git-bootstrap` is setup-only and is not installed into the agent profile. Its procedure and pinned worker live in `tools/win-git-bootstrap/`; the installer's `configure-git` runs that worker from the checkout, and the Pages build publishes it with its checksum. An update removes the copy that earlier versions installed under `~/.agents/skills/` (local edits are preserved for review).
 - Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. REST CLI tests use mocked transport and credentials, not live instance access.
 
 ### Runtime prompt boundaries
@@ -259,7 +259,10 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 | Install errors, history, content proof and Studio commit reminder | `sn-build-install` |
 | Automation source/XML classification and deployment scan | `sn-build-install`, linked from `sn-transform` and Fluent file instructions |
 | OAuth inventory versus connectivity evidence | `sn-auth` |
-| Lux assets, tombstones and runtime checks | `sn-lux` / `sn-lux-build` |
+| Lux classification, prerequisites, scaffold and official AIUX/Horizon pack routing | `sn-lux` (+ `references/official-skills.md`) |
+| Lux build, preview, assets, tombstones and runtime checks | `sn-lux-build` |
+| GraphQL script forms, ACL paths and security flags | `sn-add-graphql-api` |
+| ATF execution, App Repo publish/install/rollback approvals and CI variables | `sn-cicd` |
 | React design and Vite compatibility | `sn-react-ui-design` / `sn-ui-page-vite` |
 | `move --ids` membership warning | `reference/sdk-commands.md` |
 | `transform --force` missing-parent meaning | `sn-transform` |

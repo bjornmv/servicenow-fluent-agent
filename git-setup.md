@@ -6,7 +6,7 @@ permalink: /git-setup/
 
 This is the Git prerequisite handoff from [Agent-assisted setup](https://bjornmv.github.io/servicenow-fluent-agent/setup/). Git is **not required** to read these instructions or download the worker. Do not clone a repository to bootstrap missing Git. If HTML extraction is incomplete, read the complete [plain-text Git guide](https://bjornmv.github.io/servicenow-fluent-agent/git-setup.txt); the current setup manifest records `gitSetup.sha256` and `gitWorker.sha256`. During full setup, require these to match the saved Git guide and worker as well as the expected worker digest below.
 
-The authoritative installation rules are in the **[win-git-bootstrap skill](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/SKILL.md)** ([repository copy](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/payload/.agents/skills/win-git-bootstrap/SKILL.md)). Read that document completely first. The executable implementation is its adjacent `scripts/Ensure-MinGit254.ps1`; this page adds only the pre-clone HTTPS handoff, not another installer implementation.
+The authoritative installation rules are in the **[win-git-bootstrap skill](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/SKILL.md)** ([repository copy](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/tools/win-git-bootstrap/SKILL.md)). Read that document completely first. The executable implementation is its adjacent `scripts/Ensure-MinGit254.ps1`; this page adds only the pre-clone HTTPS handoff, not another installer implementation.
 
 ## 1. Decide whether installation is needed
 
@@ -20,7 +20,7 @@ Only genuinely missing Git proceeds below. The worker's **`-InstallIfMissing`** 
 
 ## 2. Obtain and review the worker without Git
 
-If you already have the installed skill or a reviewed repository/source-ZIP checkout, use its adjacent worker. Otherwise download this site's copy over HTTPS. It is copied byte-for-byte from the canonical payload script in the same Pages build as this document.
+If you already have a reviewed repository/source-ZIP checkout, you may use its `tools\win-git-bootstrap\scripts\Ensure-MinGit254.ps1`. Otherwise download this site's copy over HTTPS. It is copied byte-for-byte from the canonical payload script in the same Pages build as this document.
 
 [Download the PowerShell worker](https://bjornmv.github.io/servicenow-fluent-agent/downloads/Ensure-MinGit254.ps1)
 
@@ -42,9 +42,9 @@ if ((Get-FileHash -LiteralPath $BootstrapPath -Algorithm SHA256).Hash -ne $Expec
 
 The value above authenticates the **worker script bytes**, not the MinGit ZIP. The worker separately checks the pinned MinGit ZIP SHA-256 from the skill before extraction. A downloaded HTML error page or altered script must fail this check.
 
-Read the saved script before executing it, using a file-reading tool with bounded ranges rather than dumping it into the terminal. In PowerShell diagnostics, assume ConstrainedLanguage: use cmdlets and plain strings, not `[pscustomobject]` construction or non-core static methods. Do not repeatedly pass the whole script to `Select-String -InputObject`; each match can echo the whole file and bury the result. If using a local payload/installed-skill copy instead, set `$BootstrapPath` to its absolute path and compare it with the same expected script hash. A mismatch is a stop/review condition, not a reason to skip validation.
+Read the saved script before executing it, using a file-reading tool with bounded ranges rather than dumping it into the terminal. In PowerShell diagnostics, assume ConstrainedLanguage: use cmdlets and plain strings, not `[pscustomobject]` construction or non-core static methods. Do not repeatedly pass the whole script to `Select-String -InputObject`; each match can echo the whole file and bury the result. If using a checkout copy instead, set `$BootstrapPath` to its absolute path and compare it with the same expected script hash. A mismatch is a stop/review condition, not a reason to skip validation.
 
-If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If `RemoteSigned`, Mark-of-the-Web or application control prevents execution, request the organization's approval/signing process. Do not remove the zone marker, pass `-ExecutionPolicy Bypass`, elevate, or retry through another interpreter.
+If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If execution policy (`Restricted`, `AllSigned`, or `RemoteSigned` with Mark-of-the-Web) or application control prevents execution, the worker never ran and wrote no log; request the organization's approval/signing process. Do not remove the zone marker (`Unblock-File`), run `Set-ExecutionPolicy` at any scope, pass `-ExecutionPolicy`, elevate, or retry through another interpreter.
 
 ## 3. Run the reviewed script in absent-only mode
 
@@ -66,7 +66,7 @@ The worker installs only the pinned MinGit **2.54.0.windows.1** ZIP, with Unix `
 
 ## 4. Verify, then return to setup
 
-Read `%LOCALAPPDATA%\Git254Bootstrap\logs\mingit-*.log` and distinguish `SKIP` from `SUCCESS`. A zero exit code alone does not identify which action occurred.
+Read `%LOCALAPPDATA%\Git254Bootstrap\logs\mingit-*.log` and distinguish `SKIP` from `SUCCESS`. A zero exit code alone does not identify which action occurred. A nonzero exit with `FAILED:` does not prove nothing changed: if `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` now exists, Git was deployed and a later step failed; do not re-run `-InstallIfMissing` (it would only log `SKIP`), follow the skill's verification section.
 
 After an actual fresh install:
 
@@ -89,4 +89,4 @@ Only then return to **step 2 of `setup.md`**. Report the version, verified path,
 
 The reduced MinGit staging copy passed native init/add/commit/branch/merge/local push/clone/fetch/status and public HTTPS tests. The excluded Unix utilities were never written, and no new Defender ASR or executable/code-integrity blocks were found in that test window. PowerShell constrained-language script-policy records can still occur.
 
-Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. The initial shell-specific profile workaround was insufficient and has been replaced by user PATH registration plus native environment propagation. A real Windows Terminal fresh-environment test resolved Git through a native child process, Windows `where.exe`, and PowerShell with `-NoProfile`, without injecting PATH or SDK startup code. That is not certification of every already-running host; actual user-terminal checks remain mandatory. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/payload/.agents/skills/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.
+Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. The initial shell-specific profile workaround was insufficient and has been replaced by user PATH registration plus native environment propagation. A real Windows Terminal fresh-environment test resolved Git through a native child process, Windows `where.exe`, and PowerShell with `-NoProfile`, without injecting PATH or SDK startup code. That is not certification of every already-running host; actual user-terminal checks remain mandatory. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.

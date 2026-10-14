@@ -1,58 +1,45 @@
 ---
 name: sn-explain
-description: Use when researching a Fluent record type before authoring or editing it; summarize exact documented fields and syntax without inventing API shapes.
-argument-hint: <record type or topic, e.g. businessrule, table, service-catalog>
-compatibility: ServiceNow Fluent project and its installed SDK documentation; use the approved SDK launcher only when execution is authorized.
+description: Looks up Fluent record types, field types and SDK topics with now-sdk explain. Use when about to author a record type; not product docs (sn-doc-lookup).
+argument-hint: <record type or topic, e.g. business rule, table, catalog item>
+compatibility: ServiceNow Fluent project and its installed SDK documentation; now-sdk explain is a local read-only lookup through the approved SDK launcher and needs no instance access or authentication.
 metadata:
   version: '1'
 ---
-Look up the Fluent SDK docs for the requested type/topic and report how to author it correctly. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). The configured PowerShell function is not the blocked batch shim; do not replace it with per-command resolver scripts.
+Verified against: now-sdk 4.13.6 and 4.11.2 `explain` runs; the project's installed SDK is authoritative.
 
-**Always pass `--format raw`** — `pretty` includes ANSI codes that waste tokens.
+Look up the SDK docs for the requested type/topic and report how to author it. Run `now-sdk` in VS Code PowerShell from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md).
 
-1. **Topic discovery first** when the topic name isn't 1:1 obvious. Hyphenation is inconsistent (`businessrule-api` vs `business-rule-guide`, `restapi-api` vs `scripted-rest-api-guide`):
-   - `now-sdk explain --list <keyword>` — one-line per matching topic.
-   - `now-sdk explain <topic> --peek --format raw` — one-line summary to pick among 2–3 candidates.
-2. **`-api` always** — `now-sdk explain <topic>-api --format raw`. This is the data shape.
-3. **`-guide` only when needed** — net-new records, complex composition (catalog items, flows, SP pages, scripted REST, security). Skip for "add another X to existing table" or simple edits.
-4. **For tables** — read `*column-api` for non-trivial column types: `choicecolumn-api`, `referencecolumn-api`, `conditionscolumn-api`, `slushbucketcolumn-api`, `recordscolumn-api`, `documentidcolumn-api`, `overridecolumn-api`. A separate lookup for a simple column is unnecessary only when the current `table-api` documentation already establishes its exact shape; never infer properties from a name.
+**Always pass `--format raw`** — `pretty` adds ANSI codes that waste tokens.
 
-For authorized record creation, continue with [sn-add-record](../sn-add-record/SKILL.md), which owns the shared author/build workflow and table/business-rule traps. Keep GraphQL, Playbook and ATF suite authoring in their specialized skills. This lookup skill does not itself authorize source edits or deployment.
+1. **Exact topic names only.** Take the name from [topic names](references/topics.md) or from `--list`. Read that file when you do not already know the exact name, after an SDK version change, or when the task first touches a foundational topic (`keys-file`, `Now.include`, `Now.ref`, `$override`, `now.config.json`). Hyphenation is inconsistent (`businessrule-api` vs `business-rule-guide`). A bare keyword is not rejected: `explain table` prints `# Multiple matching topics for "table":` (a candidate list, not documentation) and `explain schedule` prints the whole `sla-api` document, both exit 0. Check that the first heading is the type you asked for.
+   - `now-sdk explain --list "<keyword>" --format raw` — `# Matching topics:` then `# Possibly related topics:`. Quote multi-word keywords (unquoted, the second word fails as `Unknown command`) and prefer the spaced phrase: `--list "service catalog"` finds `catalogitem-api` and the variable APIs; `--list service-catalog` finds only flow-trigger topics. Never run `--list` without a keyword (about 260 topics).
+   - `now-sdk explain <topic> --peek --format raw` — one-line summary to choose among 2–3 candidates.
+2. **`-api` for the data shape:** `now-sdk explain <recordtype>-api --format raw` with the exact name, never a guessed `<keyword>-api` (`service-catalog-api` does not exist). Types without a dedicated API (field style, schedule entry) use `record-api`; their table and field-name sources are in [topic names](references/topics.md).
+3. **`-guide` only when needed:** net-new records or complex composition (catalog items, flows, SP pages, scripted REST, security). Skip for simple edits or another X on an existing table.
+4. **Tables:** always read the `*column-api` (`--list column`) for each non-trivial column type; skip it for a simple column only when the current `table-api` output already shows its exact shape. Never infer properties from a name.
+5. **Report** tersely from the ACTUAL output (do NOT invent fields), citing the exact topic names read:
+   - Required properties and key optional ones.
+   - Syntax class: ordinary record, documented callback DSL, GraphQL imported-script form, or transformed/Fluent-locked automation.
+   - A minimal, correct `.now.ts` snippet for the project scope from `now.config.json`. Ordinary script bodies use `Now.include` or, where `script` accepts a function, a named function imported from a server module (follow the project's form); GraphQL prefers named imported server functions; `Test`, automation and Playbook callbacks stay inline as DSL. Use primitives, `{ label }` choices, matching Table exports, `SPPage.pageId`, stable `$id`s, no unused bindings; never `new TestSuite()` or `new GraphQLApi()`. See [Fluent rules](../../instructions/fluent.instructions.md).
 
-## Topic taxonomy
+This skill does not authorize source edits or deployment. For authorized record creation continue with [sn-add-record](../sn-add-record/SKILL.md); GraphQL, Playbook, ATF suite and Vite UI Page authoring stay in their own skills; ATF execution is separate and approval-gated ([sn-cicd](../sn-cicd/SKILL.md)).
 
-`<recordtype>-api` is the constructor/type reference (data shape). `<area>-guide` is the end-to-end pattern (workflow + composition). Common intents below; everything else → `explain --list <keyword>`.
+## Missing topic or older SDK — stop branch
 
-| Intent | `-api` | `-guide` (only if net-new / complex) |
-|---|---|---|
-| Table + columns | `table-api` + per-column `*column-api` | `table-guide` |
-| Business rule | `businessrule-api` | `business-rule-guide` |
-| Client script | `clientscript-api` | `client-script-guide` |
-| UI policy / UI action | `uipolicy-api`, `uiaction-api` | `platform-view-guide` |
-| Script include | `scriptinclude-api` | `script-include-guide` |
-| Scripted REST | `restapi-api` | `scripted-rest-api-guide` |
-| Service Portal page / widget | `sppage-api`, `spwidget-api` | `service-portal-guide` |
-| Flow | `flow-api` | `wfa-flow-guide` |
-| Subflow | `subflow-api` | `wfa-subflow-guide` |
-| Custom action | `custom-action-api` | `wfa-custom-action-guide` |
-| ATF test / suite | `test-api`, `testsuite-api` | use the API examples; execution is separate via `cicd` |
-| Scripted GraphQL | `graphqlapi-api` | `graphql-api-guide`, `security-guide` |
-| Playbook | `playbook-api` | `playbook-guide` plus the relevant `playbook-*-guide` topics |
-| UI Page | `uipage-api` | `ui-page-guide`; Vite/HMR also requires the official `react-ui-page-vite-sample` |
-| Field style | `record-api` | `field-styles-guide` (`table: 'sys_ui_style'`) |
-| Schedule entry | `record-api` | inspect the typed `cmn_schedule_span` table definition; use `explain --list schedule` for related topics |
-| ACL / role | `acl-api`, `role-api` | `security-guide` |
-| Catalog item / variables | `catalogitem-api`, `*variable-api` | `service-catalog-guide`, `service-catalog-variables-guide` |
+Other skills point here when `explain` does not return the documentation they name.
 
-### Foundational topics — read ONCE per project
-These topics recur across artifacts. Cache verified takeaways with the project and SDK version in an available workspace memory/evidence facility, or keep them in the conversation if none exists. Recheck when the SDK version or relevant evidence changes:
+1. **Recognize the miss.** None of these is documentation; never summarize or author from them:
+   - An unknown topic: `[now-sdk] ERROR: No matching topics for "<name>"`, exit 1.
+   - `--list` with no hit: `# No matches found.`, exit 0.
+   - A `# Multiple matching topics` list, or a document whose heading is a different type.
 
-`fluent-overview`, `now-include-guide`, `now-ref-guide`, `now-attach-guide`, `keys-file`, `override-guide`, `data-helpers-guide`, `now-config-reference`.
+   A launcher or terminal error (function not found, no exit status) is not a missing topic: the result is UNKNOWN; follow the SDK command policy.
+2. **One bounded rediscovery.** Ignore the error's hint to run bare `now-sdk explain --list`. Run `now-sdk explain --list "<keyword>" --format raw` with the spaced phrase, then at most once more with one distinctive word, and read the exact topic it names.
+3. **Still missing: the SDK that ran does not document it** (the launcher prefers the project-local SDK; topic sets grow between releases). Run `now-sdk --version`, then STOP authoring that type and report the topic name, keywords tried and SDK version. Do not write the shape from memory, another SDK version's docs, a sibling type, or type/constructor names.
+4. **Offer, do not choose:**
+   - (a) An SDK upgrade, which needs explicit scope/version approval (a global upgrade does not change a project pin; see the SDK command policy and the **sn-update-advisor** skill).
+   - (b) The generic `Record()` form, only after reading `record-api`, with field names from evidence such as an authorized read-only dictionary lookup through the **sn-rest** skill, stated as a fallback without the dedicated API's type safety.
+   - (c) Leaving the record out of scope.
 
-Then summarize from the ACTUAL output (do NOT invent fields):
-- Required fields/properties.
-- Key optional fields worth knowing.
-- Which syntax class applies: ordinary record, documented callback DSL, GraphQL imported-script form, or transformed/Fluent-locked automation.
-- A minimal, correct `.now.ts` snippet for the current project scope from `now.config.json`. Ordinary record script bodies use `Now.include`; GraphQL prefers named imported server functions; documented `Test`, automation, and Playbook callbacks stay inline as SDK DSL. Apply primitive values, `{ label }` choices, matching Table exports, `SPPage.pageId`, stable `$id`s, and no unused bindings. Never use `new TestSuite()` or `new GraphQLApi()`. See [Fluent rules](../../instructions/fluent.instructions.md).
-
-Keep it terse. Cite the exact topic name(s) you read. This is the primary doc tool — run it BEFORE authoring or editing any record.
+   [sn-doc-lookup](../sn-doc-lookup/SKILL.md) answers product-behaviour questions; it is not a source for Fluent field shapes.

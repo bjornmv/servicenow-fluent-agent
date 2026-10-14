@@ -88,8 +88,8 @@ function main() {
   if (!fs.existsSync(skillsRoot)) throw new Error(`Skills directory not found: ${skillsRoot}`);
 
   const skillDirs = fs.readdirSync(skillsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && (entry.name.startsWith('sn-') || entry.name === 'win-git-bootstrap') &&
-      !['sn-doc', 'sn-add-table', 'sn-add-business-rule'].includes(entry.name))
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('sn-') &&
+      !['sn-doc', 'sn-add-table', 'sn-add-business-rule', 'win-git-bootstrap'].includes(entry.name))
     .map((entry) => entry.name)
     .sort();
 

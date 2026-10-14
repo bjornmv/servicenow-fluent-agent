@@ -7,4 +7,4 @@
 - Direct list URL: `/sys_ux_banner_announcement_list.do`.
 
 ## REST hide pattern (sn-rest)
-PowerShell mangles JSON bodies with embedded spaces/quotes when passing as `--body` to node. Use a tiny one-shot Node script that reads the keychain token directly (see `tmp/hide-banner.js` pattern from AssetApp 2026-06-05) — pass the body via `JSON.stringify(...)` in-script, not via the shell.
+Hiding a banner is an instance write. Follow the **sn-rest** skill's write gate: get explicit approval of the exact `sys_id` and `end` value, put the JSON in a reviewed UTF-8 body file and send it with the helper's `--method PATCH --body-file` (PowerShell mangles inline JSON passed as `--body`). Do not read the credential store or write another OAuth client.

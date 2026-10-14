@@ -1,5 +1,15 @@
 # Validation and security history
 
+## Safe failure handling
+
+- Preserve a blocked/corrupt result and report it. Do not rerun through another interpreter or rename executables to change policy matching.
+- A failed hash check must not be bypassed. An administrator/user may investigate and remove only the rejected cached ZIP before another verified download.
+- If log access is denied, request appropriate administrative review rather than weakening the security gate.
+- A hard interruption can leave the `%LOCALAPPDATA%\Git254Bootstrap\deployment.lock` directory and staging files; the next run then fails because the lock already exists. Confirm there is no active worker before clearing a stale lock, and ask the user first. Never remove unrelated directories.
+- Shell scripts relying on omitted find/sort require a separate supported design; Windows commands with those names are not drop-in replacements.
+
+The sections below are a historical record. Approaches described as removed or replaced are not remedies.
+
 ## Why this method
 
 On the managed Windows test workstation, native Git 2.54.0.windows.1 and Windows OpenSSH ran, and Git HTTPS worked through Schannel. The full Git installer nevertheless returned 0 after AppLocker blocked its post-install batch script. Defender ASR also blocked an installer temporary payload whose final filename was not identified.
@@ -65,15 +75,7 @@ The user subsequently confirmed: **"It's working in new terminals now."** The sa
 
 Fresh MinGit promotion and registry PATH registration succeeded as described above, and the user accepted new-terminal resolution after the shell-independent environment update. Full-Git migration and every possible terminal host/custom PATH override are not certified. Older-version upgrade, interrupted deployment, private HTTPS/SSH authentication, Credential Manager, signing, custom hooks and all advanced Git commands are not certified.
 
-The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot migrate/repair an existing installation. On 2026-10-02 the stable profile copy ran in this mode, detected existing 2.54.0.windows.1, and returned 0 without download/install/configuration changes. A fresh agent instruction check recognized the skill route and absent-only/policy-block rules. The three bundled skill files were hash-matched between source payload and the live profile, and repository diff whitespace checks passed. Do not label these integration/no-op checks as fresh-install tests.
-
-## Safe failure handling
-
-- Preserve a blocked/corrupt result and report it. Do not rerun through another interpreter or rename executables to change policy matching.
-- A failed hash check must not be bypassed. An administrator/user may investigate and remove only the rejected cached ZIP before another verified download.
-- If log access is denied, request appropriate administrative review rather than weakening the security gate.
-- A hard interruption can leave a deployment lock and staging files. Confirm there is no active worker before clearing a stale lock. Never remove unrelated directories.
-- Shell scripts relying on omitted find/sort require a separate supported design; Windows commands with those names are not drop-in replacements.
+The Agent-setup integration adds `-InstallIfMissing` so routine setup cannot migrate/repair an existing installation. On 2026-10-02 the stable profile copy ran in this mode, detected existing 2.54.0.windows.1, and returned 0 without download/install/configuration changes. At that time, a fresh agent instruction check recognized the skill route and absent-only/policy-block rules. The three bundled skill files were hash-matched between source payload and the live profile, and repository diff whitespace checks passed. Do not label these integration/no-op checks as fresh-install tests.
 
 References:
 

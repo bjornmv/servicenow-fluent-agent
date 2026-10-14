@@ -12,7 +12,7 @@ const os = require('node:os');
 const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 
-const worker = fs.readFileSync(path.resolve(__dirname, '../../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8').replaceAll('\r\n', '\n');
+const worker = fs.readFileSync(path.resolve(__dirname, '../../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8').replaceAll('\r\n', '\n');
 const windowsOnly = { skip: process.platform !== 'win32' };
 const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
 const quote = value => "'" + value.replaceAll("'", "''") + "'";
@@ -572,7 +572,7 @@ test('guide gates all mutations and restart behind failure, retaining target saf
 
 test('guide installs before final user restart and pins the actual worker', () => {
   const guide = fs.readFileSync(path.resolve(__dirname, '../../docs/fix-vscode-git.md'), 'utf8');
-  const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.resolve(__dirname, '../../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'))).digest('hex');
+  const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.resolve(__dirname, '../../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'))).digest('hex');
   assert.ok(guide.includes(hash));
   assert.match(guide, /-File \$worker -InstallForVSCode/);
   assert.match(guide, /Verify now, before handing back control/);

@@ -1,67 +1,58 @@
 ---
 name: sn-add-graphql-api
-description: Use when authoring or securing a Fluent GraphQLApi with SDL, imported server resolvers, type resolvers, and schema/field ACLs.
+description: Authors scripted GraphQL APIs in Fluent (schema, resolvers, ACLs). Use when adding, changing or securing one.
 argument-hint: <API name, namespace, schema fields, roles/security requirements>
-compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized instance access for deployment.
+compatibility: ServiceNow Fluent project whose now-sdk documents GraphQLApi (explain graphqlapi-api succeeds); Node; authorized instance access for deployment.
 metadata:
   version: '1'
 ---
-Verified against: now-sdk 4.11 documentation (historical; not newly verified against another SDK version).
-Author a scripted ServiceNow GraphQL API with `GraphQLApi(...)`.
+Verified against: now-sdk 4.13.6 bundled docs and local `now-sdk build` output; not exercised on an instance.
 
-Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
+Author a scripted ServiceNow GraphQL API with `GraphQLApi(...)`. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Explain first
 
 ```powershell
 now-sdk explain graphqlapi-api --format raw
 now-sdk explain graphql-api-guide --format raw
+now-sdk explain acl-api --format raw
 ```
 
-Read `security-guide` when adding ACLs. Use the target project's installed SDK docs as authoritative.
+Add `role-api` when declaring a role and `security-guide` for role/ACL design. The project's SDK docs are authoritative. If `explain graphqlapi-api` fails with `No matching topics` (non-zero exit), the project SDK has no `GraphQLApi`: stop, report the project SDK version and offer [sn-update-advisor](../sn-update-advisor/SKILL.md) for a separately approved upgrade. Do not author from another SDK's docs.
 
-## Required design
+## Design
 
-1. Define SDL first. Small schema strings may be inline; prefer `Now.include('./schema.graphql')` for non-trivial SDL.
-2. Call `GraphQLApi({...})`, never `new GraphQLApi()`.
-3. Give the API and every resolver/type-resolver a stable `$id`.
-4. Resolver and type-resolver `script` values use a named function imported from `src/server` (preferred) or `Now.include`. An inline function expression is a build error; avoid inline script strings for non-trivial logic.
-5. Bind resolver `paths` as `Type:field`. Keep resolver names, paths, and type-resolver `typeName`s unique.
-6. Resolver `env`: `getArguments()` / `getSource()`. Type-resolver `env`: `getArguments()` / `getObject()` / `getTypeName()`.
+1. Read `now.config.json` and existing `GraphQLApi` source first: the scope drives the ACL path prefix and role names, and reusing a `namespace` already in the application is a build error.
+2. Write the SDL first; inline only small schemas, otherwise `Now.include('./schema.graphql')`.
+3. Call `GraphQLApi({...})`, never `new GraphQLApi()`. Give the API and every resolver/type resolver a stable `$id`.
+4. Resolver/type-resolver `script`: prefer a named function exported from a module under `src/server` and imported into the `.now.ts`. An inline function expression is a build error. A string or `Now.include('./resolver.js')` is copied verbatim with no module wrapper, so that file must be a raw platform resolver script, not an `export function` module; the build does not catch the mix-up.
+5. Bind resolver `paths` as `Type:field`. Keep resolver names, paths and type-resolver `typeName`s unique.
+6. Resolver `env`: `getArguments()` / `getSource()`. Type-resolver `env`: `getArguments()` / `getObject()` / `getTypeName()`; a type resolver returns the concrete SDL type name.
 
-## Security guardrail
+Read [references/minimal-shape.md](references/minimal-shape.md) when the project has no `GraphQLApi` to copy.
 
-Keep `requiresAuthentication`, `requiresAclAuthorization`, and `requiresSncInternalRole` enabled unless the user explicitly requests and approves a weaker model. Add schema-gate ACLs through `enforceAcl`; add field ACLs as standalone `Acl({ type: 'graphql', operation: 'execute', ... })` records.
+## Security
 
-Field ACL names are runtime slash paths such as `/xSncMyApp/catalogGql/items/cost`, not `Type:field`. Set `contextualAclMaxDepth` at least as deep as every protected path; the application namespace and API namespace count as the first two segments. Never widen roles or lower security merely to make a query pass.
+- Keep `requiresAuthentication`, `requiresAclAuthorization`, and `requiresSncInternalRole` enabled unless the user explicitly requests and approves a weaker model.
+- Schema-gate ACLs go in `enforceAcl`; field ACLs are standalone `Acl({ type: 'graphql', operation: 'execute', ... })` records named by runtime slash path such as `/xSncMyApp/catalogGql/items/cost`, not `Type:field`. The first segment is the application namespace, not the raw scope: in a scoped app the build derives it from the scope (`x_snc_my_app` → `xSncMyApp`) and silently ignores `applicationNamespace`; in global scope it is `now` unless `applicationNamespace` is set.
+- Set `contextualAclMaxDepth` (default 4) at least as deep as every protected path, counting both namespaces as the first two segments; deeper fields are not ACL-checked.
+- Gate on a `Role(...)` defined in this app and named `<scope>.<name>`, or on a role the user confirmed exists on the target. The build rejects an unprefixed `Role` name but never checks that a `roles` string exists.
+- Never widen roles or lower security merely to make a query pass.
 
-## Minimal shape
+## Build and verify
 
-```typescript
-import { Acl, GraphQLApi } from '@servicenow/sdk/core'
-import { resolveItems } from '../../server/items-resolver'
+Run `now-sdk build`; map errors with [sn-fix-build](../sn-fix-build/SKILL.md) (a resolver module missing or outside `src/server` gives `TS80`, plus `TS2307` if the file does not exist). A clean build does not validate the SDL, resolver `paths`, field ACL names or `contextualAclMaxDepth`, so compare the generated values with the source:
 
-const schemaGate = Acl({
-    $id: Now.ID['gql_schema_gate'],
-    type: 'graphql',
-    name: 'catalogGql',
-    operation: 'execute',
-    roles: ['catalog_reader'],
-})
-
-GraphQLApi({
-    $id: Now.ID['catalog_graphql'],
-    name: 'Catalog GraphQL',
-    namespace: 'catalogGql',
-    enforceAcl: [schemaGate],
-    schema: 'type Query { items: [String] }',
-    resolvers: [{
-        $id: Now.ID['items_resolver'],
-        name: 'itemsResolver',
-        paths: ['Query:items'],
-        script: resolveItems,
-    }],
-})
+```powershell
+Get-ChildItem -Path dist\app -Recurse -Filter 'sys_graphql_schema_*.xml' | Select-String -Pattern '<application_namespace>|<namespace>|<contextual_acl_max_depth>|<requires_'
+Get-ChildItem -Path dist\app -Recurse -Filter 'sys_security_acl_*.xml' | Select-String -SimpleMatch -Pattern '<name>'
 ```
 
-Compute import paths from the actual `.now.ts` depth. Run `now-sdk build`; use **sn-build-install** for deployment/content verification. If runtime verification is requested, POST a least-privilege query to `/api/now/graphql` and report only requested fields—never secrets or unnecessary PII.
+- Except the schema-gate ACLs in `enforceAcl`, every GraphQL ACL `<name>` must start with `/<application_namespace>/<namespace>/` exactly as built (copy it; `x_1234567_my_app` becomes `x1234567MyApp`), have no more segments than `<contextual_acl_max_depth>`, and follow SDL field names.
+- The three `<requires_*>` values must be `true` unless a weaker model was approved.
+
+## Deploy and runtime
+
+- Deploy only on request, through [sn-build-install](../sn-build-install/SKILL.md); do not install from this skill. For an imported resolver, the deployed body is `content` on `sys_module`, not the `require(...)` shim in `script`.
+- Run a runtime query only on request, through [sn-rest](../sn-rest/SKILL.md). It is a POST, so that skill's approval gate applies to the exact instance, alias and body. An `admin` caller overrides any ACL without `adminOverrides: false`; do not switch identity or change `adminOverrides` without separate approval.
+- Read [references/deployed-verification.md](references/deployed-verification.md) when verifying deployed content or running a runtime query.

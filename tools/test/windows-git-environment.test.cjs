@@ -9,7 +9,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { environmentCommand } = require('../../lib/windows-git-environment.cjs');
 const root = path.resolve(__dirname, '../..');
-const worker = fs.readFileSync(path.join(root, 'payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8');
+const worker = fs.readFileSync(path.join(root, 'tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8');
 const extract = name => worker.match(new RegExp('^function ' + name + ' \\{\\r?\\n[\\s\\S]*?^\\}', 'm'))?.[0];
 const quote = value => "'" + value.replaceAll("'", "''") + "'";
 const windows = { skip: process.platform !== 'win32' };

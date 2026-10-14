@@ -109,7 +109,10 @@ function stripMarkdownInline(s) {
   return normalizeText(s)
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
-    .replace(/[*_~#>]+/g, '')
+    // Remove paired _emphasis_ markers only; underscores inside identifiers
+    // (sys_audit, ui_builder_admin, URL slugs) are content, not formatting.
+    .replace(/(?<![A-Za-z0-9_])(_{1,3})(?=\S)([^\n]*?\S)\1(?![A-Za-z0-9_])/g, '$2')
+    .replace(/[*~#>]+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

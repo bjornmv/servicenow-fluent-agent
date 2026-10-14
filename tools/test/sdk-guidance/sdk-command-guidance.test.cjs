@@ -104,6 +104,18 @@ test('CI/CD and headless mutation approvals remain explicit', () => {
   assert.match(text, /separate explicit approval immediately before rollback/);
   assert.match(text, /Confirm before running ATF/);
   assert.match(policy, /headless child cannot approve mutations/);
+  // An SN_SDK_* session or CI variable silently overrides --auth, and machine output hides the notice.
+  assert.match(text, /Get-ChildItem Env:SN_SDK_\*/);
+  assert.match(skill('sn-auth'), /Get-ChildItem Env:SN_SDK_\*/);
+  assert.match(text, /do not re-run a publish, install or rollback/);
+  assert.match(text, /Never use local `now-sdk install` as a production promotion path/);
+  const commands = [...text.matchAll(/```powershell\n([\s\S]*?)```/g)].flatMap(([, block]) => block.split('\n')).filter(line => /^now-sdk cicd /.test(line));
+  assert.ok(commands.length >= 6, 'cicd examples');
+  for (const line of commands) {
+    assert.match(line, /--auth <[a-z-]+>/, line);
+    assert.ok(line.endsWith('--output json; "exit=$LASTEXITCODE"'), line);
+    assert.doesNotMatch(line, /--version |2>&1/, line);
+  }
 });
 
 test('all payload Markdown has no distribution-incompatible tool guidance', () => {

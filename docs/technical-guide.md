@@ -115,7 +115,7 @@ Uninstall uses receipt hashes, backs up removals, skips local edits by default a
 
 ### Git integration
 
-The Node installer verifies existing Git; it does not download Git. For genuine absence, the separate [Git setup procedure](../git-setup.md) uses the packaged [MinGit worker](../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`.
+The Node installer verifies existing Git; it does not download Git. For genuine absence, the separate [Git setup procedure](../git-setup.md) uses the setup-only [MinGit worker](../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`.
 
 The bootstrap preserves Windows OpenSSH and Schannel/certificate verification. A blocked, outdated or broken existing Git is not treated as absence and is not automatically replaced.
 
@@ -186,11 +186,11 @@ Component state can include `lastCheckedAt`, `lastCheckFailedAt`, `available`, `
 
 Choices are **Update**, **Remind me in 7 days** and **Skip this release**. Recording Update does not pull, install, rebuild or deploy. Remind suppresses checks/notices for seven days. Skip suppresses that release identity. The seven-day prompt interval can also delay a notice for a different release. `--force` bypasses discovery timing, not all notification suppression.
 
-The installed launcher emits only validated, actionable update JSON; missing checkout/state, malformed responses or child failures may be quiet. **Silence is not proof of a successful check or of being up to date.** The skill requires comparing selected state timestamps and failures before/after execution.
+The installed launcher prints only validated, actionable update JSON on stdout. Bad arguments, a missing/unusable receipt or checkout CLI, malformed decision state, a failed child, an invalid response or a discovery failure newly recorded by that run exit non-zero with a one-line stderr reason. Exit 0 with no output means no notice to present (no newer release, component not due, or notice withheld). **Silence is not proof of a successful check or of being up to date.** `state` prints the recorded components read-only; `decision` refuses a key without a recorded notice and confirms the state file shows the decision.
 
-State writes use temporary-file rename, but there is no cross-process state lock. The library can fall back to empty state on invalid JSON; the workflow requires detecting malformed state and stopping without resetting decisions. These are separate implementation and instruction-level responsibilities.
+State writes use temporary-file rename, but there is no cross-process state lock. The library can fall back to empty state on invalid JSON; the installed launcher refuses `check`, `decision` and `state` on malformed state before the library runs, and the workflow requires stopping without resetting decisions. Direct use of the checkout CLI has no such guard. These are separate implementation and instruction-level responsibilities.
 
-After explicit approval, agent updates require a clean, confirmed receipt-owned checkout, fast-forward-only pull, installation without force, separate verification and a new chat/reload. Documentation updates separately require approved pull, staged index build and benchmark before replacing the active index. See [sn-update-advisor](../payload/.agents/skills/sn-update-advisor/SKILL.md) for executable procedures.
+After explicit approval, agent updates require a clean, confirmed receipt-owned checkout, fast-forward-only pull, installation without force, separate verification and a new chat/reload. Documentation updates separately require an approved pull, then an approved in-place index rebuild (`build --force`, during which lookup is unavailable) followed by the lookup benchmark; there is no staged swap. See [sn-update-advisor](../payload/.agents/skills/sn-update-advisor/SKILL.md) for executable procedures.
 
 ## 7. Project SDK update worker
 
@@ -214,7 +214,7 @@ The distribution contains no user credentials. Interactive SDK OAuth remains a u
 
 For onboarding, use the [PDI guide](connect-pdi.md): log in through Developer Portal, open the PDI, then manually start authentication from a new VS Code terminal. Authentication does not authorize instance changes. An alias listing proves inventory only, not token validity or instance access.
 
-The [REST skill](../payload/.agents/skills/sn-rest/SKILL.md) invokes its bundled Node HTTP CLI with existing SDK OAuth. It prescribes schema discovery, explicit fields, small previews, deliberate pagination and aggregate queries. The CLI **does not automatically enforce schema validation, output budgets or interactive write approval**. Companion schema/output modules do not turn it into a registered VS Code tool.
+The [REST skill](../payload/.agents/skills/sn-rest/SKILL.md) invokes its bundled Node HTTP CLI with existing SDK OAuth. It prescribes schema discovery, explicit fields, small previews, deliberate pagination and aggregate queries. The CLI **does not automatically enforce schema validation, output budgets or interactive write approval**. Companion schema/output modules do not turn it into a registered VS Code tool. The CLI does refuse, before sending anything, an unknown or repeated option, a path that is not instance-relative, an `--instance` that differs from the instance stored with the alias, a non-GET request without an explicit alias, and a POST/PATCH/PUT without a valid JSON body; its token-only `--raw` mode exists solely for the screenshot helper in sn-doc-export.
 
 The agent/interactive parent must enforce approved targets and mutations. ServiceNow ACLs remain the server-side access boundary. A denied table read does not authorize changing roles or switching identities.
 
@@ -222,11 +222,11 @@ Application workflows separately distinguish authoring, build, generated-metadat
 
 ## 9. Documentation lookup and export
 
-[sn-doc-lookup](../payload/.agents/skills/sn-doc-lookup/SKILL.md) performs local deterministic search over a generated index of the official ServiceNowDocs Markdown corpus. It requires neither PDF conversion, a vector database nor external npm dependencies. Search/read return source information for official citations; release-family selection matters.
+[sn-doc-lookup](../payload/.agents/skills/sn-doc-lookup/SKILL.md) performs local deterministic search over a generated index of the official ServiceNowDocs Markdown corpus. It requires neither PDF conversion, a vector database nor external npm dependencies. Search/read return source information for official citations, plus `index` provenance and a `warnings` array (for example an index built by an older indexer, which needs an approved rebuild); a `read` that matches nothing exits 1. Release-family selection matters. Benchmark and maintainer notes live in the skill's README.
 
 Path precedence is **explicit CLI flags > `SN_DOCS_HOME` / `SN_DOC_MD_INDEX` > Windows defaults**. The `paths` command reports locations without creating, cloning or migrating them. Updating skill files does not download the corpus or refresh its index. Index provenance and benchmark evidence must be recorded separately; do not invent an indexed Git revision when unknown.
 
-[sn-doc-export](../payload/.agents/skills/sn-doc-export/SKILL.md) is a different workflow: Markdown to PDF/DOCX. Node rendering uses optional renderer packages; PDF/HTML also need a browser. The framed Python backend requires an explicitly selected absolute `SN_AGENT_HOME` and its dependencies. Rendering is not required to maintain Markdown guides in this repository, and missing dependencies do not authorize installing them.
+[sn-doc-export](../payload/.agents/skills/sn-doc-export/SKILL.md) is a different workflow: Markdown to PDF/DOCX or HTML. It also ships `capture.cjs`, an optional screenshot helper that signs in with the SDK OAuth token; the token is sent only to the confirmed https instance origin. Node rendering uses optional renderer packages; PDF/HTML also need a browser. The framed Python backend requires an explicitly selected absolute `SN_AGENT_HOME` and its dependencies. Rendering is not required to maintain Markdown guides in this repository, and missing dependencies do not authorize installing them.
 
 ## 10. CLI reference
 

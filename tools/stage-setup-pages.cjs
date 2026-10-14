@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const repoRoot = path.resolve(__dirname, '..');
-const workerRelativePath = 'payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1';
+const workerRelativePath = 'tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1';
 const downloadRelativePath = 'downloads/Ensure-MinGit254.ps1';
 const sdkWorkerRelativePath = 'tools/Invoke-SdkSetup.ps1';
 const sdkDownloadRelativePath = 'downloads/Invoke-SdkSetup.ps1';

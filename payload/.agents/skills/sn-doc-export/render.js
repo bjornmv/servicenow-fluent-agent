@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 // sn-doc-export render shim — Node backend (default).
 //
-// Usage (from PowerShell, via the resolver):
-//   $SnDoc = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-export\render.js'
-//   node "$SnDoc" --check
-//   node "$SnDoc" --in body.md --format pdf,docx --out docs/dist/
-//   node "$SnDoc" --in body.md --backend python --archetype runbook --out docs/dist/
+// Usage (PowerShell, from the confirmed project directory; each command is self-contained):
+//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --check
+//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --in docs/body.md --format pdf,docx --out docs/dist/
+//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --in docs/body.md --backend python --archetype runbook --out docs/dist/
 //
 // Backends:
-//   node    (default) — md-to-pdf (PDF) + @adobe/helix-md2docx (DOCX). Plain archetype only.
+//   node    (default) — md-to-pdf (PDF/HTML) + @adobe/helix-md2docx (DOCX). Plain archetype only.
 //   python  — calls render.py against explicitly configured SN_AGENT_HOME libs.
 //
-// Preflight is mandatory before render. Missing deps print the exact install command.
+// Preflight is mandatory before render. Missing deps point to install.md; this
+// tool never installs anything and never spawns a package-manager launcher.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -34,6 +34,8 @@ const PYTHON_ARCHETYPES = [
 ];
 // Node backend currently only renders 'plain'. Asking for others routes to Python automatically.
 const NODE_ARCHETYPES = new Set(['plain']);
+const VALID_FORMATS = ['pdf', 'docx', 'html'];
+const VALID_BACKENDS = ['auto', 'node', 'python'];
 
 // ---------------------------------------------------------------------------
 // arg parsing — minimal, no external deps
@@ -52,17 +54,24 @@ function parseArgs(argv) {
     referenceDocx: null,
     stylesheet: null,
     force: false,
+    explicit: new Set(),
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    const next = () => argv[++i];
+    const next = () => {
+      if (i + 1 >= argv.length) {
+        console.error(`Missing value for ${a}`);
+        process.exit(2);
+      }
+      return argv[++i];
+    };
     switch (a) {
       case '--check': args.check = true; break;
       case '--in': args.in = next(); break;
       case '--out': args.out = next(); break;
-      case '--format': args.format = next(); break;
-      case '--backend': args.backend = next(); break;
-      case '--archetype': args.archetype = next(); break;
+      case '--format': args.format = next(); args.explicit.add('format'); break;
+      case '--backend': args.backend = next(); args.explicit.add('backend'); break;
+      case '--archetype': args.archetype = next(); args.explicit.add('archetype'); break;
       case '--reference-docx': args.referenceDocx = next(); break;
       case '--stylesheet': args.stylesheet = next(); break;
       case '--force': args.force = true; break;
@@ -98,26 +107,41 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`sn-doc-export — render MyST/Markdown to PDF + DOCX
+  console.log(`sn-doc-export — render MyST/Markdown to PDF, DOCX or HTML
 
 Usage:
-  node render.js --check
-  node render.js --in body.md [--out docs/dist] [--format pdf,docx] [--force]
+  node render.js --check [--format pdf,docx,html] [--archetype <name>] [--backend node|python|auto]
+  node render.js --in body.md [--out docs/dist] [--format pdf,docx,html] [--force]
                  [--backend node|python|auto] [--archetype <name>]
                  [--image-map name.png=C:\\path\\file.png ...]
                  [--meta title=Foo --meta author=Bar ...]
+                 [--reference-docx template.docx] [--stylesheet extra.css]
+
+Formats: pdf, docx, html (default pdf,docx). An unknown format is an error.
+Output:  <out>/<slug of --meta title, else of the input file name>.<format>
 
 Backends:
   node    md-to-pdf + @adobe/helix-md2docx. Fast, no Python.
-          Supports archetype: plain only.
+          Supports archetype: plain only. Uses --meta title for the file
+          name and HTML/PDF document title only; other --meta values are
+          not rendered. A leading YAML front-matter block is ignored.
+          --reference-docx (DOCX styles, headers, footers) and --stylesheet
+          (extra PDF CSS) apply to this backend only.
   python  SNagent libs at explicit absolute SN_AGENT_HOME (no default).
           Supports all archetypes incl. runbook/compliance_report.
   auto    (default) picks node for plain and python for framed archetypes.
           Missing dependencies fail fast instead of switching backends.
 
 Preflight:
-  --check inspects both backends and reports OK/MISSING with install
-  commands. Run before authoring.
+  --check inspects both backends and reports [OK ] / [BAD] lines (the
+  indented Python sub-report also uses [MISSING]). Alone it exits 0 when
+  any output is possible. With --format/--archetype/--backend it exits 0
+  only when that selection is ready. It never installs anything.
+
+Exit codes:
+  0 all requested formats written   2 bad arguments, missing input/image,
+  1 unexpected error                  existing output or backend not ready
+  3 a format failed to render (earlier formats may already be written)
 
 Safety:
   Existing output files are not overwritten unless --force is passed.
@@ -128,27 +152,34 @@ Safety:
 // preflight
 // ---------------------------------------------------------------------------
 
-let _globalRootCache;
-function globalNodeModulesRoot() {
-  if (_globalRootCache !== undefined) return _globalRootCache;
-  // Try the conventional Windows path first; fallback spawning uses shell:true
-  // for Node 25 command-spawning hardening.
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const guess = join(process.env.APPDATA, 'npm', 'node_modules');
-    if (existsSync(guess)) { _globalRootCache = guess; return _globalRootCache; }
+// Global node_modules candidates, found without spawning a package-manager
+// launcher (batch shims are blocked by the command policy). NODE_PATH is
+// honoured by require.resolve itself, so it covers a redirected npm prefix.
+let _globalRootsCache;
+function globalNodeModulesRoots() {
+  if (_globalRootsCache) return _globalRootsCache;
+  const roots = [];
+  const add = (p) => { if (p && !roots.includes(p) && existsSync(p)) roots.push(p); };
+  const prefix = process.env.npm_config_prefix;
+  const nodeDir = dirname(process.execPath);
+  if (process.platform === 'win32') {
+    if (process.env.APPDATA) add(join(process.env.APPDATA, 'npm', 'node_modules'));
+    if (prefix) add(join(prefix, 'node_modules'));
+    add(join(nodeDir, 'node_modules'));
+  } else {
+    if (prefix) add(join(prefix, 'lib', 'node_modules'));
+    add(join(nodeDir, '..', 'lib', 'node_modules'));
   }
-  // Fallback — spawn npm with shell:true.
-  const r = spawnSync(npmCmd(), ['root', '-g'], { encoding: 'utf8', shell: true });
-  _globalRootCache = r.status === 0 ? r.stdout.trim() : null;
-  return _globalRootCache;
+  _globalRootsCache = roots;
+  return roots;
 }
 
 function tryRequire(name) {
   // require.resolve(..., {paths}) treats each path as a starting dir and appends
-  // node_modules — so for global packages we pass the PARENT of `npm.cmd root -g` on Windows.
+  // node_modules — so for global packages we pass the PARENT of the global root.
   const tryPaths = [process.cwd()];
-  const gRoot = globalNodeModulesRoot();
-  if (gRoot) tryPaths.push(dirname(gRoot));
+  const gRoots = globalNodeModulesRoots();
+  for (const gRoot of gRoots) tryPaths.push(dirname(gRoot));
   let resolved = null;
   for (const base of tryPaths) {
     try {
@@ -157,7 +188,7 @@ function tryRequire(name) {
     } catch { /* try next */ }
   }
   if (!resolved) {
-    return { ok: false, error: `not installed (searched: cwd${gRoot ? ', ' + gRoot : ''})` };
+    return { ok: false, error: `not installed (searched: cwd${gRoots.map(r => ', ' + r).join('')}, NODE_PATH)` };
   }
   try {
     const version = JSON.parse(readFileSync(resolved, 'utf8')).version || '?';
@@ -189,14 +220,10 @@ async function importPackage(name) {
   return import(pathToFileURL(abs).href);
 }
 
-function npmCmd() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
-}
-
 /** Find an installed Chromium-family browser. Prefers SN_DOC_BROWSER env var,
  *  then PUPPETEER_EXECUTABLE_PATH, then standard Chrome/Edge install paths.
- *  Returning null is fine — puppeteer will use its bundled Chromium then
- *  (which may be blocked on locked-down boxes). */
+ *  Returning null makes PDF/HTML not ready: the puppeteer-bundled Chromium is
+ *  deliberately never used (it is commonly blocked on locked-down machines). */
 function findBrowser() {
   const explicit = process.env.SN_DOC_BROWSER || process.env.PUPPETEER_EXECUTABLE_PATH;
   if (explicit && existsSync(explicit)) return explicit;
@@ -323,7 +350,7 @@ function preflightPython() {
   return out;
 }
 
-function preflight() {
+function preflight(selection = null) {
   console.log('sn-doc-export preflight');
   console.log('='.repeat(60));
 
@@ -331,20 +358,19 @@ function preflight() {
   const nodeState = n.nodeOk && n.pdfOk && n.docxOk ? '(READY)' : n.ok ? '(PARTIAL)' : '(NOT READY)';
   console.log(`Backend: node ${nodeState}`);
   for (const [ok, msg] of n.lines) console.log(`  [${ok ? 'OK ' : 'BAD'}] ${msg}`);
-  if (!n.nodeOk || (!n.pdfPackageOk && !n.docxOk)) {
+  const installHint = 'needs explicit approval; follow install.md section 2 (no install is run by this tool).';
+  if (!n.nodeOk) {
     console.log('');
-    console.log('  Fix:');
-    console.log(`    ${npmCmd()} install -g md-to-pdf "@adobe/helix-md2docx"`);
-    console.log('  Note: md-to-pdf downloads Chromium (~170 MB) on first install.');
+    console.log(`  Fix: use Node ${NODE_MIN} or newer.`);
+  } else if (!n.pdfPackageOk && !n.docxOk) {
+    console.log('');
+    console.log(`  Fix: md-to-pdf and @adobe/helix-md2docx are not resolvable. Installing them ${installHint}`);
   } else if (!n.pdfPackageOk) {
     console.log('');
-    console.log('  Fix for PDF/HTML:');
-    console.log(`    ${npmCmd()} install -g md-to-pdf`);
-    console.log('  Note: md-to-pdf downloads Chromium (~170 MB) on first install.');
+    console.log(`  Fix for PDF/HTML: md-to-pdf is not resolvable. Installing it ${installHint}`);
   } else if (!n.docxOk) {
     console.log('');
-    console.log('  Fix for DOCX:');
-    console.log(`    ${npmCmd()} install -g "@adobe/helix-md2docx"`);
+    console.log(`  Fix for DOCX: @adobe/helix-md2docx is not resolvable. Installing it ${installHint}`);
   }
   if (n.pdfPackageOk && !n.pdfOk) {
     console.log('');
@@ -364,6 +390,15 @@ function preflight() {
   }
 
   console.log('='.repeat(60));
+  if (selection) {
+    // Scoped check: the exit status answers "is THIS backend/format selection ready?".
+    const ready = selection.backend === 'python' ? p.ok : nodeReadyForFormats(n, selection.formats);
+    console.log(`Selected: backend=${selection.backend} archetype=${selection.archetype} formats=${selection.formats.join(',')}`);
+    console.log(ready
+      ? 'READY — the selected backend and formats can render.'
+      : 'NOT READY — the selected backend or a selected format cannot render. See the [BAD] lines above and install.md.');
+    return ready;
+  }
   if (n.nodeOk && n.pdfOk && n.docxOk) {
     console.log('READY — node backend available for PDF/DOCX.');
     if (!p.ok) console.log('Note: python backend not ready. Framed archetypes (runbook, compliance_report, etc.) need it. See install.md.');
@@ -389,6 +424,10 @@ function preflight() {
 // helpers
 // ---------------------------------------------------------------------------
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function slugify(s) {
   return (s || 'document').toString().toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'document';
@@ -399,15 +438,69 @@ const IMG_MIME = {
   '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
 };
 
-function rewriteImageSources(md, imageMap) {
+// Split Markdown into [isCode, text] segments so rewrites never touch fenced
+// code blocks (a doc may show admonition or image syntax as an example). A
+// fence opens with >= 3 backticks or tildes and closes with the same character
+// repeated at least as many times.
+function splitFences(md) {
+  const segments = [];
+  let buf = [];
+  let fence = null;
+  const flush = (isCode) => {
+    if (buf.length) segments.push([isCode, buf.join('')]);
+    buf = [];
+  };
+  for (const line of md.match(/[^\n]*\n|[^\n]+$/g) || []) {
+    const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (!fence) {
+      if (m) { flush(false); fence = m[1]; }
+      buf.push(line);
+    } else {
+      buf.push(line);
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length && /^\s*$/.test(line.slice(line.indexOf(m[1]) + m[1].length))) {
+        flush(true);
+        fence = null;
+      }
+    }
+  }
+  flush(Boolean(fence));
+  return segments;
+}
+
+// As splitFences, and additionally isolates inline code spans.
+function splitCode(md) {
+  const out = [];
+  for (const [isCode, text] of splitFences(md)) {
+    if (isCode) { out.push([true, text]); continue; }
+    text.split(/(`+[^`\n]+`+)/).forEach((part, i) => { if (part) out.push([i % 2 === 1, part]); });
+  }
+  return out;
+}
+
+function mapOutsideCode(md, fn) {
+  return splitCode(md).map(([isCode, text]) => (isCode ? text : fn(text))).join('');
+}
+
+// A leading YAML front-matter block is not metadata on the Node backend:
+// md-to-pdf would merge its keys into its own render configuration (including
+// the output path) and the DOCX renderer would print it as text. Drop it.
+function stripFrontMatter(md) {
+  const m = md.match(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/);
+  return m ? { md: md.slice(m[0].length), stripped: true } : { md, stripped: false };
+}
+
+const IMG_RE = /!\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)/g;
+
+function rewriteImageSources(md, imageMap, problems = []) {
   if (!imageMap.length) return md;
   const lookup = new Map();
   for (const [k, v] of imageMap) {
+    if (!existsSync(resolve(v))) problems.push(`--image-map target not found: ${k}=${resolve(v)}`);
     lookup.set(k, v);
     lookup.set(basename(k), v);
   }
   // ![alt](src "optional title")  — leave title intact
-  return md.replace(/!\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)/g, (m, alt, src, title) => {
+  return mapOutsideCode(md, (text) => text.replace(IMG_RE, (m, alt, src, title) => {
     const hit = lookup.get(src) || lookup.get(basename(src));
     if (!hit) return m;
     // Embed as a data: URI immediately. file:// URLs are unloadable by BOTH
@@ -416,34 +509,39 @@ function rewriteImageSources(md, imageMap) {
     // and a plain path containing spaces would no longer match the image
     // regex on the later resolveRelativeImages pass.
     const abs = resolve(hit);
-    if (!existsSync(abs)) return m;
-    const type = IMG_MIME[extname(abs).toLowerCase()] || 'image/png';
+    if (!existsSync(abs)) return m; // already reported above
+    const type = IMG_MIME[extname(abs).toLowerCase()];
+    if (!type) { problems.push(`unsupported image type for ${src}: ${abs}`); return m; }
     const data = readFileSync(abs).toString('base64');
     return `![${alt}](data:${type};base64,${data}${title || ''})`;
-  });
+  }));
 }
 
-// MyST :::{kind} ... ::: → callout HTML md-to-pdf / docx can render.
+// MyST :::{kind} title? / body / ::: → callout HTML md-to-pdf can render.
+// The title is whatever follows the directive ON THE SAME LINE; without one
+// the kind label ("Note", "Warning", ...) is used.
 function expandAdmonitions(md) {
   const kinds = ['note', 'tip', 'important', 'warning', 'caution', 'danger'];
   const colors = {
     note: '#2563eb', tip: '#10b981', important: '#7c3aed',
     warning: '#f59e0b', caution: '#f97316', danger: '#dc2626',
   };
-  // Match block: ::: {kind} title?\n body \n:::
-  const re = /^:::\s*\{(\w+)\}\s*(.*)$([\s\S]*?)^:::\s*$/gm;
-  return md.replace(re, (m, kind, title, body) => {
-    const k = kinds.includes(kind.toLowerCase()) ? kind.toLowerCase() : 'note';
-    const c = colors[k];
-    const head = (title || k[0].toUpperCase() + k.slice(1)).trim();
-    return `\n<div style="border-left:4px solid ${c};background:${c}10;padding:8px 12px;margin:8px 0;">\n<strong style="color:${c}">${head}</strong>\n\n${body.trim()}\n\n</div>\n`;
-  });
+  const re = /^:::[ \t]*\{(\w+)\}[ \t]*([^\r\n]*)\r?\n([\s\S]*?)^:::[ \t]*\r?$/gm;
+  return splitFences(md).map(([isCode, text]) => {
+    if (isCode) return text;
+    return text.replace(re, (m, kind, title, body) => {
+      const k = kinds.includes(kind.toLowerCase()) ? kind.toLowerCase() : 'note';
+      const c = colors[k];
+      const head = (title || '').trim() || k[0].toUpperCase() + k.slice(1);
+      return `\n<div style="border-left:4px solid ${c};background:${c}10;padding:8px 12px;margin:8px 0;">\n<strong style="color:${c}">${head}</strong>\n\n${body.trim()}\n\n</div>\n`;
+    });
+  }).join('');
 }
 
-function preprocessMd(md, imageMap) {
+function preprocessMd(md, imageMap, problems = []) {
   let out = md;
   out = expandAdmonitions(out);
-  out = rewriteImageSources(out, imageMap);
+  out = rewriteImageSources(out, imageMap, problems);
   return out;
 }
 
@@ -456,27 +554,28 @@ function preprocessMd(md, imageMap) {
 // resources) embed them regardless of working directory or Chromium's
 // restrictions on file:// inclusion from data: documents. Absolute URLs and
 // existing data: URIs are passed through untouched.
-function resolveRelativeImages(md, baseDir) {
-  return md.replace(/!\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)/g, (m, alt, src, title) => {
+function resolveRelativeImages(md, baseDir, problems = []) {
+  return mapOutsideCode(md, (text) => text.replace(IMG_RE, (m, alt, src, title) => {
     // scheme needs >= 2 letters so Windows drive letters (C:\...) fall through
     // to the absolute-path branch below instead of being skipped as a scheme
     if (/^([a-z]{2,}:|\/\/)/i.test(src)) return m; // http:, https:, data:, file:, //...
-    const abs = /^[a-zA-Z]:[\\/]|^\//.test(src) ? src : resolve(baseDir, src);
-    if (!existsSync(abs)) return m;
+    let local = src;
+    try { local = decodeURI(src); } catch { /* keep the literal source */ }
+    const abs = /^[a-zA-Z]:[\\/]|^\//.test(local) ? local : resolve(baseDir, local);
+    if (!existsSync(abs)) { problems.push(`image not found: ${src} (looked for ${abs})`); return m; }
     const ext = extname(abs).toLowerCase();
     const type = IMG_MIME[ext];
-    if (!type) return m;
+    if (!type) { problems.push(`unsupported image type: ${src}`); return m; }
     const data = readFileSync(abs).toString('base64');
     return `![${alt}](data:${type};base64,${data}${title || ''})`;
-  });
+  }));
 }
 
 async function loadJSZip() {
   const searchBases = [process.cwd()];
   const helix = tryRequire('@adobe/helix-md2docx');
   if (helix.ok) searchBases.unshift(dirname(helix.pkgJsonPath));
-  const gRoot = globalNodeModulesRoot();
-  if (gRoot) searchBases.push(dirname(gRoot));
+  for (const gRoot of globalNodeModulesRoots()) searchBases.push(dirname(gRoot));
 
   for (const base of searchBases) {
     try {
@@ -631,7 +730,6 @@ async function mergeReferenceChrome(generatedBuf, referenceDocx) {
 async function renderNode({ inPath, outDir, formats, title, processedMd, referenceDocx, stylesheet, force }) {
   const results = [];
   const slug = slugify(title);
-  processedMd = resolveRelativeImages(processedMd, dirname(resolve(inPath)));
 
   // Extract word/styles.xml from a reference .docx so generated DOCX inherits
   // its paragraph/character styles (corporate template support).
@@ -660,6 +758,7 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
         if (browser) launchOptions.executablePath = browser;
         const pdfOpts = {
           dest: outPath,
+          document_title: escapeHtml(title),
           stylesheet_encoding: 'utf-8',
           pdf_options: { format: 'A4', margin: '20mm', printBackground: true },
           launch_options: launchOptions,
@@ -681,7 +780,12 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
         }
         const docxOpts = {};
         if (stylesXML) docxOpts.stylesXML = stylesXML;
-        let buf = await md2docx(processedMd, docxOpts);
+        // The DOCX renderer drops task-list checkbox state; keep it as text.
+        const docxMd = mapOutsideCode(processedMd, (text) => text.replace(
+          /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[([ xX])\][ \t]+/gm,
+          (m, lead, mark) => `${lead}${mark === ' ' ? '\u2610' : '\u2611'} `,
+        ));
+        let buf = await md2docx(docxMd, docxOpts);
         if (referenceDocx) {
           buf = await mergeReferenceChrome(buf, referenceDocx);
         }
@@ -693,12 +797,11 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
         if (browser) launchOptions.executablePath = browser;
         const html = await mdToPdf(
           { content: processedMd },
-          { as_html: true, launch_options: launchOptions },
+          { as_html: true, document_title: escapeHtml(title), launch_options: launchOptions },
         );
         writeFileSync(outPath, html.content, 'utf8');
       } else {
-        console.error(`  unsupported format: ${fmt}`);
-        continue;
+        throw new Error(`unsupported format: ${fmt}`);
       }
       const size = statSync(outPath).size;
       console.log(`  [OK ] ${fmt.padEnd(4)} -> ${outPath}  (${size.toLocaleString()} bytes)`);
@@ -744,38 +847,59 @@ function renderPython(args) {
 // main
 // ---------------------------------------------------------------------------
 
+function parseFormats(value) {
+  const formats = [...new Set(String(value).split(',').map(s => s.trim().toLowerCase()).filter(Boolean))];
+  const bad = formats.filter(f => !VALID_FORMATS.includes(f));
+  if (!formats.length || bad.length) {
+    return { error: `Unsupported --format value: ${bad.join(', ') || '(empty)'}. Valid formats: ${VALID_FORMATS.join(', ')}.` };
+  }
+  return { formats };
+}
+
+// Validate names BEFORE routing, so a typo is reported as a typo and never as
+// a missing-backend problem.
+function resolveBackend(backend, archetype) {
+  if (!VALID_BACKENDS.includes(backend)) {
+    return { error: `Unknown backend: ${backend}. Valid values: ${VALID_BACKENDS.join(', ')}.` };
+  }
+  if (!PYTHON_ARCHETYPES.includes(archetype)) {
+    return { error: `Unknown archetype: ${archetype}. Valid values: ${PYTHON_ARCHETYPES.join(', ')}.` };
+  }
+  if (backend === 'auto') return { backend: NODE_ARCHETYPES.has(archetype) ? 'node' : 'python' };
+  if (backend === 'node' && !NODE_ARCHETYPES.has(archetype)) {
+    return { error: `Node backend supports archetype 'plain' only (asked: '${archetype}'). Use --backend python or --backend auto.` };
+  }
+  return { backend };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+
+  const parsed = parseFormats(args.format);
+  if (parsed.error) { console.error(parsed.error); process.exit(2); }
+  const formats = parsed.formats;
+  const routed = resolveBackend(args.backend, args.archetype);
+  if (routed.error) { console.error(routed.error); process.exit(2); }
+  const backend = routed.backend;
+
   if (args.check) {
-    process.exit(preflight() ? 0 : 2);
+    const scoped = args.explicit.size > 0;
+    const ok = preflight(scoped ? { backend, archetype: args.archetype, formats } : null);
+    process.exit(ok ? 0 : 2);
   }
   if (!args.in) {
     console.error('--in is required unless --check is used');
     printHelp();
     process.exit(2);
   }
-  if (!existsSync(args.in)) {
+  if (!existsSync(args.in) || !statSync(args.in).isFile()) {
     console.error(`Input not found: ${args.in}`);
-    process.exit(2);
-  }
-
-  const formats = args.format.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-
-  // Resolve backend.
-  let backend = args.backend;
-  if (backend === 'auto') {
-    const wantsFramed = !NODE_ARCHETYPES.has(args.archetype);
-    backend = wantsFramed ? 'python' : 'node';
-  }
-  if (backend === 'node' && !NODE_ARCHETYPES.has(args.archetype)) {
-    console.error(`Node backend supports archetype 'plain' only (asked: '${args.archetype}'). Use --backend python or --backend auto.`);
     process.exit(2);
   }
   console.log(`Backend: ${backend}`);
 
-  mkdirSync(resolve(args.out), { recursive: true });
-
   if (backend === 'python') {
+    // render.py validates its backend home and creates the output directory itself.
     process.exit(renderPython(args));
   }
 
@@ -787,9 +911,32 @@ async function main() {
   }
 
   const raw = readFileSync(args.in, 'utf8');
-  const processedMd = preprocessMd(raw, args.imageMap);
+  const front = stripFrontMatter(raw);
+  if (front.stripped) {
+    console.error('  warn: YAML front matter is ignored on the Node backend (not rendered, not used as metadata). Put title/author/version in the document body.');
+  }
+  const problems = [];
+  let processedMd = preprocessMd(front.md, args.imageMap, problems);
+  processedMd = resolveRelativeImages(processedMd, dirname(resolve(args.in)), problems);
+  if (problems.length) {
+    for (const problem of problems) console.error(`  [FAIL] ${problem}`);
+    console.error('No output written. Fix the image paths or --image-map entries and re-run.');
+    process.exit(2);
+  }
   const title = args.meta.title || basename(args.in, extname(args.in));
+  const ignoredMeta = Object.keys(args.meta).filter(k => k !== 'title');
+  if (ignoredMeta.length) {
+    console.error(`  warn: --meta ${ignoredMeta.join(', ')} not rendered by the Node backend (title only names the output and document title).`);
+  }
+  // Refuse an overwrite before anything is written, so no partial set is produced.
+  const existing = formats.map(f => resolve(args.out, `${slugify(title)}.${f}`)).filter(f => existsSync(f));
+  if (existing.length && !args.force) {
+    for (const file of existing) console.error(`  [FAIL] Output exists: ${file}`);
+    console.error('No output written. Re-run with --force only after confirming overwrite.');
+    process.exit(2);
+  }
   console.log(`Parsing ${args.in} (${raw.length.toLocaleString()} bytes) …`);
+  mkdirSync(resolve(args.out), { recursive: true });
   const code = await renderNode({
     inPath: args.in,
     outDir: resolve(args.out),

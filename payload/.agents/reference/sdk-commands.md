@@ -63,7 +63,7 @@ Dependency installation/upgrades, global tool changes, lifecycle scripts and net
 - Confirm the installed SDK's query help before using version-specific flags.
 - Specify fields, an encoded query and a bounded limit when reading table data, normally with `--no-count` to avoid unnecessary total-count work.
 - `--select` selects the output envelope, not the table fields, so it does not replace a narrow field projection.
-- Use the `sn-rest` skill for the bundled REST helper's distinct CLI syntax rather than transferring SDK flags to it.
+- Use the `sn-rest` skill for the bundled REST helper's distinct CLI syntax rather than transferring SDK flags to it. Routine instance reads go through that skill; use `now-sdk query` when the user asks for it, with the same explicit-field and small-limit bounds.
 
 ## Record reassignment
 
@@ -75,7 +75,7 @@ Dependency installation/upgrades, global tool changes, lifecycle scripts and net
 
 ## Version awareness
 
-Use the actual project SDK's docs and engine requirements. An older SDK's minimum Node version is not necessarily sufficient for the current SDK or Lux dependencies. Check versions when relevant to setup or a compatibility failure, not on every command. An upgrade requires explicit scope/version approval; a global SDK upgrade does not update a project pin. Ordinary SDK upgrades do not automatically require reauthentication; use the connection-evidence rules and `sn-auth` for a demonstrated auth issue.
+Use the actual project SDK's docs and engine requirements. An older SDK's minimum Node version is not necessarily sufficient for the current SDK or Lux dependencies. The SDK resolves a project's `@servicenow/aiux` from the SDK's own install location, so an AIUX (`aiux.json`) project builds only with its project-local SDK; a global SDK fails with `Could not resolve aiux-sdk/build` (see **sn-lux-build**). Check versions when relevant to setup or a compatibility failure, not on every command. An upgrade requires explicit scope/version approval; a global SDK upgrade does not update a project pin. Ordinary SDK upgrades do not automatically require reauthentication; use the connection-evidence rules and `sn-auth` for a demonstrated auth issue.
 
 ## Offline guidance checks
 

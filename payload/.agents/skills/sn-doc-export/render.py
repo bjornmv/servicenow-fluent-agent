@@ -3,8 +3,11 @@
 
 Reuses render libraries from the explicitly configured SN_AGENT_HOME so we
 don't need the SN-Agent REPL running. Honors the same MyST flavor, the same
-archetype registry, and the same image_map convention as sn_doc_compose /
-sn_doc_export.
+archetype registry, and the same image_map convention as the selected SNagent
+backend's own document tools.
+
+Normally invoked through render.js (`--backend python`), which bridges
+`--meta key=value` to the `--meta-<key>` flags below.
 
 Usage:
     python render.py --check
@@ -63,7 +66,7 @@ PYTHON_MIN = (3, 11)
 REQUIRED_MODULES = [
     # (import name, pip name, what it's for)
     ("docutils", "docutils>=0.22", "doctree IR"),
-    ("myst_parser", "myst-parser>=4.0", "markdown parser"),
+    ("myst_parser", "myst-parser>=5.0", "markdown parser"),
     ("docx", "python-docx>=1.2", "DOCX renderer"),
     ("lxml", "lxml>=4.9", "HTML/XML processing"),
     ("weasyprint", "weasyprint>=68", "PDF renderer"),
@@ -246,7 +249,7 @@ def render(args: argparse.Namespace) -> int:
                 return 2
             if fmt == "pdf":
                 # Re-parse: render_pdf transforms the doctree, so use a fresh one
-                # for each format (matches sn_doc_export pattern).
+                # for each format.
                 dt, _ = parse_markdown(body_md)
                 from render.pdf_weasyprint import render_pdf       # type: ignore
                 render_pdf(dt, output_path=str(out_path),

@@ -6,7 +6,7 @@ on:
     paths:
       - setup.md
       - git-setup.md
-      - payload/.agents/skills/win-git-bootstrap/**
+      - tools/win-git-bootstrap/**
       - payload/.agents/skills/sn-doc-lookup/**
       - tools/stage-setup-pages.cjs
       - tools/setup-guide-metrics.cjs

@@ -1,66 +1,82 @@
 ---
 name: sn-ui-page-vite
-description: Use when scaffolding or adapting a React UI Page with the official SDK Vite/HMR integration, now.dev.mjs, now.prebuild.mjs, and ServiceNow Vite plugins.
+description: Sets up React UI Pages with Vite, a hot-reload dev server and a runtime compatibility check. Use when adding or adapting that setup; not styling (sn-react-ui-design).
 argument-hint: <new/adapt existing UI Page + endpoint and client entry>
 compatibility: ServiceNow Fluent React UI Page project; compatible SDK, Node and Vite dependencies; browser access for runtime verification.
 metadata:
   version: '1'
 ---
-Verified against: now-sdk 4.11 Vite documentation (historical; not newly verified against another SDK version).
+Verified against: now-sdk 4.13.6 (`@servicenow/isomorphic-rollup` 1.3.11) with Vite 8.3 and 6.4 builds and a dev-server start locally and the official sample as of 2026-09-14; no instance install. Recheck against the project's own versions.
 
-Use the official SDK Vite pattern for a React UI Page. Source of truth: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`.
+Follow the official sample: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`. Pages using `@servicenow/react-components` follow `https://github.com/ServiceNow/sdk-examples/tree/main/react-components-vite-sample` instead; it adds `optimizeDeps.exclude: ['@servicenow/react-components']` to the shared Vite config and an authenticated `/amb` WebSocket proxy to `now.dev.mjs`.
 
-Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
+Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`) per the [SDK command policy](../../reference/sdk-commands.md).
 
-## Required design companion
-
-For a new page or any user-visible layout, copy or interaction change, load [sn-react-ui-design](../sn-react-ui-design/SKILL.md) before implementation. It owns task-first structure, supported component selection, plain language, state continuity and rendered design acceptance; this skill owns the React UI Page/Vite runtime integration. Reuse an approved design contract for small patches rather than repeating a full concept exercise. Neither skill authorizes deployment or a framework migration merely for styling.
+For a new page or any user-visible layout, copy or interaction change, load [sn-react-ui-design](../sn-react-ui-design/SKILL.md) before implementation; this skill owns only the runtime integration. Neither skill authorizes deployment or a framework migration merely for styling.
 
 ## Preflight
 
-- Confirm Vite integration support in the project's SDK documentation and check the SDK/sample's declared Node and dependency engines. Do not upgrade merely to satisfy this skill.
-- Read `uipage-api` and `ui-page-guide` with `explain --format raw`.
-- Inspect the official sample's `README.md`, `package.json`, `now.dev.mjs`, `now.prebuild.mjs`, and UI Page record before adapting it. Do not invent plugin APIs or copy stale versions blindly.
+- **Choose the path first.** SDK React templates already ship a Rollup `now.dev.mjs` (watch build) and `now.prebuild.mjs`. Use Vite only when the user asked for Vite/HMR or needs something the sample documents as Vite-only (CSS Modules); otherwise keep the existing scripts.
+- Support evidence is the `./vite` export of the project's installed `@servicenow/isomorphic-rollup`; its `README.md` documents `servicenowVitePlugins` and `createViteProxy`. `explain` topics do not cover Vite. Do not upgrade the SDK for this skill.
+- Read `uipage-api` and `ui-page-guide` with `explain --format raw`. On an approved Vite path the sample and package README override only the guides' rules against Vite/build configs, build tools as dependencies and CSS Modules. Keep the project's React version.
+- Inspect the sample's `package.json`, `vite.config.mjs`, `now.dev.mjs`, `now.prebuild.mjs` and UI Page record before adapting; its code beats its stale README. Do not invent plugin APIs or copy versions blindly. If the sample cannot be retrieved, use the pattern below with the package README, report that the sample was not inspected, and do not work around the block.
+- Existing project: check `now.dev.mjs` / `now.prebuild.mjs` and `scripts.dev` / `scripts.prebuild` in `now.config.json` (these take precedence). Replace scripts only within the approved Vite change and show the diff. Pass only `ServicenowVitePluginOptions` (`scope`, `rootDir`, `registerExplicitId`, `enableCacheBusting`, `credential`); report any dropped Rollup option (e.g. `editableSourceCodeOnInstance`).
+
+Read [troubleshooting](references/troubleshooting.md) when the sample and README disagree, the wrong dev script runs, Vite warns about the transformer, the bundle lands in the wrong directory, or a plugin option or dependency choice is unclear.
 
 ## Conditional target-runtime compatibility slice
 
-Use local HMR first. A target-instance slice is a **conditional, one-time compatibility gate**, not a required upload for every UI Page or follow-up change.
+A one-time gate for any direct React UI Page (Vite or default Rollup), not an upload per change. Run it only when the runtime boundary is unproven:
+- First direct UI Page on an instance/release, or a new hosting pattern.
+- Major now-sdk, React or `@servicenow/react-components` change.
+- First use of a runtime-dependent component family such as `RecordProvider` on that stack.
+- Cached evidence invalidated by one of those.
 
-Run the target slice only when the planned runtime boundary is not already proven, for example:
-- The first direct UI Page on an instance/release or the first use of a new hosting pattern.
-- A major now-sdk, React, or `@servicenow/react-components` change.
-- The first use of a runtime-dependent component family such as `RecordProvider` on that stack.
-- A previously cached compatibility result was invalidated by one of those changes.
+Skip it for CSS/layout, ordinary logic, more screens on a validated architecture, or a proven template on the same stack.
 
-Skip a separate target slice for CSS/layout work, ordinary logic changes, additional screens on an already validated architecture, or an app using a proven template on the same stack.
-
-When the gate is required:
-1. Start with `now-sdk run dev` and validate mounting, component behavior, and authenticated reads locally. HMR requires no production build or upload.
-2. Use the **final** UI Page record, endpoint, and client entry; do not create a throwaway page. Keep it minimal: a visible mount marker, one representative runtime-dependent component, and one read-only authenticated request when the planned app uses instance data. Do not perform mutations.
-3. Build and install that small slice once with **sn-build-install**, then test the real scoped `.do` endpoint. Confirm the root has rendered children, the marker is visible, the representative read succeeded, and no new uncaught console error occurred.
-4. If the slice fails, stop and resolve the runtime architecture before implementing the full UI. If it passes, evolve the same source and record into the finished application.
-5. Record the passing result in `docs/ui-runtime-compatibility.md`, resolved against the confirmed project root (or an existing documented project evidence location). Key it by instance/release when known, UI hosting type, now-sdk version, React/component-library versions, and tested component families; include the tested endpoint, date and evidence. Store no credentials or sensitive record data. Reuse it until one of those inputs changes.
-
-The slice adds one small install only when crossing an unvalidated target-runtime boundary. Do not add an upload merely because a UI file changed.
+1. Validate mounting, components and authenticated reads locally with `now-sdk run dev`.
+2. Use the **final** UI Page record, endpoint and client entry, not a throwaway page: a visible mount marker, one representative runtime-dependent component, one read-only authenticated request if the app reads instance data. No mutations.
+3. Install it once via **sn-build-install**; on the real scoped `.do` endpoint confirm rendered root children, visible marker, successful read and no new uncaught console error.
+4. Fail: stop and resolve the runtime architecture before the full UI. Pass: evolve the same source and record.
+5. Record the pass in `docs/ui-runtime-compatibility.md` under the confirmed project root (or an existing evidence location), keyed by instance/release (when known), hosting type, now-sdk, React/component-library versions and component families, with endpoint, date and evidence; no credentials or sensitive data. Reuse it until an input changes.
 
 ## Required pattern
 
-- UI source stays under `src/client`; the Fluent `UiPage({...})` imports the HTML entry and uses a stable `$id`, scoped `.do` endpoint, and `direct: true` when the sample pattern requires it.
-- Add project-compatible `vite`, React, `@vitejs/plugin-react`, and `@servicenow/isomorphic-rollup` dependencies.
-- `now.dev.mjs` uses Vite `createServer`, `servicenowVitePlugins`, and `createViteProxy` with the SDK-provided `credential`.
-- `now.prebuild.mjs` uses Vite `build` and `servicenowVitePlugins`, writes to `config.staticContentDir`, and passes `registerExplicitId`.
-- Both integrations use `configFile: false`; set `esbuild: false` so ServiceNow's SWC/Rollup plugin pipeline handles TypeScript/JSX.
-- Do **not** create `vite.config.js/ts`; the official integration lives in `now.dev.mjs` and `now.prebuild.mjs`.
-- Never package localhost/dev-server URLs, credentials, proxy settings, or relaxed development security into production artifacts.
+- UI source under `src/client`. The Fluent `UiPage({...})` imports the HTML entry with a stable `$id`, a scoped `.do` endpoint and `direct: true`. Converting an existing non-direct page changes its hosting; get approval first.
+- Adding `vite`, `@vitejs/plugin-react` and, if missing, `@servicenow/isomorphic-rollup`, `react` and `react-dom` needs approval and the command policy's package-manager launcher. Use explicit versions, not the sample's `catalog:`/`link:` specifiers. Keep an existing `@servicenow/isomorphic-rollup`, else the version installed with the project's SDK. Pick a `@vitejs/plugin-react` major whose `peerDependencies.vite` includes the chosen Vite (plugin-react 6 requires Vite 8). Check the chosen Vite's `engines.node` (Vite 7 and 8: Node `^20.19.0 || >=22.12.0`).
+- `@servicenow/isomorphic-rollup/vite` loads `rollup` undeclared and Vite 8 no longer installs it. If `node_modules/rollup` is missing after install, `now-sdk build` stops with `Cannot find module 'rollup'`; add `rollup` 4.x as a devDependency.
+- `now.dev.mjs`: Vite `createServer`, `@vitejs/plugin-react` ahead of `servicenowVitePlugins`, `createViteProxy` with the SDK-provided `credential`.
+- `now.prebuild.mjs`: Vite `build`, `servicenowVitePlugins` with `registerExplicitId` (deterministic asset sys_ids; omit it in `now.dev.mjs`).
+- Both write to `config.staticContent?.buildDir ?? config.staticContentDir` (default `dist/static`); never add the deprecated `staticContentDir` to `now.config.json`.
+- One TypeScript/JSX transformer, ServiceNow's SWC plugin: disable Vite's own in the shared root `vite.config.mjs`, loaded by both scripts with `configFile: path.join(rootDir, 'vite.config.mjs')`. Vite 8 and later: `oxc: false`. Vite 6/7: `esbuild: false`.
+- Do **not** create `vite.config.js/ts` or any other Vite config. `vite.config.mjs` holds only the transformer switch plus what the sample in use adds.
+- Never package localhost/dev-server URLs, credentials, proxy settings or relaxed development security.
 
 ## Run
 
-The sample's `dev` script maps to `now-sdk run dev`. On locked Windows invoke it directly and provide the confirmed auth alias:
+On locked Windows invoke the `dev` script directly with the confirmed auth alias:
 
 ```powershell
 now-sdk run dev --auth <alias>
 ```
 
-This is a long-running local dev server with HMR; stop it normally with Ctrl+C. For production output run normal `now-sdk build`, which invokes `now.prebuild.mjs`, then inspect `staticContentDir`/build XML to confirm no development URL leaked.
+`run` is missing from `now-sdk --help`; `now-sdk run --help` shows it. The first log line `Running script "dev" from <path>` names the script that ran; `No user script for "dev", using built-in default` means the Vite script was not found.
 
-Use **sn-build-install** for installation and marker verification. A content marker proves deployment, not runtime behavior. Browser checks remain secondary to marker verification as deployment evidence, but they are required before claiming a user-facing UI is runtime-smoked, working, or complete. Apply the conditional target-runtime slice above only when its compatibility gate is triggered.
+It does not exit by itself: give it its own terminal, send that terminal nothing else, stop it with Ctrl+C. Start evidence is the log line `Vite dev server running at http://localhost:<port>` (use that URL), not an exit status; never report the dev run as completed. The proxy uses the alias's credential, so the page hits the real instance; stay read-only unless a write is approved.
+
+For production run `now-sdk build` (it invokes `now.prebuild.mjs`; log `Running script "prebuild" from <path>`), then search the static build directory and build XML for development URLs (defaults shown; substitute the configured `staticContent.buildDir` and `appOutputDir`):
+
+```powershell
+Get-ChildItem -Recurse -File dist/static, dist/app/update | Select-String -SimpleMatch -List 'localhost', '127.0.0.1' | Select-Object -ExpandProperty Path
+```
+
+No output passes. Review each listed file; stop if a match is a dev-server URL, credential or proxy setting rather than third-party library text.
+
+## Install and verify
+
+Install and verify markers with **sn-build-install**. In a built React page:
+- `sys_ui_page.html` holds only the built HTML entry; a marker there must come from `src/client/index.html`.
+- TSX text lands in `sys_ux_lib_asset` named `<scope>/main`, field `content` in the build XML. CSS ships as a compressed attachment; markers there cannot be searched.
+- Confirm the marker in the local build XML before reading the same record and field on the instance.
+
+A marker proves deployment, not runtime. Browser checks are required before calling a user-facing UI runtime-smoked, working, verified or complete.

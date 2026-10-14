@@ -11,7 +11,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '../..');
-const worker = fs.readFileSync(path.join(root, 'payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8');
+const worker = fs.readFileSync(path.join(root, 'tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8');
 const probe = worker.match(/^function Confirm-WindowsOpenSsh \{\r?\n[\s\S]*?^\}/m)?.[0];
 const windowsOnly = { skip: process.platform !== 'win32' };
 const systemRoot = process.env.SystemRoot || 'C:\\Windows';

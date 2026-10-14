@@ -4,7 +4,7 @@ The [entry workflow](../SKILL.md) supplies workflow, security and Windows guardr
 
 ## Locate and resolve once per project/version
 
-Read package metadata and the lockfile, then use the matching installed packs:
+Read package metadata and, from the lockfile, only the resolved versions of the packs and `@servicenow/aiux` (search it; do not read it whole), then use the matching installed packs:
 
 ```text
 node_modules/@servicenow/agent-pack-aiux/skills/<skill>/SKILL.md
@@ -14,9 +14,9 @@ node_modules/@servicenow/agent-pack-horizon-design-knowledge/skills/<skill>/SKIL
 Reading these files directly works without skill registration or postinstall hooks. A package declaration, directory listing or successful install is not evidence that its guidance was read. Check installed versions against the lockfile; do not silently use another project's packages or `C:\temp` extracts.
 
 - Prefer `ui-discovery/SKILL.md` when present. Fall back to `component-discovery/SKILL.md` only when that file exists in an older installed pack. Do not assume a rename from a remembered version number.
-- The starter may copy skills into `.claude/skills` and create a Windows `.agents/skills` junction. Use copies only after confirming their provenance matches the installed packs. Do not run setup hooks merely to make Markdown readable; they can replace existing skill directories. Preserve user-authored files.
+- The starter may copy skills into `.claude/skills` and create a Windows `.agents/skills` junction. Use copies only after confirming their provenance matches the installed packs. Do not run setup hooks merely to make Markdown readable: the starter's `scripts/setup-agent-skills.mjs` (its `postinstall` and `agent:skills` script) overwrites same-named skills in `.claude/skills`, deletes a retired `component-discovery` copy, and recursively deletes a project `.agents/skills` that is not already its link before re-creating it. Preserve user-authored files.
 - Missing pack: report it and propose the approved dependency workflow, not an automatic install or upgrade. Do not author against unknown APIs or pretend the references were loaded.
-- Missing reference: inspect the declaring skill and nearby filenames once for a moved equivalent. Record the unresolved path/version; do not retry the same missing file unless files or versions change. AIUX 2.6.0, for example, referenced an absent `internationalization/i18n-litjs.md`. Do not invent the companion's APIs. Continue only with changes supported by available references and established project APIs; pause the part requiring unresolved guidance and state the gap.
+- Missing reference: inspect the declaring skill and nearby filenames once for a moved equivalent. Record the unresolved path/version; do not retry the same missing file unless files or versions change. AIUX pack 2.6.0, for example, referenced an absent `internationalization/i18n-litjs.md`. Do not invent the companion's APIs. Continue only with changes supported by available references and established project APIs; pause the part requiring unresolved guidance and state the gap.
 - Tools such as `get_skill_ref` and aliases such as `@patterns` are documentation conventions, not necessarily available tools. Use the file reader. Resolve `@components`, `@compositions`, `@patterns`, `@motion` to the Horizon pack; `@accessibility`, `@internationalization`, `@localization` to the AIUX pack. Resolve relative links from the declaring file. Report other unresolved aliases rather than guessing.
 
 ## Required task routes
@@ -59,7 +59,7 @@ On resume/compaction, use those notes to reload needed references whose details 
 
 ## Provenance
 
-Reviewed packs: AIUX 2.6.0 and Horizon 2.0.0 (2026-09-22); earlier wrapper guidance recorded AIUX 2.2.3. These are provenance, not universal compatibility claims or upgrade instructions.
+Reviewed packs: `@servicenow/agent-pack-aiux` 2.6.0 and `@servicenow/agent-pack-horizon-design-knowledge` 2.0.0 (2026-09-22); earlier wrapper guidance recorded AIUX pack 2.2.3. Pack versions are separate from the `@servicenow/aiux` framework version; the starter declares all three as `latest`, so check what is actually installed. These are provenance, not universal compatibility claims or upgrade instructions.
 
 - https://www.npmjs.com/package/@servicenow/agent-pack-aiux
 - https://www.npmjs.com/package/@servicenow/agent-pack-horizon-design-knowledge

@@ -1,46 +1,65 @@
 ---
 name: sn-download
-description: Use when adopting an existing ServiceNow instance app locally or refreshing its metadata; discover apps via REST, then use init --from or download.
-argument-hint: <app scope or sys_id — leave blank to list and pick>
+description: Pulls a whole existing instance app into a now-sdk project. Use when adopting an instance-built app or resyncing it; not single records such as one flow or playbook (sn-transform).
+argument-hint: <app name, scope or 32-character sys_id — leave blank to list and pick>
 compatibility: Project-compatible now-sdk and Node; authorized instance and OAuth alias; empty folder for adoption.
 metadata:
   version: '1'
 ---
-Bring an EXISTING instance application onto this machine as a now-sdk Fluent project, or refresh one you already have. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md), including package-manager launchers that preserve the project lockfile.
+Verified against: now-sdk 4.13.6 `init`, `download` and `transform` help; confirm flags against the project's SDK help.
 
-now-sdk has **no list-apps command**, so step 1 lists them over REST via the **sn-rest** skill helper.
+Bring an existing instance app into a local now-sdk Fluent project, or refresh one. Run `now-sdk` in VS Code PowerShell from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md).
 
-## 1. Pick the app (if not already given)
+- Use the user-confirmed instance and OAuth alias. Do not run `auth --list` as a probe; the step-1 read is the connection evidence. On an authentication error, stop and use **sn-auth** in the interactive parent.
+- This skill ends at a local project. Do NOT run `now-sdk install`; installing is a separate, approved **sn-build-install** task.
+- If `--help` lists `--timeout <seconds>` (default 3600) for `download`/`transform`, set the terminal timeout to match rather than killing a slow run.
+
+## 1. Resolve the app's sys_id
+Skip if you have the 32-character sys_id. `init --from` accepts only that; a scope or name is treated as a local path and fails with `Failed to find a sys app xml file`. now-sdk has **no list-apps command**, so filter `sys_app` by `scope=<scope>` or `nameLIKE<text>` with the **sn-rest** helper (its bounds and pagination rules apply):
 ```powershell
-$SnRest = Join-Path $env:USERPROFILE '.agents\skills\sn-rest\sn-rest.js'; node "$SnRest" --alias <alias> --instance https://<instance>.service-now.com "/api/now/table/sys_app?sysparm_fields=name,scope,sys_id,version&sysparm_query=ORDERBYname&sysparm_limit=200"
+node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<alias>" --instance "https://<instance>.service-now.com" "/api/now/table/sys_app?sysparm_fields=sys_id,name,scope,version&sysparm_query=scope=<scope>&sysparm_limit=10&sysparm_no_count=true"
 ```
-Show a numbered list of `name — scope — version`; capture the chosen `sys_id` + `scope`. (Scoped apps are in `sys_app`; use `sys_scope` for global/plugin scopes.)
+Read [references/find-app.md](references/find-app.md) when there is nothing to filter on or the app is not in `sys_app`.
 
-## 2a. Adopt into a NEW local project (first time on this machine)
-Run in an EMPTY target folder — `init --from` scaffolds the project AND pulls the app's metadata:
+## 2a. Adopt into a new local project
+Confirm the absolute target folder with the user; `init` writes into the current directory, not a subfolder. The folder must be EMPTY. STOP if it contains `now.config.json` (`init` then ignores `--from`) or `package.json` (its `name` overrides `--packageName`).
 ```powershell
-now-sdk init --from <sys_id> --auth <alias>
+now-sdk init --from <sys_id> --auth <alias> --packageName my-app
 ```
-Creates `now.config.json` (scope = the app's scope) and `src/fluent/`, and downloads the app's records. It does NOT create `src/scripts/`/`src/ui/` — those are this bundle's convention for `Now.include`'d scripts, created on first use; the SDK's own example code lands in `src/server/` (and `src/client/` in react/vue templates).
+- `--packageName` (lowercase, hyphens) prevents the `NPM package name:` prompt.
+- Do NOT add `--appName` or `--scopeName` (`Arguments from and scopeName are mutually exclusive`, exit 1). Name and scope come from the instance app.
 
-**Skip the prompts with flags** — pass `--appName`, `--packageName`, `--scopeName` (and optionally `--template`) up front and `init --from` runs non-interactively:
-```powershell
-now-sdk init --from <sys_id> --auth <alias> --appName "My App" --packageName my-app --scopeName x_acme_my_app
-```
-`--packageName` must follow npm naming (lowercase, hyphens). `--scopeName` is capped at 18 chars and must use the vendor prefix. If you omit any flag, `init` prompts interactively; in that case use sync terminal mode with a generous timeout and answer one prompt at a time with `send_to_terminal`, reading the next prompt before sending the next answer.
+Result: `now.config.json`, `package.json`, `.gitignore`, `.vscode/` and the app's raw XML under `metadata/`. No `src/` yet is normal; `src/fluent/` appears on the first `now-sdk build` or `transform`.
 
-## 2b. Refresh an app you ALREADY have locally
-From inside the existing project (has `now.config.json`):
-```powershell
-now-sdk download . --auth <alias>              # full refresh
-now-sdk download . --auth <alias> --incremental  # deltas only
-```
-`download` updates the CURRENT project — it does not pick an arbitrary app. Use 2a for a different one.
+## 2b. Install dependencies — REQUIRED before any `transform`
+`init --from` installs nothing. Follow the dependency-install step of **sn-new-app**, then confirm `node_modules/@servicenow/sdk/bin/index.js` exists.
+
+Without it, `transform` still exits 0 with `Transform completed successfully` but writes `.now.ts` files with no `import` lines and removes the source XML from `metadata/`; `now-sdk build` then fails (TS2708 and similar). Installing afterwards does not repair this; recovery is re-adopting into a fresh folder.
 
 ## 3. Convert to editable Fluent (optional)
-`download`/`init --from` give metadata; for editable `.now.ts`, run the **sn-transform** skill (`now-sdk transform --auth <alias>`), then apply the Fluent rules.
+```powershell
+now-sdk transform --from metadata
+now-sdk transform --from metadata/update/<file>.xml
+```
+Records land in `src/fluent/generated/**/*.now.ts`; their XML is removed from `metadata/`. Do NOT use `now-sdk transform --auth <alias>` for this first conversion: records held as XML stay XML and it reports success anyway. Then apply **sn-transform**'s review, cleanup and flow/action confirmation rules; adopted flows, subflows and custom actions are Fluent-locked (see **sn-build-install** → Automation ownership).
 
-## 4. Verify
-- `now.config.json` scope matches the chosen app · `now-sdk build` succeeds · spot-check a record with the **sn-rest** skill.
+## 4. Refresh an app you already have
+From the existing converted project, with dependencies installed:
+```powershell
+now-sdk transform --auth <alias>
+```
+- It syncs the CURRENT project's app only; for a different app use 2a.
+- It **overwrites local changes** to every record it updates: get the user's go-ahead and have uncommitted work committed or backed up first.
+- For specific records, use the `--table` / `--id` forms in **sn-transform**.
 
-Prereq: an OAuth alias must exist — run `auth --list` to check, run **sn-auth** if empty.
+`now-sdk download` is NOT a refresh. Read [references/raw-download.md](references/raw-download.md) only when you need the app's raw XML for inspection.
+
+## 5. Verify
+A green `now-sdk build` alone proves nothing; it also passes with none of the app's metadata. Check:
+- 2a: `now.config.json` `scope`/`scopeId` match the chosen app; `metadata/update/` contains XML.
+- 2b: `node_modules/@servicenow/sdk/bin/index.js` exists.
+- 3 / 4: the expected `.now.ts` files exist under `src/fluent/generated/` and start with an `import … from '@servicenow/sdk/core'` line (no imports = transform ran without dependencies). After 4, review the changed files with the user.
+- `now-sdk build` succeeds. While raw XML remains, a warning about a static `sys_app` XML file in the metadata directory is expected.
+- Spot-check one record against the instance with **sn-rest**.
+
+Report the files created or changed. Before any later install, the **sn-build-install** pre-install flow/action scan is mandatory.

@@ -26,6 +26,12 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
   const fakeHome = options.home || path.resolve(os.tmpdir(), 'advisor-vm-home');
   const fsReads = [];
   const fakeRepo = path.join(fakeHome, 'repo');
+  const receiptFile = path.join(fakeHome, '.agents', '.servicenow-fluent-agent-install.json');
+  const stateFile = path.join(fakeHome, '.agents', '.servicenow-fluent-agent-update.json');
+  // options.states: successive state-file contents (string, object, or undefined = absent).
+  // The last entry repeats; the launcher only ever reads this file, never writes it.
+  const states = options.states || [undefined];
+  let stateReads = 0;
   const proc = {
     argv: ['node', 'launcher.cjs', ...args], execPath: 'fixture-node', exitCode: 0,
     exit(code) { if (code !== undefined) this.exitCode = code; throw stop; },
@@ -34,7 +40,12 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
     'node:fs': {
       readFileSync(file) {
         fsReads.push(file);
-        assert.equal(file, path.join(fakeHome, '.agents', '.servicenow-fluent-agent-install.json'));
+        if (file === stateFile) {
+          const content = states[Math.min(stateReads++, states.length - 1)];
+          if (content === undefined) throw Object.assign(new Error('absent'), { code: 'ENOENT' });
+          return typeof content === 'string' ? content : JSON.stringify(content);
+        }
+        assert.equal(file, receiptFile);
         return options.badReceipt ? '{' : JSON.stringify({ repoRoot: fakeRepo });
       },
       existsSync(file) { assert.equal(file, path.join(fakeRepo, 'bin', 'sn-fluent-agent.cjs')); return !options.missingCli; },
@@ -51,15 +62,17 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
       console: { log: value => stdout.push(String(value)), error: value => stderr.push(String(value)) },
     }, { timeout: 1000 });
   } catch (error) { if (error !== stop) throw error; }
-  return { status: proc.exitCode, stdout, stderr, calls, fsReads };
+  return { status: proc.exitCode, stdout, stderr, calls, fsReads, stateFile };
 }
 const notification = { component: 'agent', id: '222222222222', label: 'ServiceNow Fluent Agent', current: '111111111111', available: '222222222222' };
+const noticeState = (extra = {}) => ({ version: 1, components: { agent: { available: { id: notification.id }, ...extra } } });
 
-test('launcher keeps a malformed bare --docs check quiet and forwards the original arguments', () => {
-  const r = runLauncher(['check', '--docs'], { status: 1, stdout: '', stderr: 'Error: Missing value for --docs' });
-  assert.equal(r.status, 0);
+test('a check the checkout CLI rejects is reported on stderr with a non-zero exit, never as a quiet success', () => {
+  const r = runLauncher(['check', '--docs'], { status: 1, stdout: '', stderr: 'ERROR: Error: Missing value for --docs\n    at flagValues' });
+  assert.equal(r.status, 1);
   assert.deepEqual(r.stdout, []);
-  assert.deepEqual(r.stderr, []);
+  assert.equal(r.stderr.length, 1);
+  assert.match(r.stderr[0], /^Update check failed: checkout CLI exited 1 \(ERROR: Error: Missing value for --docs\)\.$/);
   assert.deepEqual(Array.from(r.calls[0][1]).slice(1), ['check-updates', '--docs']);
   assert.deepEqual(Array.from(r.calls[0][2].stdio), ['ignore', 'pipe', 'pipe']);
   assert.equal(r.calls[0][2].maxBuffer, 64 * 1024);
@@ -72,41 +85,154 @@ test('launcher emits successful actionable JSON only, never stderr diagnostics',
   assert.deepEqual(r.stderr, []);
 });
 
-test('launcher suppresses empty, malformed, nonactionable and oversized check responses', () => {
-  for (const stdout of ['', 'not JSON', '{}', '{"updates":[]}', '{"updates":[{}]}', JSON.stringify({ updates: [{ ...notification, available: notification.current }] }), 'x'.repeat(65537)]) {
-    const r = runLauncher(['check'], { status: 0, stdout, stderr: 'error' });
+test('a completed check with nothing to announce stays quiet and exits 0', () => {
+  for (const stdout of ['', '\n', '  \r\n']) {
+    const r = runLauncher(['check'], { status: 0, stdout, stderr: 'fixture warning' });
     assert.equal(r.status, 0);
-    assert.deepEqual(r.stdout, [], stdout.slice(0,80));
+    assert.deepEqual(r.stdout, []);
     assert.deepEqual(r.stderr, []);
   }
 });
 
-test('launcher does not publish partial success on failure, signal, launch error or absent receipt', () => {
+test('malformed, nonactionable and oversized check responses are failures, never notices', () => {
+  for (const stdout of ['not JSON', '{}', '{"updates":[]}', '{"updates":[{}]}', JSON.stringify({ updates: [{ ...notification, available: notification.current }] }), 'x'.repeat(65537)]) {
+    const r = runLauncher(['check'], { status: 0, stdout, stderr: 'error' });
+    assert.equal(r.status, 1, stdout.slice(0, 80));
+    assert.deepEqual(r.stdout, [], stdout.slice(0, 80));
+    assert.match(r.stderr.join('\n'), /not a valid update notice/);
+  }
+});
+
+test('check failure, signal, launch error, absent receipt or absent CLI exit non-zero without publishing a notice', () => {
   for (const child of [{ status: 1 }, { status: null }, { status: 0, signal: 'SIGTERM' }, { error: new Error('denied') }]) {
     const r = runLauncher(['check'], { stdout: JSON.stringify({ updates: [notification] }), ...child });
-    assert.equal(r.status, 0);
+    assert.equal(r.status, 1);
     assert.deepEqual(r.stdout, []);
-    assert.deepEqual(r.stderr, []);
+    assert.equal(r.stderr.length, 1);
+    assert.match(r.stderr[0], /^Update check (failed|not run): /);
   }
   for (const options of [{ throwSpawn: true }, { badReceipt: true }, { missingCli: true }]) {
     const r = runLauncher(['check'], undefined, options);
-    assert.equal(r.status, 0);
+    assert.equal(r.status, 1);
     assert.deepEqual(r.stdout, []);
-    assert.deepEqual(r.stderr, []);
+    assert.match(r.stderr.join('\n'), /^Update check not run: /);
+    if (!options.throwSpawn) assert.deepEqual(r.calls, [], 'nothing is launched without a usable receipt checkout');
   }
 });
 
+test('a discovery failure recorded by this run is surfaced; an older recorded failure is not repeated', () => {
+  const failedNow = { version: 1, components: { agent: { lastCheckedAt: '2026-01-03T00:00:00.000Z', lastCheckFailedAt: '2026-01-03T00:00:00.000Z' } } };
+  const fresh = runLauncher(['check', '--only', 'agent'], undefined, { states: [undefined, failedNow] });
+  assert.equal(fresh.status, 1);
+  assert.deepEqual(fresh.stdout, []);
+  assert.match(fresh.stderr.join('\n'), /^Update check failed for agent: .*lastCheckFailedAt/);
+  const unchanged = runLauncher(['check', '--only', 'agent'], undefined, { states: [failedNow, failedNow] });
+  assert.equal(unchanged.status, 0, 'a component that was not due keeps its earlier failure; nothing new happened');
+  assert.deepEqual(unchanged.stderr, []);
+  const withNotice = runLauncher(['check'], { status: 0, stdout: JSON.stringify({ updates: [notification] }), stderr: '' },
+    { states: [undefined, { version: 1, components: { agent: { available: { id: 'x' } }, 'docs:c:\\docs': { lastCheckFailedAt: '2026-01-03T00:00:00.000Z' } } }] });
+  assert.equal(withNotice.status, 1);
+  assert.deepEqual(withNotice.stdout.map(JSON.parse), [{ updates: [notification] }], 'a valid notice for another component is still shown');
+  assert.match(withNotice.stderr.join('\n'), /failed for docs:c:\\docs/);
+});
+
+test('malformed decision state stops check, decision and state before anything is launched or written', () => {
+  for (const bad of ['{bad', '', 'null', '[]', '{"version":1}', '{"components":null}', '{"components":[]}', '{"components":{"agent":"skip"}}']) {
+    for (const args of [['check', '--only', 'agent'], ['decision', 'skip', '--component', 'agent'], ['state']]) {
+      const r = runLauncher(args, undefined, { states: [bad] });
+      assert.equal(r.status, 1, `${args[0]} ${bad}`);
+      assert.deepEqual(r.stdout, []);
+      assert.deepEqual(r.calls, [], 'the checkout CLI would replace unparsable state with an empty one');
+      assert.match(r.stderr.join('\n'), /left unchanged; do not reset it/);
+      assert.ok(r.stderr.join('\n').includes(r.stateFile));
+    }
+  }
+  const unreadable = runLauncher(['check'], undefined, { gateFs: { readFileSync() { throw Object.assign(new Error('denied'), { code: 'EACCES' }); } } });
+  assert.equal(unreadable.status, 1);
+  assert.deepEqual(unreadable.calls, []);
+});
+
+test('state mode prints the recorded components read-only, without receipt or child access', () => {
+  const recorded = noticeState({ lastCheckedAt: '2026-01-01T00:00:00.000Z' });
+  const r = runLauncher(['state'], undefined, { states: [recorded], badReceipt: true, missingCli: true });
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(r.stdout.join('\n')), { state: r.stateFile, exists: true, components: recorded.components });
+  assert.deepEqual(r.fsReads, [r.stateFile]);
+  assert.deepEqual(r.calls, []);
+  const absent = runLauncher(['state']);
+  assert.equal(absent.status, 0);
+  assert.deepEqual(JSON.parse(absent.stdout.join('\n')), { state: absent.stateFile, exists: false, components: {} });
+});
+
+test('unknown launcher commands fail instead of exiting quietly', () => {
+  const r = runLauncher(['chekc']);
+  assert.equal(r.status, 1);
+  assert.deepEqual(r.calls, []);
+  assert.match(r.stderr.join('\n'), /Unknown command: chekc/);
+});
+
+test('state and session-start refuse extra arguments before reading or writing anything', () => {
+  for (const args of [['state', '--bogus'], ['session-start', '--force'], ['state', 'agent']]) {
+    const r = runLauncher(args);
+    assert.equal(r.status, 1, args.join(' '));
+    assert.deepEqual(r.calls, []);
+    assert.deepEqual(r.fsReads, []);
+    assert.match(r.stderr.join('\n'), new RegExp(`Unexpected argument ${args[1]} for ${args[0]}\\. Nothing was run\\.`));
+  }
+});
+
+test('decision verification reads the decision positional even when --component comes first', () => {
+  const recorded = noticeState({ lastDecision: 'remind', lastDecisionAt: '2026-01-02T00:00:00.000Z' });
+  const r = runLauncher(['decision', '--component', 'agent', 'remind'], { status: 0 }, { states: [noticeState(), recorded] });
+  assert.equal(r.status, 0);
+  assert.deepEqual(r.stderr, []);
+});
+
 test('decision mode preserves inherited output and truthful error/exit status', () => {
+  const recorded = noticeState({ lastDecision: 'remind', lastDecisionAt: '2026-01-02T00:00:00.000Z' });
   for (const [child, expected] of [[{ status: 0 }, 0], [{ status: 7 }, 7], [{ status: null }, 1], [{ status: null, signal: 'SIGTERM' }, 1]]) {
-    const r = runLauncher(['decision', 'remind', '--component', 'agent'], child);
+    const r = runLauncher(['decision', 'remind', '--component', 'agent'], child, { states: [noticeState(), recorded] });
     assert.equal(r.status, expected);
     assert.equal(r.calls[0][2].stdio, 'inherit');
-    assert.equal(r.calls[0][1][1], 'update-decision');
+    assert.deepEqual(Array.from(r.calls[0][1]).slice(1), ['update-decision', 'remind', '--component', 'agent']);
+    if (expected) assert.match(r.stderr.join('\n'), /^Update decision failed: /);
+    else assert.deepEqual(r.stderr, []);
   }
-  const failure = runLauncher(['decision'], { error: new Error('launch denied') });
+  const failure = runLauncher(['decision', 'skip', '--component', 'agent'], { error: new Error('launch denied') }, { states: [noticeState()] });
   assert.equal(failure.status, 1);
-  assert.deepEqual(failure.stderr, ['launch denied']);
-  assert.equal(runLauncher(['decision'], undefined, { missingCli: true }).status, 1);
+  assert.match(failure.stderr.join('\n'), /could not run the checkout CLI \(launch denied\)/);
+  assert.equal(runLauncher(['decision', 'skip', '--component', 'agent'], undefined, { missingCli: true, states: [noticeState()] }).status, 1);
+});
+
+test('a decision for a key without a recorded notice is refused before launch, not recorded as zero components', () => {
+  const sdkKey = 'sdk:c:\\work\\app';
+  const states = [{ version: 1, components: { agent: { lastCheckedAt: '2026-01-01T00:00:00.000Z' }, [sdkKey]: { available: { id: '4.13.6' } } } }];
+  // Unknown key, JSON-escaped (doubled) backslashes, original casing, and a known key whose notice was cleared.
+  for (const key of ['docs:c:\\nowhere', 'sdk:c:\\\\work\\\\app', 'sdk:C:\\Work\\App', 'agent']) {
+    const r = runLauncher(['decision', 'update', '--component', key], { status: 0 }, { states });
+    assert.equal(r.status, 1, key);
+    assert.deepEqual(r.calls, [], 'the checkout CLI would print "Recorded update for 0 update component(s)." and exit 0');
+    assert.match(r.stderr.join('\n'), /decision not recorded: no recorded notice for /);
+    assert.ok(r.stderr.join('\n').includes(`Components with a recorded notice: ${sdkKey}.`));
+  }
+  const mixed = runLauncher(['decision', 'update', '--component', sdkKey, '--component', 'agent'], { status: 0 }, { states });
+  assert.equal(mixed.status, 1, 'one unmatched key refuses the whole call so nothing is half-recorded');
+  assert.deepEqual(mixed.calls, []);
+  const none = runLauncher(['decision', 'update', '--component', 'agent'], { status: 0 });
+  assert.equal(none.status, 1);
+  assert.match(none.stderr.join('\n'), /Components with a recorded notice: \(none\)\./);
+});
+
+test('a decision the state file does not show afterwards is a failure even when the child exits 0', () => {
+  const stale = noticeState({ lastDecision: 'skip', lastDecisionAt: '2026-01-01T00:00:00.000Z' });
+  for (const afterState of [noticeState(), stale, { version: 1, components: {} }]) {
+    const r = runLauncher(['decision', 'skip', '--component', 'agent'], { status: 0 }, { states: [stale, afterState] });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr.join('\n'), /decision not recorded for "agent"/);
+  }
+  const ok = runLauncher(['decision', 'skip', '--component', 'agent'], { status: 0 },
+    { states: [stale, noticeState({ lastDecision: 'skip', lastDecisionAt: '2026-01-05T00:00:00.000Z' })] });
+  assert.equal(ok.status, 0, 'repeating the same choice later is recorded by its new timestamp');
 });
 
 function temporaryPath(t) {
@@ -266,6 +392,17 @@ test('routing and owning skill preserve update scope and UNKNOWN without mirrore
   assert.match(skill, /Recording \*\*Update\*\* records authorization, not installation/);
   assert.match(skill, /One owner per mutation/);
   assert.match(skill, /scripts\\update-project-sdk\.cjs/);
+  // Guidance must match what the shipped launcher, worker and lookup CLI actually do.
+  assert.doesNotMatch(skill, /<skill>|temporary sibling index|advisor state through the approved workflow/);
+  assert.match(skill, /sn-update-advisor\.cjs" state\n/);
+  assert.match(skill, /no staged-swap or promote command/);
+  assert.match(skill, /advisor state has no indexed-commit field/);
+  assert.match(skill, /Recorded <selected-decision> for N update component\(s\)\./);
+  assert.match(skill, /withholds further notices for that component for seven days, also under `--force`/);
+  assert.match(skill, /pull --ff-only origin main/);
+  for (const [, block] of skill.matchAll(/```powershell\n([\s\S]*?)```/g)) assert.match(block, /=\$LASTEXITCODE"\n$/, block);
+  const lookup = load('payload/.agents/skills/sn-doc-lookup/bin/sn-doc-md.js');
+  for (const flag of ['--family', '--force', '--out', '--index']) assert.ok(lookup.includes(flag), `lookup CLI no longer documents ${flag}`);
 });
 
 function gitRunner(remoteRevision) {

@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Skill review against now-sdk 4.13.6
+
+Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each finding adversarially verified, and corrected. No PowerShell, instance install, authentication or deployment was executed during the review; Windows-specific blocks need a live check.
+
+### Security
+
+- `sn-rest.js`: parse options strictly (unknown, repeated or `--flag=value` options exit 2 instead of being ignored, which could send a request, including a write, to the default alias). The path must be instance-relative and `--instance` must match the instance stored with the alias; redirects are not followed and plain http is limited to loopback, so the bearer and refresh token cannot reach another host. Non-GET requests need an explicit `--alias`; POST/PATCH/PUT need a valid JSON body. `--dump` is removed.
+- `sn-doc-export/capture.cjs`: attach the OAuth bearer only to https requests on the instance origin; refuse a `--url` on another host and drop the header on third-party subresources and cross-origin redirects.
+- `reference/platform-banners.md` no longer tells the agent to read the keychain token directly. Personal aliases, vendor prefixes and project names are removed from the payload and blocked by a test.
+
+### Behavior changes
+
+- `sn-doc-md`: keep underscores in `canonical_url`, titles and headings (about one in nine citation links was broken). Indexes built by `sn-doc-md@0.1.0` are reported as outdated and need an approved `--force` rebuild; a `read` that matches nothing exits 1.
+- Update advisor: the installed launcher's `check` exits non-zero on failure (bad arguments, missing receipt, failed child) and refuses to overwrite malformed decision state; `update-decision` exits non-zero when a key matched no recorded notice.
+- `bin/sn-fluent-agent.cjs` accepts only each command's own options. An unknown, repeated or value-less option, or an extra argument, exits 1 before any work (previously `check --bogus` ran a check and exited 0). Options go after the command (`--dry-run install` is refused with that hint). `--help` prints usage instead of running `install`, and `update-decision` reads the decision even when `--component` comes first. `session-start` and `state` in the launcher refuse arguments.
+- Install and uninstall remove directories that a managed-file removal leaves empty under `.agents` and `.copilot`, and install also removes skill folders that hold only empty directories (left by earlier installs, such as `win-git-bootstrap`). Directories that still hold a file are kept.
+- `win-git-bootstrap` is setup-only and moves from `payload/.agents/skills/` to `tools/win-git-bootstrap/`. Worker bytes and checksums are unchanged; the next install removes the profile copy that earlier versions installed. The VS Code-only repair guide downloads the worker from the new path.
+
+### Skill corrections
+
+- `sn-transform`: `--table` without `--id`/`--from` is a local filter that copies build XML into `metadata/` and corrupts later builds; bare `transform --auth` is a whole-app sync that overwrites local source, not an interactive picker.
+- `sn-build-install` and `fluent.instructions.md`: choice handling defaults to the destructive v3 mode; `--skip-flow-activation` does not preserve a published flow; asynchronous install output and post-install checks per record type.
+- `sn-download`, `sn-new-app`: `init --from` cannot be combined with `--appName/--scopeName`; `init` needs `--template` to be non-interactive; dependencies must be installed before transform.
+- `sn-new-app`: `init` checks template availability on the npm registry with no timeout, also with `--noUpdate`. Where Node cannot reach the registry it stays silent with an empty folder for about 5 minutes and then scaffolds; the skill now says to wait up to 6 minutes instead of stopping it.
+- `sn-cicd` description names reading ATF results and logs, which routed to `sn-rest`.
+- `sn-transform`: an unversioned project needs an approved Git baseline or a folder backup before a transform. `sn-rest.js`: every refusal ends with "Nothing was sent."
+- `sn-auth`: OAuth `auth --add` exits 0 on failure; never run `auth --print`. `sn-cicd`: `SN_SDK_*` variables override `--auth`; no retry after a timeout.
+- `sn-explain` owns the missing-topic / older-SDK stop branch; `sn-fix-build` diagnostics were rebuilt from errors reproduced on 4.13.6.
+- `sn-add-playbook` (variants and public access, gated), `sn-add-graphql-api` (`Now.include` copies a resolver verbatim), `sn-add-record`, `sn-add-test-suite`, `sn-ui-page-vite`, `sn-react-ui-design`, `sn-lux`, `sn-lux-build` (AIUX builds need the project-local SDK) and `win-git-bootstrap` corrected.
+- Tests check every payload Markdown link and heading anchor, bind the Git procedure to its worker, and pin the corrected guidance.
+
 ## Unreleased — Technical guide
 
 - Add a source-linked technical guide covering architecture, managed-file lifecycle, Windows execution, configuration/state, update workers, authentication/REST boundaries, documentation tooling, testing and publication. Distinguish implemented checks from instruction-level safeguards and document verification limitations; no runtime behavior changes.
