@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Skill review against now-sdk 4.13.6
+## 0.3.11 — Skill review against now-sdk 4.13.6
 
-Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each finding adversarially verified, and corrected. No PowerShell, instance install, authentication or deployment was executed during the review; Windows-specific blocks need a live check.
+Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each finding adversarially verified, and corrected. No PowerShell, instance install, authentication or deployment was executed during the review. A later test in VS Code on Windows (now-sdk 4.13.6, Node 25) passed every check of the final build except a real install to an instance, which was not approved and so not run.
 
 ### Security
 
@@ -31,15 +31,15 @@ Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each fi
 - `sn-add-playbook` (variants and public access, gated), `sn-add-graphql-api` (`Now.include` copies a resolver verbatim), `sn-add-record`, `sn-add-test-suite`, `sn-ui-page-vite`, `sn-react-ui-design`, `sn-lux`, `sn-lux-build` (AIUX builds need the project-local SDK) and `win-git-bootstrap` corrected.
 - Tests check every payload Markdown link and heading anchor, bind the Git procedure to its worker, and pin the corrected guidance.
 
-## Unreleased — Technical guide
+### Technical guide
 
 - Add a source-linked technical guide covering architecture, managed-file lifecycle, Windows execution, configuration/state, update workers, authentication/REST boundaries, documentation tooling, testing and publication. Distinguish implemented checks from instruction-level safeguards and document verification limitations; no runtime behavior changes.
 
-## Unreleased — Manual uninstall guide
+### Manual uninstall guide
 
 - Document separate manual removal of agent files, selected SDK credentials, the global SDK, VS Code settings, offline docs, setup-owned Git and optional local state/backups. Preserve shared tools, edited files and project work; no uninstaller behavior changes.
 
-## Unreleased — PDI connection guide
+### PDI connection guide
 
 - Add a beginner-friendly PDI connection guide with redacted Developer Portal screenshots: log in to the PDI first, choose **Terminal -> New Terminal** in VS Code, then manually run `now-sdk auth --add dev123456` with your own instance name and follow the OAuth prompts.
 - Show these manual steps and the guide's GitHub link after a non-dry-run install without payload conflicts; include the same next step in the completed agent-assisted setup response. The agent does not run authentication for the user.
