@@ -8,91 +8,73 @@ metadata:
 ---
 # Lux (AIUX) build and runtime workflow
 
-For scaffolding/authoring, start with [sn-lux](../sn-lux/SKILL.md). Use [sn-build-install](../sn-build-install/SKILL.md) for shared install/auth/Flow guardrails; this skill adds AIUX-specific checks. Do not apply the React UI Page/Vite recipe to an AIUX app.
+For scaffolding/authoring, start with [sn-lux](../sn-lux/SKILL.md). [sn-build-install](../sn-build-install/SKILL.md) owns the shared install/auth/Flow guardrails. Do not apply the React UI Page/Vite recipe to an AIUX app. Read [validation and troubleshooting](references/validation-and-troubleshooting.md) before changing the pipeline.
 
-Read [validation and troubleshooting](references/validation-and-troubleshooting.md) before changing the pipeline. This skill is not permission to deploy, reinstall, modify vendor apps, impersonate users or suppress security controls.
+This skill is not permission to deploy, reinstall, modify vendor apps, impersonate users or suppress security controls.
 
-- Do not patch vendor packages as speculative fixes, because that can change behavior beyond the approved application boundary.
-- Do not overwrite user preferences while diagnosing a failure, because a troubleshooting task does not authorize changing stored user behavior.
+- Do not patch vendor packages as speculative fixes; that can change behaviour beyond the approved application boundary.
+- Do not overwrite user preferences while diagnosing a failure; troubleshooting does not authorize changing stored user behaviour.
 
 ## 1. Establish the actual build state
 
-Read the project manifests, lockfile, scripts, output-directory settings and installed versions. Distinguish:
+Read the manifests, lockfile, scripts, output settings and installed versions. Report the stage reached: scaffold only; dependencies installed; syntax/mock tests passed; real SDK build/lint passed; installed content verified; live browser behaviour verified.
 
-- scaffold only;
-- dependencies installed;
-- syntax/mock tests passed;
-- real SDK build/lint passed;
-- installed content verified;
-- live browser behavior verified.
+`Could not resolve aiux-sdk/build` (or `aiux-sdk/serve`) has two causes: a missing project AIUX dependency, or a global SDK running instead of the project's. Separate them with the [resolve diagnosis](references/validation-and-troubleshooting.md#could-not-resolve-aiux-sdk) before changing anything. Do not fabricate output, claim missing instance capability, install AIUX globally, or add guessed private fallback packages.
 
-`Could not resolve aiux-sdk/build` (or `aiux-sdk/serve` from the dev server) has two causes; separate them before changing anything. The SDK resolves `@servicenow/aiux` from the SDK's own install location, not from the project, so a global SDK cannot find a project's AIUX package even when it is installed. From the app root:
-
-```powershell
-node -e "console.log(require.resolve('@servicenow/aiux/aiux-sdk/build',{paths:[process.cwd()]}))"
-Test-Path node_modules\@servicenow\sdk\bin\index.js
-```
-
-- First command fails: the project's AIUX dependency is not installed/resolved. Resolve dependencies through an allowed launcher with reviewed versions and lifecycle scripts disabled initially.
-- First command prints a path: the dependency is installed and the SDK that ran was not the project's. Do not reinstall dependencies. The build's first line, `Initiating the build process with SDK <version>`, shows which SDK ran. If `Test-Path` is `False`, no project SDK exists and a global one ran: when `package.json` declares `@servicenow/sdk`, install the declared dependencies; when it does not, stop and ask before adding a project SDK pin. If it is `True`, the terminal did not use the project SDK; open the configured terminal profile per the command policy and report the mismatch.
-
-Do not fabricate output, claim missing instance capability, install AIUX globally, or add guessed private fallback packages.
-
-Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md). Print commands before execution. From the app root, after dependencies exist:
+Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print commands before execution. From the app root, after dependencies exist:
 
 ```powershell
 now-sdk build
 ```
 
-Read `package.json` scripts for the project's own lint/test checks and run what they run, through Node where the script is a JavaScript CLI (for example `node node_modules/eslint/bin/eslint.js .` for a `lint` script of `eslint .`). Add `--max-warnings=0` only if the project's script or CI does; otherwise report warning counts. Run `node --test` only if the project has test files: with none it exits 0 with `tests 0`, which is "no tests", not "tests passed". A project script that sets an environment variable inline (`PORT=3000 ...`) is POSIX syntax and fails on Windows; run its command directly instead of editing the script.
-
-Read the whole build output, not only the last line. `[metadata]` warnings (for example a page that is global with no `@acl` decorator and therefore reachable without ACL restriction) do not fail the build; report them before any install.
-
-A normal AIUX starter needs neither React/Vite nor a custom prebuild hook: the SDK discovers `aiux.json` and calls the public AIUX builder. Add a hook only for a confirmed customization/compatibility need.
+- Read the whole build output. `[metadata]` warnings (for example a global page with no `@acl` decorator, reachable without ACL restriction) do not fail the build; report them before any install.
+- Run the lint/test checks the project's `package.json` scripts define, through Node where the script is a JavaScript CLI (for example `node node_modules/eslint/bin/eslint.js .` for `eslint .`). Add `--max-warnings=0` only if the project's script or CI does; otherwise report warning counts. Run `node --test` only if test files exist; with none it exits 0 with `tests 0`: "no tests", not "tests passed". Run an inline-environment script (`PORT=3000 ...`, POSIX syntax that fails on Windows) as its command directly; do not edit the script.
+- A normal AIUX starter needs neither React/Vite nor a custom prebuild hook; add one only for a confirmed customization/compatibility need.
 
 ## 2. Inspect output before installing
 
-- Resolve the actual output paths, not a hardcoded demo path: `appOutputDir` in `now.config.json` (SDK default `dist/app`) holds the install categories as folders; the AIUX builder writes its generated JSON records to `dist-metadata/aiux-json` unless `aiux.json` `build.metadataOutputDir` overrides it. Where another skill names `dist/app`, substitute the resolved `appOutputDir`.
-- Inspect **all** install category folders under `appOutputDir`, including `author_elective_update` when present, not just `update/`. `now-sdk build` creates no archive; the zip (`target/<name>_<version>.zip`) exists only after the local-only `now-sdk pack` or after an install. To inspect it, run `now-sdk pack`, then `Expand-Archive` it into a temporary folder.
-- Compare table/record types and ownership to the user's approved plan. Reject unexpected records, source archives, credentials, development URLs and unapproved `DELETE` instructions. The AIUX starter sets `packageSourceCodeOnInstance: true` in `now.config.json`, so a source archive is produced unless that was set to `false`; it is expected only when source packaging was approved.
+Read [output inspection](references/validation-and-troubleshooting.md#output-inspection) for output paths, the zip and the keys-file (tombstone) format.
+
+- Inspect **all** install category folders under `appOutputDir` (default `dist/app`), including `author_elective_update`, and the AIUX JSON records (`dist-metadata/aiux-json` by default).
+- Compare record types and ownership with the approved plan. Reject unexpected records, credentials, development URLs, unapproved `DELETE` instructions, and a source archive unless source packaging was approved.
 - Scan `src/fluent/**` for `sys_hub_flow_*.now.ts` and `sys_hub_action_type_definition_*.now.ts`; apply the shared Flow guardrail. Never silently remove transformed automation.
-- Do not automatically clear `deleted: true` registry entries. The registry is the generated keys file (`src/fluent/generated/keys.ts` by default; created by the first build, so absent before it): look for per-key `deleted: true` flags and a top-level `deleted` table-to-ids map. Tombstones can delete real records. Any cleanup requires approval, backup, provenance that the entry is obsolete, and appropriate instance verification; an ACL-filtered empty query alone does not prove absence.
-- Check that every generated `asset` value is a portable URL path, not a Windows filesystem path. Against the resolved AIUX JSON directory, this lists files whose `asset` contains a backslash (no output from a directory that does contain `sys_aix_*.json` files means none):
+- Do not automatically clear `deleted: true` registry entries in the generated keys file. Tombstones can delete real records; cleanup requires approval, backup, provenance that the entry is obsolete, and instance verification.
+- Check that every generated `asset` value is a portable URL path. This lists files whose `asset` contains a backslash (no output from a directory that does contain `sys_aix_*.json` files means none):
 ```powershell
 Get-ChildItem -Path <aiux-json-dir> -Filter '*.json' | Select-String -Pattern '\\"asset\\":\s*\\"[^"\\]*\\\\' -List | Select-Object -ExpandProperty Path
 ```
-  A hit is handled by the optional [Windows adapter](references/validation-and-troubleshooting.md#windows-asset-404), whose templates are [now.prebuild.mjs](assets/now.prebuild.mjs) and [normalize-aiux-assets.mjs](assets/scripts/normalize-aiux-assets.mjs). Copying them into the app is a project-configuration change that needs approval, and the root hook is active as soon as it is copied.
-- Verify server script/action boundaries and actual generated code. If using native gallery cards, verify `required_user_preferences` in the generated `sys_aix_widget`/`sys_aix_page` JSON (see [native gallery prefetch](references/validation-and-troubleshooting.md#native-gallery-prefetch)); do not substitute preference writes.
-- Dependency advisories and unsupported engine warnings remain open findings even if compilation succeeds. No forced audit fixes or blanket native rebuilds.
+  On a hit, read the [Windows adapter](references/validation-and-troubleshooting.md#windows-asset-404) (templates [now.prebuild.mjs](assets/now.prebuild.mjs) and [normalize-aiux-assets.mjs](assets/scripts/normalize-aiux-assets.mjs)). Copying them into the app needs approval; the root hook is active as soon as it is copied.
+- Verify server script/action boundaries in the generated code. With native gallery cards, verify `required_user_preferences` in the generated `sys_aix_widget`/`sys_aix_page` JSON ([native gallery prefetch](references/validation-and-troubleshooting.md#native-gallery-prefetch)); do not substitute preference writes.
+- Dependency advisories and unsupported-engine warnings stay open findings even when compilation succeeds. No forced audit fixes or blanket native rebuilds.
 
 ## 3. Preview locally only when asked
 
-The dev server is separate from install and optional. It runs the project's code unsandboxed, binds `0.0.0.0`, and proxies to the instance with the alias's session, so starting it needs the user's go-ahead for that alias. `run` is not listed in `now-sdk --help`; use `now-sdk run --help`.
+The dev server runs project code unsandboxed, binds `0.0.0.0` and proxies to the instance with the alias's session, so starting it needs the user's go-ahead for that alias. Read [local preview](references/validation-and-troubleshooting.md#local-preview) first.
 
 ```powershell
 $env:PORT = '3000'
 now-sdk run dev --auth <confirmed-alias>
 ```
 
-The HTTP port comes from the `PORT` environment variable (default 80; HMR on 3101), as read in `@servicenow/aiux` 22.67.1: confirm against the installed version. `$env:PORT` lasts for that terminal session. The server logs an `open → <url>` line; use that URL, not a guessed one. `Could not resolve aiux-sdk/serve` is the section 1 diagnosis. Review dependency risks and native requirements first. Do not open public tunnels/firewall exceptions or add credentials to make it work. A preview result is not deployed-UI evidence.
+Do not open public tunnels/firewall exceptions or add credentials. A preview is not deployed-UI evidence.
 
 ## 4. Deploy only with explicit approval
 
-Confirm alias, target, custom scope and intended changes. Before the first install to a target, confirm the [sn-lux](../sn-lux/SKILL.md) capability preflight was done for that target; if not, run it or report it as open. Do not touch installed Builder/AI Control Tower apps for a demo. Use existing SDK OAuth; never print/copy tokens or browser cookies. Choose demo-data behavior deliberately: the SDK installs demo data by default.
-
-Run the matching capture pattern from sn-build-install section 2 (normal, or the `--skip-flow-activation` one when the Flow guardrail applies) with one change: add `--demoData=false` unless installing demo data was approved. Its evidence rules and failure modes apply unchanged.
-
-Do not use `--reinstall`. The starter's `deploy` and `deploy:reinstall` package scripts (`now-sdk install`, `now-sdk install --reinstall`) are not approval and are not a shortcut around this section. On non-zero/error output, inspect upgrade history before retrying; partial application is possible. A successful tracked install prints `Rollback (undo installation): <host>/sys_rollback_context.do?sys_id=<id>`: record that URL with the install evidence and do not open or act on it without approval. A failed install prints an execution-tracker URL instead. This is not the App Repository `cicd rollback` in sn-cicd. Follow sn-build-install section 4 for the source-control binding and remind the user about a Studio commit only when bound.
+- Confirm alias, target, custom scope and intended changes. Before the first install to a target, confirm the [sn-lux](../sn-lux/SKILL.md) capability preflight and [scope/route collision check](../sn-lux/references/preflight.md#scope-and-route-collisions) were done for it; otherwise run them or report them open. Do not touch installed Builder/AI Control Tower apps for a demo. Use existing SDK OAuth; never print/copy tokens or browser cookies.
+- Run the matching capture pattern from sn-build-install section 2 (normal, or the `--skip-flow-activation` one when the Flow guardrail applies), adding `--demoData=false` unless demo data was approved (the SDK installs it by default). Its evidence rules and failure modes apply unchanged.
+- Do not use `--reinstall`. The starter's `deploy` and `deploy:reinstall` scripts (`now-sdk install`, `now-sdk install --reinstall`) are not approval or a shortcut around this section.
+- On non-zero/error output (a failed install prints an execution-tracker URL), inspect upgrade history before retrying; partial application is possible.
+- Record the printed `Rollback (undo installation): <host>/sys_rollback_context.do?sys_id=<id>` URL with the install evidence; do not open or act on it without approval. It is not the App Repository `cicd rollback` in sn-cicd.
+- Follow sn-build-install section 4 for the source-control binding; remind the user about a Studio commit only when bound.
 
 ## 5. Verify the deployed UI, not just the build
 
-1. Read back relevant **content fields** through the `sn-rest` skill and match new markers, such as `component` or `required_user_preferences` on `sys_aix_widget` (take table and field names from the generated JSON of the installed AIUX version). Timestamps/IDs alone are not proof. If a content lookup is unavailable, report that limit; do not change ACLs or assume success. An authenticated served-asset body can supply content evidence for the frontend.
-2. State the full URL before opening it: the page path comes from `aiux.json` (`basename`, `landing`) and the page's own route; take the instance base path from the install output or the user, not a guess. Open it in the user's normally logged-in browser. Verify the asset response, custom-element registration/hydration, ready content, actual widget RPC and absence of new uncaught application errors.
-3. Test the requested interactions and distinguish local filtering from another query. Exercise refresh, empty/error paths and permission behavior where authorized; never change roles or impersonate just to complete a checkbox.
-4. Verify visual rendering, keyboard access, narrow-screen reflow and high contrast in a **visible** browser window. A hidden/minimized window, screenshot timeout, unreliable trusted input or zero-width layout is not a pass. A DOM click tests the handler, not physical keyboard/mouse access.
-5. Keep browser/network reads bounded. HTTP POST to an AIUX widget may execute a read-only server function; HTTP method alone is not proof of a business-record mutation. Do not claim an instance-wide no-write audit from limited captured traffic.
-6. Leave the UI in a sensible state and restore test viewport/filter changes. Separate app errors from platform warnings; report both accurately.
+1. Read back **content fields** through `sn-rest` and match new markers, such as `component` or `required_user_preferences` on `sys_aix_widget` (names from the generated JSON). Timestamps/IDs are not proof. If content is unreadable, report that limit; do not change ACLs or assume success. An authenticated served-asset body can supply frontend evidence.
+2. State the full URL before opening it: path from `aiux.json` (`basename`, `landing`) plus the page's route; instance base from the install output or the user, not a guess. In the user's normally logged-in browser, verify the asset response, custom-element registration/hydration, ready content, actual widget RPC and no new uncaught application errors.
+3. Test the requested interactions, distinguishing local filtering from a new query, plus refresh, empty/error and permission paths where authorized. Never change roles or impersonate to complete a check.
+4. Check visual rendering, keyboard access, narrow-screen reflow and high contrast in a **visible** window. A hidden/minimized window, screenshot timeout, unreliable trusted input or zero-width layout is not a pass; a DOM click tests the handler, not physical input.
+5. Keep browser/network reads bounded. An HTTP POST to an AIUX widget may run a read-only server function, so it is not proof of a record write; never claim an instance-wide no-write audit from limited traffic. Read [UI verification limits](references/validation-and-troubleshooting.md#tombstones-and-ui-verification) when a record or the rendered UI cannot be verified directly. Leave the UI in a sensible state; restore test viewport/filter changes. Report app errors and platform warnings separately.
 
-Browser tool unavailable: give the user the exact URL and the checks in steps 2-4 as a short list, record their observations as user-reported, and report the rest as **not tested**; UI acceptance is not established.
+Browser tool unavailable: give the user the exact URL and the checks in steps 2-4, record their observations as user-reported, and report the rest as **not tested**; UI acceptance is not established.
 
-Record the installed SDK, `@servicenow/aiux`, Node and package-manager versions with the observed results, in the workspace's available memory facility or existing evidence location, otherwise in the conversation. Partial functional success is not production, security or full accessibility clearance.
+Record installed SDK, `@servicenow/aiux`, Node and package-manager versions with the results in the workspace memory/evidence location, otherwise the conversation. Partial functional success is not production, security or full accessibility clearance.

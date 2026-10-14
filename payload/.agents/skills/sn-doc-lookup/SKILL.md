@@ -9,15 +9,11 @@ metadata:
 
 # ServiceNow Markdown Doc Lookup
 
-Use this skill for fast official ServiceNow product documentation lookup from the GitHub markdown corpus (`ServiceNow/ServiceNowDocs`). It is the preferred general ServiceNow docs lookup path for the distributed / VS Code agent setup. The exact field/syntax shape of a Fluent record you are about to author comes from [sn-explain](../sn-explain/SKILL.md), not from here.
+Preferred lookup for official ServiceNow product docs, from the GitHub markdown corpus (`ServiceNow/ServiceNowDocs`). The exact field/syntax shape of a Fluent record you are about to author comes from [sn-explain](../sn-explain/SKILL.md), not from here.
 
-## Tooling in this skill
+## Commands
 
-- CLI: `bin/sn-doc-md.js` (dependency-free Node.js)
-- Source code: `src/`
-- Maintainer notes and benchmark suite: `README.md`, `test/`
-
-Lookup uses three read-only commands. Give the full CLI path in every command and print the exit status in the same call; do not depend on a variable assigned in a previous terminal call.
+Three read-only commands. Give the full CLI path in every command and print the exit status in the same call, not a variable from a previous terminal call.
 
 ```powershell
 node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths
@@ -26,104 +22,57 @@ node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --id 
 node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --path <source_rel> --json
 ```
 
-## Default Windows paths
+## Paths
 
 ```text
 Docs:  %LOCALAPPDATA%\SNDocs\repo
 Index: %LOCALAPPDATA%\SNDocs\index
 ```
 
-All CLI commands share these defaults. Explicit `--docs` / `--out` / `--index` paths take precedence over `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then the defaults above. No legacy-location discovery or automatic migration is performed. Other platforms must provide explicit paths or those overrides when `LOCALAPPDATA` is unavailable.
-
-`paths` reports the resolved paths as JSON (`docs`, `index`) without creating directories, downloading docs or building an index; it does not check that they exist. Prefer omitting `--index` for search/read: the CLI already honors the configured override/default. Use an explicit path only when intentionally selected and verified.
-
-Current resolver output takes precedence over legacy cache/MCP memories. `%LOCALAPPDATA%\sn-docs` is NOT `%LOCALAPPDATA%\SNDocs` (the hyphen matters). On ENOENT, run `paths` and compare the failed path with its output before declaring documentation unavailable. Do not silently fall back to a bare Git cache, guess another path, migrate, download or rebuild. If a selected override is genuinely missing, report that exact path and stop for review.
-
-## Before searching
-
-Search directly; a usable index needs no pre-check. Only when search/read fails with ENOENT, check what exists (one terminal call):
-
-```powershell
-$P = node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths | Out-String | ConvertFrom-Json
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
-if ($P) {
-    Write-Output "docs=$($P.docs) exists=$(Test-Path -LiteralPath $P.docs)"
-    Write-Output "index=$($P.index) exists=$(Test-Path -LiteralPath $P.index) manifest=$(Test-Path -LiteralPath (Join-Path $P.index 'manifest.json'))"
-}
-```
-
-- **Docs checkout missing:** report that documentation installation is pending. Do not silently use an older checkout or download/move docs outside an authorized installation.
-- **Checkout present, index directory absent:** building is authorized only by a full setup run that includes it or by the user's explicit approval. Otherwise ask first and state the cost: the build prints nothing until it finishes, takes minutes for the full corpus, and writes several hundred MB under the index path. Then:
-
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" build --family australia
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
-```
-
-- **Index directory present without `manifest.json`:** an incomplete or foreign build. Search, read and build (with or without `--force`) all refuse it. Report the exact path and stop for review.
-
-`--family` is only a label written into the index; it does not select or check a release branch. Replacing an existing index requires separate approval plus `--force`, which works only on a recognized index (`manifest.json` with `schema_version: 1` and `generator` starting `sn-doc-md@`). Never delete an unexpected directory to make indexing succeed. Search/read/test do not create or rebuild indexes.
+- Precedence: explicit `--docs` / `--out` / `--index`, then `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then these defaults (other platforms need one of the first two). No legacy-location discovery or migration.
+- `paths` prints the resolved `docs` and `index` as JSON; it creates, downloads and checks nothing. Its output beats legacy cache/MCP memories; `%LOCALAPPDATA%\sn-docs` is NOT `%LOCALAPPDATA%\SNDocs`.
+- Prefer omitting `--index` for search/read; use an explicit path only when intentionally selected and verified.
+- Search directly; a usable index needs no pre-check. On ENOENT, run `paths` and compare the failed path with its output before declaring documentation unavailable. Do not silently fall back to a bare Git cache, guess another path, migrate, download or rebuild. If a selected override is genuinely missing, report that exact path and stop for review.
+- If ENOENT persists on the resolved path (checkout, index or its `manifest.json` missing), read [references/missing-docs-or-index.md](references/missing-docs-or-index.md) before acting. Building needs a setup run that includes it or explicit user approval; replacing an index needs separate approval plus `--force`. Never delete an unexpected directory.
 
 ## Search workflow
 
-Outside the agent's shared session-start gate, documentation-only questions skip update-advisor checks. A startup notice or lookup never authorizes SDK upgrades, builds or documentation maintenance. Start with the existing index.
+Outside the agent's shared session-start gate, documentation-only questions skip update-advisor checks. A startup notice or lookup never authorizes SDK upgrades, builds or documentation maintenance.
 
-1. Start with a direct search: the user's natural question in `--query`, high-signal keywords in `--keywords`.
-2. If results look broad/noisy, run a second targeted search with better keywords.
-3. Read only the few top chunks needed for citations: `read --id <id>` with the numeric `id` of each cited result.
-4. Answer with concise synthesis, `source_rel`, and `canonical_url`, and name the release the index covers (`index.family` in the search/read JSON). If the user's instance is on another release, say the local corpus covers only that family.
-
-Result handling:
-
-- `read --path <source_rel>` returns **every** chunk of the page with no size cap in `--json` mode. Use it only when the whole page is needed and the result's `doc_chunks` is small; large API reference pages (for example `c_GlideRecordAPI.md`, about 160 chunks) return roughly 2 MB.
-- `source_rel` is relative to the checkout's `markdown` directory with forward slashes; copy it from the search result.
-- A read that matches nothing returns `"ok": false` with an `error`, empty `rows` and exit 1. That means the id/path is not in the index, not that the page is empty. Always pass `--json` to read; plain-text output is cut at 12,000 characters per chunk (marked `[truncated: ...]`).
-- Results with `kind: "toc"` (id `toc:<n>`) are table-of-contents entries whose target page is missing or empty in the checkout. They cannot be read and have no `canonical_url`; report that the page is listed but its content is not in the local corpus.
-- If `canonical_url` is empty, cite `source_rel` and the row's `raw_url` from `read`; never construct a docs URL yourself.
-- Report any `warnings` in the search/read JSON. One of them flags an index built by an older indexer whose `canonical_url`, `title` and `heading` values lost underscores (for example `c_GlideRecordAPI.html` stored as `cGlideRecordAPI.html`). Until an approved rebuild, do not cite `canonical_url` from that index for a page whose `source_rel` file name contains an underscore: cite `source_rel` and `raw_url`.
-
-For exact roles/APIs, use the **read text**, not just search snippets (snippets are shortened and stripped of Markdown formatting). Raw Markdown can contain escaped identifiers such as `ui\_builder\_admin`; a literal grep miss does not establish semantic absence. Read relevant overview/access pages before making negative claims, and distinguish general use, specialized features and permissions needed to grant a role.
-
-Example:
+1. Search with the user's natural question in `--query` and high-signal terms in `--keywords`.
+2. If results are broad or noisy, run a second search with better keywords.
+3. Read only the few chunks you will cite: `read --id <id>` with each result's numeric `id`.
+4. Answer with a concise synthesis, `source_rel` and `canonical_url`, naming the release the index covers (`index.family`). If the user's instance is on another release, say the corpus covers only that family.
 
 ```powershell
 node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" search --query "How do I reduce the size of the audit logs?" --keywords "audit retention purge sys_audit no_audit audit_type whitelist audited fields" --limit 8 --json
 Write-Output "doc-lookup-exit=$LASTEXITCODE"
-```
-
-Then read a cited chunk by the `id` from that output:
-
-```powershell
 node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --id <chunk-id> --json
 Write-Output "doc-lookup-exit=$LASTEXITCODE"
 ```
 
+### Results
+
+- Always pass `--json` to read; plain text is cut at 12,000 characters per chunk (`[truncated: ...]`).
+- `read --path <source_rel>` returns **every** chunk, uncapped; use it only for a whole page with small `doc_chunks` (`c_GlideRecordAPI.md`, about 160 chunks, is roughly 2 MB). Copy `source_rel` from the result; it is relative to the checkout's `markdown` directory, with forward slashes.
+- A read miss returns `"ok": false`, an `error`, empty `rows` and exit 1: the id/path is not in the index, not an empty page.
+- `kind: "toc"` results (id `toc:<n>`) are listed pages missing from the checkout: unreadable, no `canonical_url`; say so.
+- If `canonical_url` is empty, cite `source_rel` and the row's `raw_url` from `read`; never construct a docs URL yourself.
+- Report any `warnings`. If one flags an older index whose URLs lost underscores (`cGlideRecordAPI.html` for `c_GlideRecordAPI.html`), cite `source_rel` and `raw_url` instead of `canonical_url` for any `source_rel` file name with an underscore until an approved rebuild.
+- For exact roles/APIs, use the **read text**, not shortened search snippets. Raw Markdown can escape identifiers such as `ui\_builder\_admin`, so a literal grep miss does not establish semantic absence. Read relevant overview/access pages before negative claims; distinguish general use, specialized features and permissions needed to grant a role.
+
 ## Keyword discipline
 
-Pass `--keywords` whenever you can name specific terms. When it is present, retrieval terms and phrases come **only** from the keywords; `--query` then feeds intent classification and identifier scoring, so an identifier given only in `--query` is not searched. Put every term that must match into `--keywords`, and keep a dotted `Class.method` symbol in `--query` as well.
+- When `--keywords` is present, retrieval terms come **only** from it; `--query` then drives intent classification and identifier scoring. Put every term that must match into `--keywords`, and keep a dotted `Class.method` symbol in `--query` as well.
+- Only the first 16 keyword tokens count, and identifiers expand (`sys_audit` also yields `sys` and `audit`; plurals add a singular), so lead with the most distinctive terms.
+- Prefer API, table, property and product names (`GlideRecord addQuery`, `no_audit`, `Workflow Studio action inputs`). Fluent terms (`BusinessRule object sys_script servicenow sdk`) find narrative product pages, for background/citation only. Drop generic words like `how`, `what`, `best` unless part of an exact title.
 
-Only the first 16 keyword tokens are used, and identifiers expand into several tokens (`sys_audit` also yields `sys` and `audit`; plurals add a singular), so lead with the most distinctive terms. Prefer ServiceNow-specific terms:
+## Execution evidence and subagents
 
-- API/class/method names: `GlideRecord addQuery`, `ScriptableFlowAPI executeAction`
-- Table/property names: `sys_audit`, `audit_type`, `no_audit`
-- Product/doc terms: `Workflow Studio action inputs`, `Discovery probes patterns MID Server`
-- Fluent terms (narrative product pages for background/citation only): `BusinessRule object sys_script servicenow sdk`
-
-Drop generic words like `how`, `what`, `best`, `use`, `between` unless they are part of an exact title.
-
-## Fast path vs subagent
-
-Prefer a direct CLI lookup when the harness permits it. If the harness requires an execution subagent, preserve the same lookup/read commands and require its response to include the actual excerpts, exact identifiers, `source_rel`, `canonical_url`, observed exit/error evidence and any saved-output path. “Files retrieved successfully” is not sufficient. Read a saved result if provided; do not answer without the evidence or invent a failure/exit code from missing output.
-
-Blank stdout or “Command produced no output” is **UNKNOWN**, not an empty result set or native exit 0. Search --json must return valid JSON with a results array, even for zero hits. On missing/misattributed output, stop sending commands into that suspect terminal. Read saved output or use editor file tools on the verified corpus; do not broaden queries, infer absent roles/corpus, rebuild the index or retry a mutation to compensate for an execution-channel failure.
-
-Use a documentation subagent only when:
-
-- the question needs multiple independent searches and synthesis,
-- evidence conflicts,
-- query confidence is low,
-- or the user explicitly asks for a deeper research pass.
+- Prefer a direct CLI lookup. An execution subagent, if the harness requires one, must return the actual excerpts, exact identifiers, `source_rel`, `canonical_url`, observed exit/error evidence and any saved-output path; "files retrieved successfully" is not enough. Read a saved result if provided; never answer without that evidence or invent a failure/exit code.
+- Blank stdout or "Command produced no output" is **UNKNOWN**, not an empty result set or native exit 0 (search `--json` must return valid JSON with a results array, even for zero hits). On missing or misattributed output, stop sending commands into that terminal; read saved output or use file tools on the verified corpus. Do not broaden queries, infer absent roles/corpus, rebuild the index or retry a mutation to compensate.
+- Use a documentation subagent only for multiple independent searches, conflicting evidence, low query confidence or an explicit deep-research request.
 
 ## Maintenance boundary
 
-Refresh the corpus/index only through an approved update workflow ([sn-update-advisor](../sn-update-advisor/SKILL.md)), preserving dirty work and existing sources. A lookup error alone does not authorize refresh or rebuild. When reporting index provenance, use the current run's `index` object or the manifest; do not reuse a historical timing or assume an indexed commit when the manifest lacks it.
+Refresh the corpus/index only through an approved [sn-update-advisor](../sn-update-advisor/SKILL.md) workflow, preserving dirty work and existing sources. A lookup error alone does not authorize refresh or rebuild. Report index provenance from the current run's `index` object or the manifest; do not reuse historical timings or assume an indexed commit the manifest lacks.

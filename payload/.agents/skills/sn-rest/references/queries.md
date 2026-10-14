@@ -30,7 +30,16 @@ node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<conf
 
 The first page uses offset 0 (or omits it); subsequent pages use the actual `nextOffset`. Do not invent an `active=true` filter without checking that the field exists and matches the user's question. Do not use Table API `sysparm_order_by`; ordering is part of `sysparm_query`.
 
+Paging and completeness:
+
+- Continue deliberately with `sysparm_offset=<nextOffset>`, the same filter/fields/order and a bounded limit while `hasMore` is true.
+- With `sysparm_no_count=true`, `hasMore` is inferred only from a full page: a full page can infer another page even when the next one is empty, and a short page reports `hasMore:false` even when ACLs hid rows and more remain.
+- For a completeness claim, repeat without `sysparm_no_count` and page until `hasMore` is false.
+- With mutable or ACL-filtered data, deduplicate sys_ids and disclose uncertainty.
+
 ## Stats and contributors
+
+To find who worked on applications: list visible `sys_app` records with `sys_id,name,scope`, following pagination. For the confirmed scoped apps, group `sys_metadata` by `sys_scope,sys_updated_by`, filtered to their collected sys_ids. Keep Global separate: its shared scope cannot identify a particular global application's files.
 
 After verifying the reference fields and collecting the requested applications' sys_ids, use a small scope filter. One request can group multiple confirmed scoped apps without scanning each artifact table:
 
@@ -40,4 +49,6 @@ node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<conf
 
 The scope list contains comma-separated 32-hex reference IDs, not `x_` strings. With `--agent` the groups are in `records` and `count` is the number of groups, not a record total. Preserve `stats.count` and every `groupby_fields` field/value pair, plus the app-ID mapping. Do not discard the groups while summarizing execution, merge distinct account names, or count Global toward one application.
 
-Stats group limits/pagination differ from the Table API. A request's `sysparm_limit` does not establish completeness or a reliable preview cap. If too many groups come back, stop and narrow the selected apps/date/grouping; do not export everything or make an unbounded follow-up. An empty or partial result is not proof of no activity. Counts reflect visible current records' last updaters, not live staffing or ownership.
+Stats group limits/pagination differ from the Table API. A request's `sysparm_limit` does not establish completeness or a reliable preview cap, and `sysparm_offset` does not page groups; for grouped Stats `hasMore` is not a completeness signal. If too many groups come back, stop and narrow the selected apps/date/grouping; do not export everything, make an unbounded follow-up, or claim all groups were returned without evidence.
+
+These counts describe **current records by last updater**, not edit totals, assigned owners or people currently working. Preserve account identifiers literally; do not equate accounts with people or infer which is the user. Apply an explicit verified date filter before calling evidence recent. No visible metadata means no visible evidence, not no contributors; an empty or partial result is not proof of no activity.
