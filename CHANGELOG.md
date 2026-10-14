@@ -25,6 +25,7 @@ Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each fi
 - `sn-download`, `sn-new-app`: `init --from` cannot be combined with `--appName/--scopeName`; `init` needs `--template` to be non-interactive; dependencies must be installed before transform.
 - `sn-new-app`: `init` checks template availability on the npm registry with no timeout, also with `--noUpdate`. Where Node cannot reach the registry it stays silent with an empty folder for about 5 minutes and then scaffolds; the skill now says to wait up to 6 minutes instead of stopping it.
 - `sn-cicd` description names reading ATF results and logs, which routed to `sn-rest`.
+- `sn-transform`: an unversioned project needs an approved Git baseline or a folder backup before a transform. `sn-rest.js`: every refusal ends with "Nothing was sent."
 - `sn-auth`: OAuth `auth --add` exits 0 on failure; never run `auth --print`. `sn-cicd`: `SN_SDK_*` variables override `--auth`; no retry after a timeout.
 - `sn-explain` owns the missing-topic / older-SDK stop branch; `sn-fix-build` diagnostics were rebuilt from errors reproduced on 4.13.6.
 - `sn-add-playbook` (variants and public access, gated), `sn-add-graphql-api` (`Now.include` copies a resolver verbatim), `sn-add-record`, `sn-add-test-suite`, `sn-ui-page-vite`, `sn-react-ui-design`, `sn-lux`, `sn-lux-build` (AIUX builds need the project-local SDK) and `win-git-bootstrap` corrected.

@@ -12,7 +12,7 @@ Convert existing ServiceNow records into Fluent `.now.ts` source in this app. Ru
 
 ## Before any transform
 - `now-sdk build` passes. Transform compiles first and aborts with `Found N diagnostic error(s) while building the project`; fix with **sn-fix-build**.
-- Local work is committed or stashed.
+- Local work is committed or stashed, so the transform's changes can be reviewed and undone. If the project is not a Git repository (`git -C <project> rev-parse` fails), stop and ask; with approval, `git init` and commit a baseline first, or copy the project folder as a backup. Do not transform without one of these.
 - Project dependencies are installed. Without `node_modules/@servicenow/sdk` a transform still exits 0 but writes `.now.ts` files with no `import` lines and removes the source XML from `metadata/` (see **sn-download**).
 
 `transform` has no scope argument, positional argument or prompt; the app is always the one in `now.config.json`. Do not pass sys_ids as positional arguments; the SDK rejects them with `Unknown command: <sys_id>`.

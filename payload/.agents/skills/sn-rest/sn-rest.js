@@ -55,7 +55,11 @@ class CliError extends Error {
   constructor(exitCode, message) { super(message); this.exitCode = exitCode; }
 }
 // Exit 2 always means: nothing was sent to any host.
-function refuse(message) { throw new CliError(2, message); }
+// Every refusal happens before a request is sent; say so once, in every message.
+function refuse(message) {
+  const text = /Nothing was sent\./.test(message) ? message : `${message.replace(/[.\s]+$/, '')}. Nothing was sent.`;
+  throw new CliError(2, text);
+}
 
 // ---- args ----
 // Strict single linear scan. Anything that is not a known option or the one API path is an
