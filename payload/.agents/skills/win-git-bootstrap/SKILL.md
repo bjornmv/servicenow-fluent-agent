@@ -13,7 +13,7 @@ Use this skill only during authorized Windows agent setup or explicit Git bootst
 
 ## Decision rule
 
-For the explicitly requested [VS Code-only Git repair](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md), use the exception below. All other setup retains this absent-only decision rule.
+For the explicitly requested [VS Code-only Git repair](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-vscode-git.md), use the scoped workflow below and the guide's single non-fatal preflight first; do not run this ordinary inventory before that check. All other setup retains this absent-only decision rule.
 
 1. Check `git.exe --version` using a direct approved executable tool. If PATH lookup fails, check `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`, standard Program Files locations and Git uninstall registrations; the bundled worker also checks these.
 2. A working stable Git **>=2.54.0** is left unchanged. If it is only missing from the current process PATH, use its verified absolute path rather than installing a second copy.
@@ -24,9 +24,13 @@ A newer working version satisfies the requested minimum-version check, but the w
 
 ## Explicit VS Code-only installation
 
-When the user requests approved per-user Git alongside an unrelated system installation, use **`-InstallForVSCode`** alone. This is a supported opt-in mode, not automatic fallback after a policy denial. Select only `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`; keep an existing exact pinned copy, or install when that target is genuinely absent. A blocked/different selected executable, occupied target or associated per-user registration remnant stops the operation. Unselected system Git is not executed or altered.
+First follow the repair guide's **one bounded, non-fatal Git version check**. A responding Git means finish without installation, configuration changes or a restart request; do not enforce the pinned version on an already working copy. A missing/failed probe is captured as a diagnostic result and the agent continues the authorized repair, not an uncaught error or automatic end of the task. Do not relaunch a denied executable through another launcher. Unknown completion must be recovered before deployment.
+
+For that repair branch, use **`-InstallForVSCode`** alone. This supported opt-in mode selects only `%LOCALAPPDATA%\Programs\Git\cmd\git.exe`; keep an existing exact pinned copy, or install when that target is genuinely absent. A blocked/different selected executable, occupied target or associated per-user registration remnant still stops deployment safely. The worker itself does not execute or alter unselected system Git; a failed preflight never authorizes overwriting it or bypassing security policy.
 
 The mode retains the fixed ZIP/hash, extraction exclusions, non-elevated execution, lock, staging/final checks, Windows SSH/Schannel and security checks. It does **not** register Windows PATH or publish an environment update. Configure the VS Code terminal environment and `git.path` as described in the repair guide; this explicitly approved workflow permits its Git function beside `now-sdk`. Finish installation and pre-restart checks in the current session. The user's final restart is only for refreshing existing hosts, not an agent follow-up session.
+
+Only this VS Code mode accepts the agent host's indexed `safe.bareRepository=explicit`, `credential.interactive=never` and `core.fsmonitor=false` settings. It validates the count/pairs and preserves them unchanged; unknown, malformed or weaker settings stop for review without logging values. Do not clear arbitrary `GIT_*` variables to make installation pass. Other override checks and default-mode behavior remain unchanged.
 
 Do not combine this mode with `-InstallIfMissing`, staging, migration, environment-refresh or `-GitExecutable` flags. An older installed worker might not support it: use the guide's hash-verified worker rather than inventing flags or editing the installed script. Never bypass a denied selected executable.
 

@@ -123,6 +123,33 @@ function Confirm-InstallMode {
     if ($RefreshEnvironment -and ($InstallIfMissing -or $StageOnly -or $ValidateOnly -or $ReplaceFullGit)) { throw 'RefreshEnvironment cannot be combined with installation/staging/migration modes.' }
     if ($GitExecutable -and -not $RefreshEnvironment) { throw 'GitExecutable is only supported with RefreshEnvironment.' }
 }
+function Confirm-VSCodeHostGitConfig {
+    # Preserve these restrictive host settings; never clear arbitrary Git config.
+    # Inspect only indexed names/values, and never log their potentially secret contents.
+    $indexed = @(Get-ChildItem Env:GIT_CONFIG_* -ErrorAction Stop | Where-Object { $_.Name -like 'GIT_CONFIG_KEY_*' -or $_.Name -like 'GIT_CONFIG_VALUE_*' })
+    if (-not $env:GIT_CONFIG_COUNT) {
+        if ($indexed.Count -gt 0) { throw 'Indexed Git configuration has no count. Stop for review; values were not logged.' }
+        return
+    }
+    if ($env:GIT_CONFIG_COUNT -cnotmatch '\A[0-3]\z') { throw 'Unsupported Git configuration count. Stop for review; values were not logged.' }
+    $count = [int]$env:GIT_CONFIG_COUNT
+    if ($indexed.Count -ne (2 * $count)) { throw 'Incomplete or extra indexed Git configuration. Stop for review; values were not logged.' }
+    $seen = @()
+    for ($i = 0; $i -lt $count; $i++) {
+        $keyEntry = @($indexed | Where-Object { $_.Name -ieq "GIT_CONFIG_KEY_$i" })
+        $valueEntry = @($indexed | Where-Object { $_.Name -ieq "GIT_CONFIG_VALUE_$i" })
+        if ($keyEntry.Count -ne 1 -or $valueEntry.Count -ne 1) { throw 'Non-contiguous indexed Git configuration. Stop for review; values were not logged.' }
+        $key = ([string]$keyEntry[0].Value).ToLowerInvariant()
+        $value = [string]$valueEntry[0].Value
+        if ($seen -contains $key) { throw 'Duplicate indexed Git configuration. Stop for review; values were not logged.' }
+        $seen += $key
+        $allowed = ($key -ceq 'safe.barerepository' -and $value -ceq 'explicit') -or
+                   ($key -ceq 'credential.interactive' -and $value -ceq 'never') -or
+                   ($key -ceq 'core.fsmonitor' -and $value -ceq 'false')
+        if (-not $allowed) { throw 'Unrecognized Git configuration override. Stop for review; values were not logged.' }
+    }
+    Write-Log "Preserved $count verified restrictive agent-host Git settings; no environment values changed."
+}
 function Get-VSCodeGit {
     param([switch]$RequireAbsent)
     # No PATH lookup, system registration reads or unselected executable probes.
@@ -330,6 +357,7 @@ try {
     }
     if ($StageOnly) { Get-Archive; Write-Log 'STAGED: ZIP verified; installed Git unchanged.'; exit 0 }
     if ($InstallForVSCode) {
+        Confirm-VSCodeHostGitConfig
         $inventory = @(Get-VSCodeGit)
         Write-Log 'EXPLICIT VS CODE MODE: only the approved per-user target is selected; other Git installations and Windows PATH remain untouched.'
     } else {
@@ -352,7 +380,7 @@ try {
     if ($inventory.Count -gt 1 -or ($inventory.Count -eq 1 -and $inventory[0].Path -ne $targetGit)) {
         throw 'Conflicting or non-managed Git installation. Resolve its installation scope/PATH manually.'
     }
-    if ($env:GIT_SSH -or $env:GIT_SSH_COMMAND -or $env:GIT_CONFIG_SYSTEM -or $env:GIT_CONFIG_NOSYSTEM -or $env:GIT_CONFIG_COUNT -or $env:GIT_SSL_NO_VERIFY) {
+    if ($env:GIT_SSH -or $env:GIT_SSH_COMMAND -or $env:GIT_CONFIG_SYSTEM -or $env:GIT_CONFIG_NOSYSTEM -or ($env:GIT_CONFIG_COUNT -and -not $InstallForVSCode) -or $env:GIT_SSL_NO_VERIFY) {
         throw 'Git environment overrides are present. Review them before deployment; values were not logged.'
     }
     if ($InstallForVSCode -and ($env:GIT_DIR -or $env:GIT_WORK_TREE -or $env:GIT_COMMON_DIR -or $env:GIT_INDEX_FILE -or $env:GIT_OBJECT_DIRECTORY -or $env:GIT_ALTERNATE_OBJECT_DIRECTORIES -or $env:GIT_CONFIG_GLOBAL -or $env:GIT_CONFIG_PARAMETERS -or $env:GIT_EXEC_PATH -or $env:GIT_TEMPLATE_DIR)) {

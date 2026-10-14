@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 
 const worker = fs.readFileSync(path.resolve(__dirname, '../../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'), 'utf8').replaceAll('\r\n', '\n');
@@ -23,11 +24,12 @@ function extract(name) {
 const parameters = worker.match(/^\[CmdletBinding\(\)\]\nparam\([\s\S]*?^\)/m)?.[0];
 const preamble = worker.slice(worker.indexOf("$ErrorActionPreference = 'Stop'"), worker.indexOf('function Write-Log'));
 const entry = worker.slice(worker.indexOf('\ntry {\n') + 1);
-const helpers = ['Confirm-InstallMode', 'Get-VSCodeGit', 'Read-GitVersion', 'Get-Inventory', 'Confirm-Archive', 'Confirm-NoBusyGit'].map(extract).join('\n');
+const helpers = ['Confirm-InstallMode', 'Confirm-VSCodeHostGitConfig', 'Get-VSCodeGit', 'Read-GitVersion', 'Get-Inventory', 'Confirm-Archive', 'Confirm-NoBusyGit'].map(extract).join('\n');
 
 // Replace only the three known native call sites in the extracted orchestration.
-// All filesystem/registry/process/environment boundaries below are mocks. No real
-// deployment functions (Get-Archive, Invoke-Git, Add-UserGitPath, etc.) are loaded.
+// Deployment filesystem/registry/process boundaries below are mocks; indexed
+// config uses real child-only environment fixtures. No real deployment functions
+// (Get-Archive, Invoke-Git, Add-UserGitPath, etc.) are loaded.
 function mockEntry() {
   assert.ok(parameters);
   assert.ok(entry.startsWith('try {\n'));
@@ -143,7 +145,13 @@ function New-Item {
     elseif ($Path -eq (Join-Path $stage '.bootstrap-empty-template')) { Write-Host 'EMPTY_TEMPLATE_CREATE' }
     elseif ($Path -ne $LogDirectory -and $Path -ne (Split-Path -Parent $target)) { throw 'Unexpected directory write' }
 }
-function Get-Archive { Write-Host 'ARCHIVE_CHECK'; Confirm-Archive $archive }
+function Get-Archive {
+    $currentConfig = @(Get-ChildItem Env:GIT_CONFIG_* | Where-Object { $_.Name -eq 'GIT_CONFIG_COUNT' -or $_.Name -like 'GIT_CONFIG_KEY_*' -or $_.Name -like 'GIT_CONFIG_VALUE_*' } | Sort-Object Name | Select-Object Name,Value) | ConvertTo-Json -Compress
+    if ($currentConfig -cne $initialConfig) { throw 'Host config was unexpectedly changed' }
+    Write-Host 'HOST_CONFIG_UNCHANGED'
+    Write-Host 'ARCHIVE_CHECK'
+    Confirm-Archive $archive
+}
 function Get-FileHash {
     param($LiteralPath, $Algorithm)
     if ($LiteralPath -ne $archive -or $Algorithm -ne 'SHA256') { throw 'Unexpected hash request' }
@@ -222,6 +230,7 @@ function runScenario(options = {}) {
     const script = path.join(directory, 'scenario.ps1');
     const setup = Object.entries({ selected, system, registration, appear, failure }).map(([key, value]) => `$${key} = ${quote(value)}`).join('\n');
     const childEnvironment = String.raw`
+Write-Host "LANGUAGE_MODE=$($ExecutionContext.SessionState.LanguageMode)"
 $env:LOCALAPPDATA = 'C:\fixture-user'
 $env:ProgramFiles = 'C:\fixture-system'
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'
@@ -237,7 +246,13 @@ $systemGit = 'C:\fixture-system\Git\cmd\git.exe'
 `;
     const isolatedEnv = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_PARAMETERS', 'GIT_EXEC_PATH', 'GIT_TEMPLATE_DIR'].map(name => `$env:${name} = $null`).join('\n');
     const override = options.override ? `$env:${options.override} = 'fixture-override'` : '';
-    fs.writeFileSync(script, `${parameters}\n${childEnvironment}\n${isolatedEnv}\n${override}\n${preamble}\n${helpers}\n${setup}\n${mocks}\n${mockEntry()}`);
+    const hostConfig = options.hostConfig || {};
+    const configSetup = Object.entries(hostConfig).map(([name, value]) => {
+      assert.match(name, /^GIT_CONFIG_(COUNT|(KEY|VALUE)_[A-Za-z0-9]+)$/);
+      return `Set-Item -LiteralPath ${quote('Env:' + name)} -Value ${quote(value)}`;
+    }).join('\n');
+    const configFixture = `Get-ChildItem Env:GIT_CONFIG_* | Where-Object { $_.Name -like 'GIT_CONFIG_KEY_*' -or $_.Name -like 'GIT_CONFIG_VALUE_*' } | ForEach-Object { Remove-Item -LiteralPath ('Env:' + $_.Name) }\n${configSetup}\n$initialConfig = @(Get-ChildItem Env:GIT_CONFIG_* | Where-Object { $_.Name -eq 'GIT_CONFIG_COUNT' -or $_.Name -like 'GIT_CONFIG_KEY_*' -or $_.Name -like 'GIT_CONFIG_VALUE_*' } | Sort-Object Name | Select-Object Name,Value) | ConvertTo-Json -Compress`;
+    fs.writeFileSync(script, `${parameters}\n${childEnvironment}\n${isolatedEnv}\n${override}\n${configFixture}\n${preamble}\n${helpers}\n${setup}\n${mocks}\n${mockEntry()}`);
     const result = spawnSync(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, ...args], {
       encoding: 'utf8', timeout: 30000, windowsHide: true,
     });
@@ -260,7 +275,7 @@ function noUnselected(result) {
 test('source keeps default inventory, shared safeguards and explicit no-clobber/no-PATH boundaries', () => {
   mockEntry();
   assert.match(parameters, /\[switch\]\$InstallForVSCode/);
-  assert.match(entry, /if \(\$InstallForVSCode\) \{\n        \$inventory = @\(Get-VSCodeGit\)[\s\S]*?\} else \{\n        \$inventory = @\(Get-Inventory\)/);
+  assert.match(entry, /if \(\$InstallForVSCode\) \{\n        Confirm-VSCodeHostGitConfig\n        \$inventory = @\(Get-VSCodeGit\)[\s\S]*?\} else \{\n        \$inventory = @\(Get-Inventory\)/);
   assert.match(entry, /Confirm-InstallMode -HasGitExecutable \(\$PSBoundParameters.Keys -contains 'GitExecutable'\)/);
   assert.match(entry, /\$lockAcquired = \$true\n    if \(\$InstallForVSCode\) \{ \$null = Get-VSCodeGit -RequireAbsent \}\n    Get-Archive/);
   assert.match(entry, /if \(\$InstallForVSCode\) \{\n        \$null = Get-VSCodeGit -RequireAbsent[\s\S]*?Rename-Item -LiteralPath \$stage -NewName \(Split-Path -Leaf \$target\) -ErrorAction Stop\n    \} else \{/);
@@ -275,10 +290,77 @@ test('source keeps default inventory, shared safeguards and explicit no-clobber/
   assert.doesNotMatch(extract('Get-VSCodeGit'), /Get-Inventory|Get-Command|HKLM:|ProgramFiles/);
 });
 
-for (const override of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_CONFIG_GLOBAL', 'GIT_EXEC_PATH', 'GIT_TEMPLATE_DIR']) {
-  test(`VS Code installation rejects inherited ${override}`, windowsOnly, () => {
-    const result = runScenario({ override });
-    expectResult(result, 1, /repository\/configuration overrides are present/);
+const hostConfig = {
+  GIT_CONFIG_COUNT: '3',
+  GIT_CONFIG_KEY_0: 'safe.bareRepository', GIT_CONFIG_VALUE_0: 'explicit',
+  GIT_CONFIG_KEY_1: 'credential.interactive', GIT_CONFIG_VALUE_1: 'never',
+  GIT_CONFIG_KEY_2: 'core.fsmonitor', GIT_CONFIG_VALUE_2: 'false',
+};
+
+for (const [label, config] of [
+  ['actual three host settings', hostConfig],
+  ['empty count', { GIT_CONFIG_COUNT: '0' }],
+  ['known subset', { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false' }],
+]) {
+  test(`missing approved Git installs with ${label} preserved (mock deployment)`, windowsOnly, t => {
+    const result = runScenario({ hostConfig: config });
+    assert.match(result.stdout, /LANGUAGE_MODE=(ConstrainedLanguage|FullLanguage)/);
+    t.diagnostic(result.stdout.match(/LANGUAGE_MODE=\w+/)[0]);
+    expectResult(result, 0, /SUCCESS: Official MinGit/);
+    assert.match(result.stdout, /HOST_CONFIG_UNCHANGED/);
+    assert.match(result.stdout, /Preserved \d verified restrictive agent-host Git settings/);
+    noUnselected(result);
+  });
+}
+
+for (const [label, config] of [
+  ['unknown key', { ...hostConfig, GIT_CONFIG_KEY_2: 'http.extraHeader', GIT_CONFIG_VALUE_2: 'HOST_SECRET_SENTINEL' }],
+  ['weaker bare-repository setting', { ...hostConfig, GIT_CONFIG_VALUE_0: 'all' }],
+  ['interactive credentials', { ...hostConfig, GIT_CONFIG_VALUE_1: 'always' }],
+  ['external fsmonitor', { ...hostConfig, GIT_CONFIG_VALUE_2: 'HOST_SECRET_SENTINEL' }],
+  ['duplicate key', { ...hostConfig, GIT_CONFIG_KEY_1: 'safe.bareRepository', GIT_CONFIG_VALUE_1: 'explicit' }],
+  ['orphan without count', { GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false' }],
+  ['extra index', { ...hostConfig, GIT_CONFIG_KEY_3: 'core.fsmonitor', GIT_CONFIG_VALUE_3: 'false' }],
+  ['missing value', { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor' }],
+  ['non-contiguous indexes', { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_1: 'core.fsmonitor', GIT_CONFIG_VALUE_1: 'false' }],
+  ...['-1', '4', '03', '1e0', '3 ', 'invalid', '3\n', '3\r\n', '0\n'].map(value => ['bad count ' + JSON.stringify(value), { GIT_CONFIG_COUNT: value }]),
+]) {
+  test(`unsafe/malformed host config stops: ${label}`, windowsOnly, () => {
+    const result = runScenario({ hostConfig: config });
+    expectResult(result, 1, /Git configuration|indexed Git configuration/);
+    assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|LOCK_ACQUIRE|PROMOTED|HOST_SECRET_SENTINEL/);
+    noUnselected(result);
+  });
+}
+
+for (const unsafe of [false, true]) {
+  test(`existing selected Git validates host config before probing: unsafe=${unsafe}`, windowsOnly, () => {
+    const config = unsafe ? { ...hostConfig, GIT_CONFIG_KEY_2: 'http.sslVerify' } : hostConfig;
+    const result = runScenario({ selected: 'working', hostConfig: config });
+    expectResult(result, unsafe ? 1 : 0, unsafe ? /Unrecognized Git configuration override/ : /SKIP:/);
+    if (unsafe) assert.doesNotMatch(result.stdout, /GIT_MOCK/);
+    assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|LOCK_ACQUIRE/);
+    noUnselected(result);
+  });
+}
+
+test('default absent-only still rejects even known indexed host config', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], system: 'absent', hostConfig });
+  expectResult(result, 1, /Git environment overrides are present/);
+  assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|LOCK_ACQUIRE/);
+});
+
+test('host config validation never strips variables or relaxes other guards', () => {
+  assert.doesNotMatch(extract('Confirm-VSCodeHostGitConfig'), /Set-Item|Remove-Item|\$env:\w+\s*=/);
+  assert.match(entry, /if \(\$InstallForVSCode\) \{\n        Confirm-VSCodeHostGitConfig\n        \$inventory/);
+  assert.match(entry, /\$env:GIT_CONFIG_COUNT -and -not \$InstallForVSCode/);
+  for (const name of ['GIT_SSH', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_NOSYSTEM', 'GIT_SSL_NO_VERIFY', 'GIT_CONFIG_PARAMETERS']) assert.ok(entry.includes('$env:' + name));
+});
+
+for (const override of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_CONFIG_GLOBAL', 'GIT_EXEC_PATH', 'GIT_TEMPLATE_DIR', 'GIT_SSL_NO_VERIFY', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_NOSYSTEM', 'GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_CONFIG_PARAMETERS']) {
+  test(`VS Code installation rejects inherited ${override} despite allowed host config`, windowsOnly, () => {
+    const result = runScenario({ override, hostConfig });
+    expectResult(result, 1, /(?:environment|repository\/configuration) overrides are present/);
     assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|LOCK_ACQUIRE|PROMOTED/);
   });
 }
@@ -405,6 +487,89 @@ test('default genuinely absent installation retains PATH updater (mock only)', w
   assert.match(result.stdout, /LOCK_RELEASE/);
 });
 
+function guideProbe(outcome, executable = 'C:\\fixture system Git\\cmd\\git.exe') {
+  const guide = fs.readFileSync(path.resolve(__dirname, '../../docs/fix-vscode-git.md'), 'utf8').replaceAll('\r\n', '\n');
+  const source = guide.match(/\$gitProbe = @'\n([\s\S]*?)\n'@/)?.[1];
+  assert.ok(source, 'actual documented preflight JavaScript');
+  let launches = 0;
+  const messages = [];
+  const processMock = { argv: ['node', executable] };
+  vm.runInNewContext(source, {
+    process: processMock,
+    console: { log: message => messages.push(message) },
+    require: name => {
+      assert.equal(name, 'node:child_process');
+      return { spawnSync: (file, args, options) => {
+        launches++;
+        assert.equal(file, executable);
+        assert.deepEqual(Array.from(args), ['--version']);
+        assert.equal(options.shell, false);
+        assert.equal(options.timeout, 10000);
+        assert.equal(options.maxBuffer, 8192);
+        assert.equal(options.windowsHide, true);
+        if (Object.hasOwn(outcome, 'throws')) throw outcome.throws;
+        return outcome;
+      } };
+    },
+  }, { timeout: 1000 });
+  assert.equal(messages.length, 1);
+  assert.ok(messages[0].startsWith('GIT_PREFLIGHT='));
+  assert.equal(processMock.exitCode, undefined, 'diagnostic failures do not fail the Node process');
+  assert.equal(launches, executable === '-' ? 0 : 1, 'at most one Git attempt; never a launcher retry');
+  return JSON.parse(messages[0].slice('GIT_PREFLIGHT='.length));
+}
+
+for (const version of ['2.54.0.windows.1', '2.55.1.windows.1', '2.45.0.windows.1']) {
+  test(`one preflight keeps working Git ${version} without enforcing the install pin`, () => {
+    const result = guideProbe({ status: 0, signal: null, stdout: 'git version ' + version + '\r\n' });
+    assert.equal(result.next, 'finish_no_changes');
+    assert.equal(result.result, 'working');
+    assert.equal(result.version, 'git version ' + version);
+    assert.equal(result.exitCode, 0);
+  });
+}
+
+test('no resolved Git is a handled continue-repair result, without launching anything', () => {
+  const result = guideProbe({}, '-');
+  assert.equal(result.next, 'continue_repair');
+  assert.equal(result.result, 'unavailable');
+  assert.equal(result.executable, null);
+});
+
+for (const [label, outcome] of [
+  ['nonzero exit', { status: 128, stdout: '', stderr: 'PRIVATE_DIAGNOSTIC' }],
+  ['nonzero with a version', { status: 1, stdout: 'git version 2.54.0.windows.1' }],
+  ['missing executable', { status: null, error: { code: 'ENOENT' } }],
+  ['denied launch', { status: null, error: { code: 'EACCES', message: 'PRIVATE_DIAGNOSTIC' } }],
+  ['policy launch failure', { status: null, error: { code: 'EPERM' } }],
+  ['timeout', { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } }],
+  ['output bound', { status: null, error: { code: 'ENOBUFS' } }],
+  ['signal', { status: null, signal: 'SIGTERM' }],
+  ['missing completion', { status: null, stdout: 'git version 2.54.0.windows.1' }],
+  ['unexpected output', { status: 0, stdout: 'PRIVATE_DIAGNOSTIC' }],
+  ['empty output', { status: 0, stdout: '' }],
+  ['thrown launch error', { throws: { code: 'EACCES', message: 'PRIVATE_DIAGNOSTIC' } }],
+  ['unknown thrown error', { throws: null }],
+]) {
+  test(`one preflight captures ${label} and continues rather than throwing`, () => {
+    const result = guideProbe(outcome);
+    assert.equal(result.next, 'continue_repair');
+    assert.equal(result.result, 'failed');
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_DIAGNOSTIC/);
+  });
+}
+
+test('guide gates all mutations and restart behind failure, retaining target safeguards', () => {
+  const guide = fs.readFileSync(path.resolve(__dirname, '../../docs/fix-vscode-git.md'), 'utf8');
+  assert.match(guide, /finish_no_changes[^\n]*finish immediately/);
+  assert.match(guide, /Do not install, back up\/edit settings[^\n]*request a restart/);
+  assert.match(guide, /continue_repair[^\n]*section 1 automatically/);
+  assert.match(guide, /do not overwrite an occupied\/broken target/);
+  assert.match(guide, /After a timeout or missing completion status, establish/);
+  assert.match(guide, /No valid record[^\n]*Recover its evidence/);
+  assert.ok(guide.indexOf('## 0.') < guide.indexOf('## 1.'));
+});
+
 test('guide installs before final user restart and pins the actual worker', () => {
   const guide = fs.readFileSync(path.resolve(__dirname, '../../docs/fix-vscode-git.md'), 'utf8');
   const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.resolve(__dirname, '../../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1'))).digest('hex');
@@ -412,6 +577,14 @@ test('guide installs before final user restart and pins the actual worker', () =
   assert.match(guide, /-File \$worker -InstallForVSCode/);
   assert.match(guide, /Verify now, before handing back control/);
   assert.match(guide, /There is no post-restart agent task/);
+  assert.match(guide, /Allow All\/Autopilot mode, proceed[\s\S]*without an extra approval pause/);
+  assert.match(guide, /Do not invoke `code\.cmd`/);
+  assert.match(guide, /Never reconstruct a hash from a truncated table display/);
+  assert.match(guide, /GIT_WORKER_EXIT=/);
+  assert.match(guide, /Host-wrapper errors/);
+  assert.match(guide, /do not classify every exit 1 as harmless/);
+  assert.match(guide, /node --check/);
+  assert.match(guide, /credential\.interactive=never/);
   assert.doesNotMatch(guide, /Continue Git verification using a new terminal|waiting for restart and fresh-terminal verification|Installation is a separate approved task/);
 });
 

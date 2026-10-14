@@ -29,7 +29,7 @@ Run this **download-and-verify block only**, in non-elevated Windows PowerShell:
 ```powershell
 $ErrorActionPreference = 'Stop'
 $BootstrapUrl = 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Ensure-MinGit254.ps1'
-$ExpectedBootstrapSha256 = '03BA1AF2E4CAE5555AF7AEEC6A7DFCF7A3F81271018F7CDEB2446FD51FC620B8'
+$ExpectedBootstrapSha256 = '430FA8AA6A577548D6A374B47A71CBFDDE4EF8112A4598A210A08590990B6F2B'
 $RunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $BootstrapDirectory = Join-Path $env:LOCALAPPDATA "Git254Bootstrap\bootstrap\$RunId"
 New-Item -ItemType Directory -Path $BootstrapDirectory -Force -ErrorAction Stop | Out-Null
