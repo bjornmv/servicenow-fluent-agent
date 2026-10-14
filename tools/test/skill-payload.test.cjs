@@ -17,7 +17,7 @@ const rel = file => path.relative(payload, file).replace(/\\/g, '/');
 const skillFiles = files.filter(f => f.endsWith(`${path.sep}SKILL.md`));
 
 test('every runtime skill has consistent portable trigger metadata', () => {
-  assert.equal(skillFiles.length, 21);
+  assert.equal(skillFiles.length, 20);
   for (const file of skillFiles) {
     const text = fs.readFileSync(file, 'utf8');
     const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1];
@@ -45,7 +45,7 @@ test('payload is free of personal examples, and SDK version claims are historica
     assert.doesNotMatch(text, /C:\\Personal\\|bvelsrud|Pelican|ven06834|dev426577|1535598|AssetApp/, file);
     for (const line of text.split('\n').filter(l => /(?:now-sdk|SDK)\s+4\.11/.test(l))) assert.match(line, /^Verified against:/, file);
   }
-  assert.match(read('payload/.agents/skills/win-git-bootstrap/SKILL.md'), /Routine Git-dependent work does not trigger/);
+  assert.match(read('tools/win-git-bootstrap/SKILL.md'), /Routine Git-dependent work does not trigger/);
   assert.match(read('payload/.agents/skills/sn-doc-export/render.py'), /SN_AGENT_HOME/);
   assert.match(read('payload/.agents/skills/sn-doc-export/render.js'), /process.env.SN_AGENT_HOME \|\| ''/);
 });

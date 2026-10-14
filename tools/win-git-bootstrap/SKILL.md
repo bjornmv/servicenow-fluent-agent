@@ -32,17 +32,13 @@ Do not combine this mode with `-InstallIfMissing`, staging, migration, environme
 
 ## Run the bundled worker
 
-Resolve [scripts/Ensure-MinGit254.ps1](scripts/Ensure-MinGit254.ps1) **relative to this skill directory**, not the project cwd or Downloads. On an installed profile it is:
-
-```text
-%USERPROFILE%\.agents\skills\win-git-bootstrap\scripts\Ensure-MinGit254.ps1
-```
+This procedure is setup-only and is not installed into the agent profile. Use the worker obtained under step 2 of the [Windows Git setup procedure](../../git-setup.md): the hash-verified download, or [`tools\win-git-bootstrap\scripts\Ensure-MinGit254.ps1`](scripts/Ensure-MinGit254.ps1) in a reviewed checkout of this repository, compared with the same expected script hash. Never use a copy from the project cwd or Downloads that has not passed that check.
 
 PowerShell terminal command (run as the intended user, not Administrator/SYSTEM):
 
 ```powershell
 $PowerShellExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$Worker = Join-Path $env:USERPROFILE '.agents\skills\win-git-bootstrap\scripts\Ensure-MinGit254.ps1'
+$Worker = '<absolute path of the hash-verified Ensure-MinGit254.ps1>'
 & $PowerShellExe -NoLogo -NoProfile -NonInteractive -File $Worker -InstallIfMissing
 Write-Host "Ensure-MinGit254 exit code: $LASTEXITCODE"
 ```

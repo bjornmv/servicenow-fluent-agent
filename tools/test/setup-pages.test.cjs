@@ -18,7 +18,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const setup = read('setup.md');
 const gitSetup = read('git-setup.md');
 const worker = read(workerRelativePath);
-const skill = read('payload/.agents/skills/win-git-bootstrap/SKILL.md');
+const skill = read('tools/win-git-bootstrap/SKILL.md');
 const workflow = read('.github/workflows/deploy-setup-page.yml');
 
 function withTemp(fn) {
@@ -235,10 +235,10 @@ test('scope and prerequisite decisions allow only absent-Git bootstrap, not repl
 
 test('separate page reuses the single canonical skill and worker', () => {
   assert.match(gitSetup, /permalink: \/git-setup\//);
-  assert.match(gitSetup, /raw\.githubusercontent\.com\/bjornmv\/servicenow-fluent-agent\/main\/payload\/\.agents\/skills\/win-git-bootstrap\/SKILL\.md/);
+  assert.match(gitSetup, /raw\.githubusercontent\.com\/bjornmv\/servicenow-fluent-agent\/main\/tools\/win-git-bootstrap\/SKILL\.md/);
   assert.match(gitSetup, /not another installer implementation/);
   assert.match(skill, /references\/validation\.md/);
-  assert.ok(fs.existsSync(path.join(root, 'payload/.agents/skills/win-git-bootstrap/references/validation.md')));
+  assert.ok(fs.existsSync(path.join(root, 'tools/win-git-bootstrap/references/validation.md')));
 });
 
 test('HTTPS handoff needs no Git and hashes the saved script before execution', () => {
@@ -477,7 +477,7 @@ test('skill pins, switches and outcome markers are the ones the worker implement
 });
 
 test('Pages rebuilds for docs, canonical worker and staging/test changes', () => {
-  for (const entry of ['VERSION', 'tools/setup-guide-metrics.cjs', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'payload/.agents/skills/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
+  for (const entry of ['VERSION', 'tools/setup-guide-metrics.cjs', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'tools/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
   assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));

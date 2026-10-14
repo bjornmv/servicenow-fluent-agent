@@ -115,7 +115,7 @@ Uninstall uses receipt hashes, backs up removals, skips local edits by default a
 
 ### Git integration
 
-The Node installer verifies existing Git; it does not download Git. For genuine absence, the separate [Git setup procedure](../git-setup.md) uses the packaged [MinGit worker](../payload/.agents/skills/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`.
+The Node installer verifies existing Git; it does not download Git. For genuine absence, the separate [Git setup procedure](../git-setup.md) uses the setup-only [MinGit worker](../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`.
 
 The bootstrap preserves Windows OpenSSH and Schannel/certificate verification. A blocked, outdated or broken existing Git is not treated as absence and is not automatically replaced.
 
