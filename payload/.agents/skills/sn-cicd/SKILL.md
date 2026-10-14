@@ -1,6 +1,6 @@
 ---
 name: sn-cicd
-description: Runs ATF tests and App Repository promotion with now-sdk cicd. Use when running tests on an instance, publishing, installing or rolling back app versions, or setting up CI; not local installs (sn-build-install).
+description: Runs ATF tests and App Repository promotion with now-sdk cicd. Use when running tests or reading ATF results and logs, publishing, installing or rolling back app versions, or setting up CI; not local installs (sn-build-install).
 argument-hint: <test/testsuite/publish/install/rollback + confirmed target alias and version>
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; authorized CI/CD targets and protected credentials.
 metadata:

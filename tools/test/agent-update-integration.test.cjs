@@ -61,7 +61,7 @@ function within(base, file) {
 
 function fixtureFs(base) {
   const guarded = {};
-  for (const method of ['existsSync', 'readFileSync', 'writeFileSync', 'mkdirSync', 'unlinkSync']) {
+  for (const method of ['existsSync', 'readFileSync', 'writeFileSync', 'mkdirSync', 'unlinkSync', 'readdirSync', 'rmdirSync']) {
     guarded[method] = (file, ...args) => fs[method](within(base, file), ...args);
   }
   guarded.copyFileSync = (from, to, ...args) => fs.copyFileSync(within(base, from), within(base, to), ...args);

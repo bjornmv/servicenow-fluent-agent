@@ -22,7 +22,9 @@ const receiptPath = path.join(agentsRoot, RECEIPT_NAME);
 const backupRootBase = path.join(agentsRoot, '_backups', PACKAGE_NAME);
 
 const argv = process.argv.slice(2);
-const command = argv.find((arg) => !arg.startsWith('--')) || 'install';
+// The command is the first argument; with none, or only options, it is install.
+const explicitCommand = argv.length > 0 && !argv[0].startsWith('-');
+const command = explicitCommand ? argv[0] : ['--help', '-h'].includes(argv[0]) ? 'help' : 'install';
 const flags = new Set(argv.filter((arg) => arg.startsWith('--')));
 const dryRun = flags.has('--dry-run');
 const force = flags.has('--force');
@@ -47,6 +49,48 @@ function fail(message) {
   console.error(`ERROR: ${message}`);
   process.exitCode = 1;
 }
+
+// Options each command accepts. Anything else stops the command before it does any work,
+// so a mistyped option never runs with defaults. `update` is an alias of `install`.
+const COMMAND_OPTIONS = {
+  install: { flags: ['--dry-run', '--force', '--no-vscode-settings'], values: ['--git-exe'] },
+  'configure-git': { flags: ['--dry-run'], values: ['--git-exe'] },
+  'configure-terminal': { flags: ['--dry-run'], values: ['--git-exe'] },
+  verify: { flags: ['--no-vscode-settings'], values: [] },
+  status: { flags: [], values: [] },
+  'check-updates': { flags: ['--force'], values: ['--only', '--project', '--docs', '--docs-branch'] },
+  'update-decision': { flags: [], values: ['--component'], positionals: 1 },
+  uninstall: { flags: ['--dry-run', '--force'], values: [] },
+  help: { flags: [], values: [] },
+};
+
+function argumentError() {
+  const name = command === 'update' ? 'install' : command;
+  if (!Object.prototype.hasOwnProperty.call(COMMAND_OPTIONS, name)) return `Unknown command: ${command}`;
+  const allowed = COMMAND_OPTIONS[name];
+  positionalArgs.length = 0;
+  for (let index = explicitCommand || command === 'help' ? 1 : 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (allowed.values.includes(arg)) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) return `Missing value for ${arg}`;
+      if (arg !== '--component' && argv.indexOf(arg) !== index) return `Duplicate option ${arg}`;
+      index += 1;
+    } else if (allowed.flags.includes(arg)) {
+      if (argv.indexOf(arg) !== index) return `Duplicate option ${arg}`;
+    } else if (arg.startsWith('-')) {
+      return `Unknown option ${arg} for ${command}. Run help for usage.`;
+    } else if (!explicitCommand && (arg === 'update' || Object.prototype.hasOwnProperty.call(COMMAND_OPTIONS, arg))) {
+      return `Put the command first: node bin/sn-fluent-agent.cjs ${arg} [options].`;
+    } else if (positionalArgs.push(arg) > (allowed.positionals || 0)) {
+      return `Unexpected argument ${arg} for ${command}. Run help for usage.`;
+    }
+  }
+  return '';
+}
+
+// Arguments after the command that are neither options nor option values; set by argumentError().
+const positionalArgs = [];
 
 function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -151,6 +195,45 @@ function copyPayloadFile(sourceFile, targetFile, backupRoot, rel, summary) {
   summary.nextFiles[rel] = { sha256: sourceHash, target: toSlash(targetFile) };
 }
 
+// Removes directories left empty by a managed-file removal, up to but not including the
+// profile roots the payload installs into (.agents, .copilot). Directories that still hold
+// anything (user files) are kept.
+const managedRoots = [agentsRoot, path.join(home, '.copilot')];
+
+function removeEmptyParents(file) {
+  const root = managedRoots.find((candidate) => file.startsWith(candidate + path.sep));
+  if (!root) return;
+  for (let dir = path.dirname(file); dir.startsWith(root + path.sep); dir = path.dirname(dir)) {
+    try {
+      if (fs.readdirSync(dir).length) return;
+      fs.rmdirSync(dir);
+    } catch {
+      return;
+    }
+  }
+}
+
+// Earlier installs removed retired skill files without their folders. Remove skill folders
+// that hold only empty directories; a folder with any file in it is left alone.
+function removeEmptySkillDirs() {
+  const skillsRoot = path.join(agentsRoot, 'skills');
+  const prune = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    let empty = true;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !prune(path.join(dir, entry.name))) empty = false;
+    }
+    if (!empty) return false;
+    try { fs.rmdirSync(dir); return true; } catch { return false; }
+  };
+  let skills;
+  try { skills = fs.readdirSync(skillsRoot, { withFileTypes: true }); } catch { return; }
+  for (const entry of skills) {
+    if (entry.isDirectory() && !entry.isSymbolicLink()) prune(path.join(skillsRoot, entry.name));
+  }
+}
+
 function removeObsoleteFiles(payloadRels, backupRoot, summary) {
   for (const rel of Object.keys(summary.previousReceipt.files || {}).sort()) {
     if (payloadRels.has(rel)) continue;
@@ -158,6 +241,7 @@ function removeObsoleteFiles(payloadRels, backupRoot, summary) {
     const target = targetForRel(rel);
     if (!fs.existsSync(target)) {
       summary.removedMissing.push(rel);
+      if (!dryRun) removeEmptyParents(target);
       continue;
     }
 
@@ -171,7 +255,10 @@ function removeObsoleteFiles(payloadRels, backupRoot, summary) {
 
     backupFile(target, backupRoot, rel, summary);
     summary.removedObsolete.push(rel);
-    if (!dryRun) fs.unlinkSync(target);
+    if (!dryRun) {
+      fs.unlinkSync(target);
+      removeEmptyParents(target);
+    }
   }
 }
 
@@ -305,6 +392,7 @@ function install() {
   }
 
   removeObsoleteFiles(payloadRels, backupRoot, summary);
+  if (!dryRun) removeEmptySkillDirs();
 
   const receipt = {
     packageName: PACKAGE_NAME,
@@ -426,6 +514,7 @@ function uninstall() {
       fs.mkdirSync(path.dirname(backupPath), { recursive: true });
       fs.copyFileSync(target, backupPath);
       fs.unlinkSync(target);
+      removeEmptyParents(target);
     }
     removed.push(rel);
   }
@@ -474,8 +563,7 @@ async function checkForUpdates() {
 }
 
 function recordUpdateDecision() {
-  const positionals = argv.filter((arg) => !arg.startsWith('--'));
-  const decision = positionals[1];
+  const decision = positionalArgs[0];
   const componentKeys = flagValues('--component');
   if (!decision) throw new Error('Specify update, remind, or skip after update-decision.');
   if (!componentKeys.length) throw new Error('Specify at least one --component returned by check-updates.');
@@ -566,7 +654,9 @@ Options:
 }
 
 async function main() {
-  if (command === 'install' || command === 'update') install();
+  const invalid = argumentError();
+  if (invalid) fail(invalid);
+  else if (command === 'install' || command === 'update') install();
   else if (command === 'configure-git') configureGit();
   else if (command === 'configure-terminal') configureTerminal();
   else if (command === 'verify') verify();
@@ -574,7 +664,7 @@ async function main() {
   else if (command === 'check-updates') await checkForUpdates();
   else if (command === 'update-decision') recordUpdateDecision();
   else if (command === 'uninstall') uninstall();
-  else if (command === 'help' || command === '--help' || command === '-h') help();
+  else if (command === 'help') help();
   else fail(`Unknown command: ${command}`);
 }
 

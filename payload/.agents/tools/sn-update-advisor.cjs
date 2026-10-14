@@ -12,6 +12,12 @@ const statePath = path.join(home, '.agents', '.servicenow-fluent-agent-update.js
 const argv = process.argv.slice(2);
 const command = argv[0] || 'check';
 
+// session-start and state take no arguments; check and decision options are validated by
+// the checkout CLI, which exits non-zero on anything it does not accept.
+if (['session-start', 'state'].includes(command) && argv.length > 1) {
+  stop(`Unexpected argument ${argv[1]} for ${command}. Nothing was run.`);
+}
+
 // Local session gate only: no receipt, repository, network or decision-state access.
 // The agent invokes the skill AFTER a due result. The mtime records an attempt.
 if (command === 'session-start') {
@@ -144,7 +150,7 @@ if (result.signal || result.status !== 0) {
 const after = stateOrStop(`${command} finished but its state cannot be verified`);
 
 if (command === 'decision') {
-  const decision = argv.slice(1).find((arg) => !arg.startsWith('--'));
+  const decision = argv.slice(1).find((arg, index, args) => !arg.startsWith('--') && args[index - 1] !== '--component');
   const unrecorded = decisionKeys.filter((key) => {
     const was = before.components[key];
     const now = after.components[key];

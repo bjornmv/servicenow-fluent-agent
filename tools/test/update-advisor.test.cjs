@@ -171,6 +171,23 @@ test('unknown launcher commands fail instead of exiting quietly', () => {
   assert.match(r.stderr.join('\n'), /Unknown command: chekc/);
 });
 
+test('state and session-start refuse extra arguments before reading or writing anything', () => {
+  for (const args of [['state', '--bogus'], ['session-start', '--force'], ['state', 'agent']]) {
+    const r = runLauncher(args);
+    assert.equal(r.status, 1, args.join(' '));
+    assert.deepEqual(r.calls, []);
+    assert.deepEqual(r.fsReads, []);
+    assert.match(r.stderr.join('\n'), new RegExp(`Unexpected argument ${args[1]} for ${args[0]}\\. Nothing was run\\.`));
+  }
+});
+
+test('decision verification reads the decision positional even when --component comes first', () => {
+  const recorded = noticeState({ lastDecision: 'remind', lastDecisionAt: '2026-01-02T00:00:00.000Z' });
+  const r = runLauncher(['decision', '--component', 'agent', 'remind'], { status: 0 }, { states: [noticeState(), recorded] });
+  assert.equal(r.status, 0);
+  assert.deepEqual(r.stderr, []);
+});
+
 test('decision mode preserves inherited output and truthful error/exit status', () => {
   const recorded = noticeState({ lastDecision: 'remind', lastDecisionAt: '2026-01-02T00:00:00.000Z' });
   for (const [child, expected] of [[{ status: 0 }, 0], [{ status: 7 }, 7], [{ status: null }, 1], [{ status: null, signal: 'SIGTERM' }, 1]]) {
