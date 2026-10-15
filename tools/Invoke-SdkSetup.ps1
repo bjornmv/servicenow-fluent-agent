@@ -6,7 +6,7 @@ param(
     [ValidateRange(0, 600)][int]$WaitSeconds = 0
 )
 $ErrorActionPreference = 'Stop'
-$WorkerVersion = '0.3.11'
+$WorkerVersion = '0.3.12'
 Write-Output "SDK_WORKER_VERSION=$WorkerVersion"
 if ($Install -and $WaitSeconds -ne 0) { throw 'WaitSeconds is for read-only recovery, not installation.' }
 

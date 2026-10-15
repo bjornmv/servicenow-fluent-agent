@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.12 — Update notices despite untracked files
+
+### Fixed
+
+- Agent update check: untracked files outside `payload/` (drafts, `__pycache__`) no longer silently suppress the update notice. Tracked changes, or untracked files under `payload/`, still withhold the update, but the check now names it on stderr (`Update not offered for <component>: … but the checkout has local changes (N): …`) and still exits 0. Docs updates keep the strict rule.
+- `sn-update-advisor` skill: report a withheld update verbatim and ask the user; never commit, stash, discard or delete the changes itself. Applying an update accepts only untracked files outside `payload/`.
+- `.gitignore`: ignore `__pycache__/` and `*.pyc` anywhere in the checkout.
+- Verified on Windows: with its untracked drafts removed, an older checkout (`5901208`) was offered the update to this fix (`fdf0ed3`) in a new VS Code chat.
+
 ## 0.3.11 — Skill review against now-sdk 4.13.6
 
 Every skill was reviewed against now-sdk 4.13.6 (4.11.2 for comparison), each finding adversarially verified, and corrected. No PowerShell, instance install, authentication or deployment was executed during the review. A later test in VS Code on Windows (now-sdk 4.13.6, Node 25) passed every check of the final build except a real install to an instance, which was not approved and so not run.
