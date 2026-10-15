@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.13 — Setup proceeds past a blocked existing Git
+
+A machine with an existing Git that cannot run (for example a non-whitelisted Git under Program Files that application control blocks, and that the user cannot uninstall) previously stopped setup with no supported route. Setup now selects a usable Git, or installs the pinned MinGit beside the unusable one, and makes VS Code use it.
+
+### Behavior changes
+
+- Git discovery (setup step 1, the MinGit worker and the Node installer) tries every candidate in one order: the per-user `%LOCALAPPDATA%\Programs\Git` copy first, then every PATH hit, Program Files and registered locations. A copy that fails to start, exits nonzero or is older than 2.54.0 is reported (`GIT_UNUSABLE=`) and skipped, never treated as absence and never changed. The first usable copy is selected by absolute path. Discovery now prints `GIT_EXE=none` instead of `GIT_EXE=absent`.
+- `-InstallIfMissing` installs when **no usable** Git exists, not only when no Git exists. It installs side by side into the absent per-user target (`SIDE-BY-SIDE SETUP:`), leaves blocked/broken/older copies untouched, logs `SELECTED_GIT=` on `SKIP:`, and still refuses an occupied per-user target or a per-user registration remnant. It accepts the same three indexed agent-host Git settings as `-InstallForVSCode` (Copilot terminals set them; the old mode refused to install there).
+- Windows puts machine PATH before user PATH, so user PATH registration can never beat a system Git. The worker logs `SHADOWED:` when that happens, and `install` / `configure-git` then select the chosen Git for VS Code, the same three ways as the VS Code Git repair guide: a `git` function beside `now-sdk` in the **PowerShell with now-sdk** profile (functions run before applications, so PowerShell always reaches the selected copy), its directory prepended in `terminal.integrated.env.windows` (Node child processes), and `git.path` if unset (an existing different `git.path` is kept with a warning). The function uses the repair guide's exact block, so either side recognizes the other's; it is updated for a new selection, removed when nothing shadows Git any more, and a modified block is kept with a warning. Machine PATH is never edited.
+- The SDK profile's `now-sdk` function is always ensured: an existing **PowerShell with now-sdk** profile whose `-Command` lacks it gets it prepended (an existing custom `now-sdk` function is kept). A profile without a `-Command` string is reported, not rewritten.
+- Setup step 7 accepts `git` as the profile Function when shadowed and also checks `git` from a Node child process.
+- The 2.54.0 minimum is unchanged: an older working Git is not selected; the pinned build goes beside it.
+
+### Documentation
+
+- `setup.md` step 1 is a result table; step 3 explains selection vs. PATH order. `git-setup.md` and the `win-git-bootstrap` skill share one decision rule and state that selecting a different verified copy is not a policy bypass (it runs under the same policy, and a block on it stops setup). `git-setup.md`'s test narrative moved to the validation record.
+- `docs/fix-vscode-git.md` no longer adds a `git` function; it writes the same two settings the installer writes, and a later full setup keeps them.
+
+### Verification
+
+- Linux: `npm run test:setup` passes. The mocked MinGit worker scenarios and the setup discovery block, normally Windows-only, also pass under PowerShell 7 in a Linux container (FullLanguage). Windows PowerShell 5.1 ConstrainedLanguage and a real blocked-Git machine have not been tested yet.
+
 ## 0.3.12 — Update notices despite untracked files
 
 ### Fixed

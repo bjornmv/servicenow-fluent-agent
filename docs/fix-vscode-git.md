@@ -92,7 +92,7 @@ $work = Join-Path $env:TEMP ('sn-vscode-git-' + (Get-Date -Format 'yyyyMMdd-HHmm
 New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
 $worker = Join-Path $work 'Ensure-MinGit254.ps1'
 Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1' -OutFile $worker -UseBasicParsing -TimeoutSec 120
-$expected = '430fa8aa6a577548d6a374b47a71cbfdde4ef8112a4598a210a08590990b6f2b'
+$expected = 'aba785d774837c83d2168780148cea0c30aaa28ee614370400019ca378414f56'
 if ((Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash -ne $expected) { throw 'Worker hash mismatch; do not execute.' }
 $global:LASTEXITCODE = $null
 & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -File $worker -InstallForVSCode
@@ -193,9 +193,7 @@ End with this one user action:
 
 Closing old terminals avoids VS Code reconnecting to stale persistent sessions. The agent does not restart VS Code, wait for the user to return, or request another chat. There is no post-restart agent task.
 
-**Do not automatically rerun normal installation or `configure-git`.** In the current implementation, both configure Windows User PATH/environment. Normal installation does so even with `--no-vscode-settings`; `--git-exe` selects Git but does not disable that work. The current terminal settings code also removes recognized legacy Git overrides; this guide uses a different marker, not a guarantee of compatibility with future versions.
-
-If setup previously stopped, identify the last completed stage and review the exact installer version before proposing a separately approved resumption. It must preserve the repair, retain approved Git selection and avoid actions outside the agreed scope. Do not replay completed stages, invent skip flags or silently alter managed installer files. Restarting VS Code does not make an incompatible installer safe to rerun.
+**Later full setup is compatible.** When the agent installer's `install` / `configure-git` find a non-working Git ahead of the approved one in Windows PATH, they write the same three things: the identical `approved-user-git` block beside `now-sdk` in the **PowerShell with now-sdk** profile, this PATH prefix (either form) and `git.path`. Existing copies are recognized and kept; nothing is duplicated. A modified block is left alone with a warning. Do not run them as part of this repair; that is a separately approved task.
 
 For rollback, restore only the owned settings changes, using the backup if there have been no intervening edits. Preserve later user changes. Do not uninstall system Git or delete the shared per-user copy; removal is a separate approved task.
 

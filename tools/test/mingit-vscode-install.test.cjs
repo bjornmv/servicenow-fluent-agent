@@ -24,7 +24,7 @@ function extract(name) {
 const parameters = worker.match(/^\[CmdletBinding\(\)\]\nparam\([\s\S]*?^\)/m)?.[0];
 const preamble = worker.slice(worker.indexOf("$ErrorActionPreference = 'Stop'"), worker.indexOf('function Write-Log'));
 const entry = worker.slice(worker.indexOf('\ntry {\n') + 1);
-const helpers = ['Confirm-InstallMode', 'Confirm-VSCodeHostGitConfig', 'Get-VSCodeGit', 'Read-GitVersion', 'Get-Inventory', 'Confirm-Archive', 'Confirm-NoBusyGit'].map(extract).join('\n');
+const helpers = ['Confirm-InstallMode', 'Confirm-VSCodeHostGitConfig', 'Get-VSCodeGit', 'Read-GitVersion', 'Get-Inventory', 'Write-ShadowNotice', 'Confirm-Archive', 'Confirm-NoBusyGit'].map(extract).join('\n');
 
 // Replace only the three known native call sites in the extracted orchestration.
 // Deployment filesystem/registry/process boundaries below are mocks; indexed
@@ -50,7 +50,7 @@ $script:promoted = $false
 $script:auditCount = 0
 function Write-Log { param($Message) Write-Host $Message }
 function Get-Command {
-    param($Name, $CommandType, $ErrorAction)
+    param($Name, $CommandType, [switch]$All, $ErrorAction)
     Write-Host 'INVENTORY_LOOKUP'
     if ($InstallForVSCode) { throw 'Unexpected unselected lookup' }
     if ($system -ne 'absent' -and $system -ne 'registration') { return @{ Source = $systemGit } }
@@ -210,6 +210,13 @@ function Add-UserGitPath {
     if ($InstallForVSCode) { throw 'Unexpected PATH updater' }
     Write-Host 'DEFAULT_PATH_UPDATER'
 }
+function Get-PathShadow {
+    param($GitDirectory)
+    if ($InstallForVSCode) { throw 'Unexpected PATH precedence read' }
+    Write-Host 'SHADOW_CHECK'
+    if ($failure -eq 'shadow-read') { throw 'Fixture machine PATH unreadable' }
+    if ($system -in @('blocked', 'old')) { return $systemGit }
+}
 function Get-Content { throw 'Unexpected content read' }
 function Get-Item { throw 'Unexpected registry/item read' }
 function New-ItemProperty { throw 'Forbidden registry write' }
@@ -275,11 +282,11 @@ function noUnselected(result) {
 test('source keeps default inventory, shared safeguards and explicit no-clobber/no-PATH boundaries', () => {
   mockEntry();
   assert.match(parameters, /\[switch\]\$InstallForVSCode/);
-  assert.match(entry, /if \(\$InstallForVSCode\) \{\n        Confirm-VSCodeHostGitConfig\n        \$inventory = @\(Get-VSCodeGit\)[\s\S]*?\} else \{\n        \$inventory = @\(Get-Inventory\)/);
+  assert.match(entry, /if \(\$InstallForVSCode\) \{\n        Confirm-VSCodeHostGitConfig\n        \$inventory = @\(Get-VSCodeGit\)[\s\S]*?\} elseif \(\$InstallIfMissing\) \{\n        \$inventory = @\(Get-Inventory\)\n    \} else \{\n        \$inventory = @\(Get-Inventory -All\)/);
   assert.match(entry, /Confirm-InstallMode -HasGitExecutable \(\$PSBoundParameters.Keys -contains 'GitExecutable'\)/);
   assert.match(entry, /\$lockAcquired = \$true\n    if \(\$InstallForVSCode\) \{ \$null = Get-VSCodeGit -RequireAbsent \}\n    Get-Archive/);
   assert.match(entry, /if \(\$InstallForVSCode\) \{\n        \$null = Get-VSCodeGit -RequireAbsent[\s\S]*?Rename-Item -LiteralPath \$stage -NewName \(Split-Path -Leaf \$target\) -ErrorAction Stop\n    \} else \{/);
-  assert.match(entry, /if \(-not \$InstallForVSCode\) \{ Add-UserGitPath \(Join-Path \$target 'cmd'\) \}/);
+  assert.match(entry, /if \(-not \$InstallForVSCode\) \{\n        Add-UserGitPath \(Join-Path \$target 'cmd'\)\n        Write-ShadowNotice/);
   assert.match(entry, /finally \{\n    if \(\$lockAcquired\) \{ Remove-Item -LiteralPath \$lock/);
   assert.match(preamble, /04F937E1F0918B17B9BE6F2294CB2BB66E96E1D9832D1C298E2DE088A1D0E668/);
   assert.match(preamble, /@\('usr\/bin\/find.exe', 'usr\/bin\/sort.exe'\)/);
@@ -344,16 +351,24 @@ for (const unsafe of [false, true]) {
   });
 }
 
-test('default absent-only still rejects even known indexed host config', windowsOnly, () => {
+test('setup mode accepts the known indexed agent-host config like the VS Code mode', windowsOnly, () => {
   const result = runScenario({ args: ['-InstallIfMissing'], system: 'absent', hostConfig });
-  expectResult(result, 1, /Git environment overrides are present/);
+  expectResult(result, 0, /SUCCESS:/);
+  assert.match(result.stdout, /Preserved 3 verified restrictive agent-host Git settings/);
+  assert.match(result.stdout, /HOST_CONFIG_UNCHANGED/);
+});
+
+test('setup mode still rejects unknown indexed host config', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], system: 'absent', hostConfig: { ...hostConfig, GIT_CONFIG_KEY_2: 'http.sslVerify' } });
+  expectResult(result, 1, /Unrecognized Git configuration override/);
   assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|LOCK_ACQUIRE/);
 });
 
 test('host config validation never strips variables or relaxes other guards', () => {
   assert.doesNotMatch(extract('Confirm-VSCodeHostGitConfig'), /Set-Item|Remove-Item|\$env:\w+\s*=/);
   assert.match(entry, /if \(\$InstallForVSCode\) \{\n        Confirm-VSCodeHostGitConfig\n        \$inventory/);
-  assert.match(entry, /\$env:GIT_CONFIG_COUNT -and -not \$InstallForVSCode/);
+  assert.match(entry, /\$env:GIT_CONFIG_COUNT -and -not \(\$InstallForVSCode -or \$InstallIfMissing\)/);
+  assert.match(entry, /if \(\$InstallIfMissing\) \{[\s\S]*?\$null = Get-VSCodeGit\n        Confirm-VSCodeHostGitConfig\n/);
   for (const name of ['GIT_SSH', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_NOSYSTEM', 'GIT_SSL_NO_VERIFY', 'GIT_CONFIG_PARAMETERS']) assert.ok(entry.includes('$env:' + name));
 });
 
@@ -452,24 +467,60 @@ for (const failure of ['elevated', 'ssh', 'busy', 'lock', 'hash', 'tar-missing',
   });
 }
 
-for (const args of [[], ['-InstallIfMissing']]) {
-  test(`default inventory still stops on blocked SYSTEM Git (${args.join(' ') || 'no mode'})`, windowsOnly, () => {
-    const result = runScenario({ args });
-    expectResult(result, 1, /Fixture SYSTEM Git blocked/);
-    assert.match(result.stdout, /INVENTORY_LOOKUP/);
-    assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|PROMOTED/);
-  });
-}
-
-test('default absent-only keeps system-registration veto', windowsOnly, () => {
-  const result = runScenario({ args: ['-InstallIfMissing'], system: 'registration' });
-  expectResult(result, 1, /Git registration exists but no executable was verified/);
+test('no-mode inventory still stops on blocked SYSTEM Git', windowsOnly, () => {
+  const result = runScenario({ args: [] });
+  expectResult(result, 1, /Fixture SYSTEM Git blocked/);
+  assert.match(result.stdout, /INVENTORY_LOOKUP/);
   assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|PROMOTED/);
 });
 
-test('default absent-only keeps existing target and older Git guards', windowsOnly, () => {
-  expectResult(runScenario({ args: ['-InstallIfMissing'], selected: 'occupied', system: 'absent' }), 1, /installation directory already exists/);
-  expectResult(runScenario({ args: ['-InstallIfMissing'], system: 'old' }), 1, /An older Git is already installed/);
+for (const system of ['blocked', 'old']) {
+  test(`setup installs side by side when SYSTEM Git is ${system}, leaving it untouched`, windowsOnly, () => {
+    const result = runScenario({ args: ['-InstallIfMissing'], system });
+    expectResult(result, 0, /SUCCESS: Official MinGit/);
+    assert.match(result.stdout, system === 'blocked' ? /Unusable Git \(cannot run; left untouched\): C:\\fixture-system/ : /Older Git \(left untouched\): 2\.53\.0/);
+    assert.match(result.stdout, /SIDE-BY-SIDE SETUP:/);
+    assert.match(result.stdout, /DEFAULT_PROMOTED/);
+    assert.match(result.stdout, /DEFAULT_PATH_UPDATER/);
+    assert.match(result.stdout, /SHADOWED: C:\\fixture-system\\Git\\cmd\\git.exe precedes/);
+    assert.doesNotMatch(result.stdout, /Retained previous|Explicit migration|unins000/);
+    // The unusable copy is probed once for its version, never configured or run again.
+    assert.equal((result.stdout.match(/GIT_MOCK\|C:\\fixture-system[^\n]*/g) || []).length, 1);
+    assert.match(result.stdout, /GIT_MOCK\|C:\\fixture-system\\Git\\cmd\\git.exe\|--version/);
+  });
+}
+
+test('setup prefers an existing pinned per-user copy without launching SYSTEM Git', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], selected: 'working', system: 'blocked' });
+  expectResult(result, 0, /SKIP: Working Git/);
+  assert.match(result.stdout, /SELECTED_GIT=C:\\fixture-user\\Programs\\Git\\cmd\\git.exe/);
+  assert.doesNotMatch(result.stdout, /GIT_MOCK\|C:\\fixture-system|INVENTORY_LOOKUP|ARCHIVE_CHECK/);
+});
+
+test('setup skips a working SYSTEM Git and reports it as selected', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], system: 'working' });
+  expectResult(result, 0, /SKIP: Working Git/);
+  assert.match(result.stdout, /SELECTED_GIT=C:\\fixture-system/);
+  assert.match(result.stdout, /not the pinned build/);
+  assert.doesNotMatch(result.stdout, /ARCHIVE_CHECK|PROMOTED/);
+});
+
+test('setup with an unreadable PATH precedence check still succeeds with a warning', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], system: 'blocked', failure: 'shadow-read' });
+  expectResult(result, 0, /SUCCESS:/);
+  assert.match(result.stdout, /WARNING: Could not check Windows PATH precedence/);
+});
+
+test('side-by-side setup ignores an unrelated system registration without an executable', windowsOnly, () => {
+  const result = runScenario({ args: ['-InstallIfMissing'], system: 'registration' });
+  expectResult(result, 0, /SUCCESS:/);
+  assert.match(result.stdout, /ABSENT-ONLY SETUP:/);
+});
+
+test('setup never overwrites an occupied or remnant per-user target', windowsOnly, () => {
+  expectResult(runScenario({ args: ['-InstallIfMissing'], selected: 'occupied', system: 'absent' }), 1, /managed Git directory already exists/);
+  expectResult(runScenario({ args: ['-InstallIfMissing'], selected: 'blocked', system: 'blocked' }), 1, /managed Git directory already exists/);
+  expectResult(runScenario({ args: ['-InstallIfMissing'], registration: 'target', system: 'blocked' }), 1, /Per-user Git registration remains/);
 });
 
 test('default working newer Git still skips instead of requiring exact pin', windowsOnly, () => {
@@ -484,9 +535,10 @@ test('default genuinely absent installation retains PATH updater (mock only)', w
   expectResult(result, 0, /SUCCESS:/);
   assert.match(result.stdout, /DEFAULT_PROMOTED/);
   assert.match(result.stdout, /DEFAULT_PATH_UPDATER/);
+  assert.match(result.stdout, /SHADOW_CHECK/);
+  assert.doesNotMatch(result.stdout, /SHADOWED:/);
   assert.match(result.stdout, /LOCK_RELEASE/);
 });
-
 function guideProbe(outcome, executable = 'C:\\fixture system Git\\cmd\\git.exe') {
   const guide = fs.readFileSync(path.resolve(__dirname, '../../docs/fix-vscode-git.md'), 'utf8').replaceAll('\r\n', '\n');
   const source = guide.match(/\$gitProbe = @'\n([\s\S]*?)\n'@/)?.[1];

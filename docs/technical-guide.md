@@ -115,9 +115,9 @@ Uninstall uses receipt hashes, backs up removals, skips local edits by default a
 
 ### Git integration
 
-The Node installer verifies existing Git; it does not download Git. For genuine absence, the separate [Git setup procedure](../git-setup.md) uses the setup-only [MinGit worker](../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`.
+The Node installer selects existing Git; it does not download Git. When no usable Git exists, the separate [Git setup procedure](../git-setup.md) uses the setup-only [MinGit worker](../tools/win-git-bootstrap/scripts/Ensure-MinGit254.ps1): pinned MinGit, SHA-256 verification and extraction excluding blocked Unix `find.exe` and `sort.exe`, deployed side by side in the per-user target.
 
-The bootstrap preserves Windows OpenSSH and Schannel/certificate verification. A blocked, outdated or broken existing Git is not treated as absence and is not automatically replaced.
+The bootstrap preserves Windows OpenSSH and Schannel/certificate verification. A blocked, outdated or broken existing Git is recorded as unusable: it is never replaced, repaired or selected, and the pinned copy goes beside it. `findGit()` probes the per-user copy first, then PATH and Program Files, and returns the first usable one. `detectPathShadow()` reads machine and user PATH from the registry; if another `git.exe` precedes the selected one, `install` / `configure-git` add the repair guide's `git` function beside `now-sdk` in the SDK profile (`ensureProfileFunctions()`), add the selected directory to `terminal.integrated.env.windows` and set `git.path`. The function is removed again when nothing shadows the selected Git.
 
 Normal installation invokes that worker in environment-refresh mode. It preserves the typed Windows **user PATH**, including variable references, and requests native environment propagation. `setx.exe` receives only an owned `SN_FLUENT_ENV_REFRESH` marker, never PATH. Machine PATH, elevation and execution-policy changes are outside this workflow.
 
@@ -244,8 +244,8 @@ node bin/sn-fluent-agent.cjs help
 | `verify` | Check payload/baseline against this checkout; no installation. |
 | `install` | Configure environment/settings and copy managed files. `update` is an install alias, not a Git pull. |
 | `install --dry-run` | Validate and summarize without installation writes. |
-| `configure-git` | Configure existing Git's user environment and conservatively remove known legacy profile workarounds. |
-| `configure-terminal` | Configure the SDK profile; does not register Git PATH. |
+| `configure-git` | Configure the selected Git's user environment, select it for VS Code when shadowed, and conservatively remove known legacy profile workarounds. |
+| `configure-terminal` | Configure the SDK profile (`now-sdk` function; `git` function when shadowed); does not register Git PATH. |
 | `check-updates` | Contact applicable due components and persist advisory state. Explicit `--only`, project/docs paths and scope matter. |
 | `update-decision` | Record selected component decisions; does not apply updates. |
 | `uninstall` | Remove unchanged receipt-owned files with backups; preserve local modifications by default. |

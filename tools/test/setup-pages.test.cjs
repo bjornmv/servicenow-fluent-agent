@@ -151,15 +151,33 @@ for (const mode of ['valid', 'hash', 'protocol', 'missing-end', 'duplicate-end']
   }));
 }
 
-for (const mode of ['path', 'standard', 'old', 'blocked', 'prerelease', 'absent', 'registered', 'directory', 'denied']) {
+const gitCheckExpectations = {
+  path: [0, /GIT_EXE=Invoke-FixtureGit/], standard: [0, /GIT_EXE=Invoke-FixtureGit/], absent: [0, /GIT_EXE=none/],
+  old: [0, /GIT_UNUSABLE=Invoke-FixtureGit \| older than 2\.54\.0[\s\S]*GIT_EXE=none/],
+  blocked: [0, /GIT_UNUSABLE=Invoke-FixtureGit \| exit 23[\s\S]*GIT_EXE=none/],
+  launch: [0, /GIT_UNUSABLE=Invoke-FixtureGit \| failed to start: Fixture blocked by group policy[\s\S]*GIT_EXE=none/],
+  prerelease: [0, /GIT_UNUSABLE=Invoke-FixtureGit \| unrecognized or prerelease version[\s\S]*GIT_EXE=none/],
+  registered: [0, /GIT_EXE=none/], directory: [11, null], denied: [11, null],
+  'blocked-then-working': [0, /GIT_UNUSABLE=Invoke-FixtureGit \| failed to start[\s\S]*GIT_EXE=Invoke-SecondGit/],
+};
+for (const [mode, [status, pattern]] of Object.entries(gitCheckExpectations)) {
   test('Git discovery block uses fixture evidence: ' + mode, windows, () => withTemp(directory => {
-    const prelude = `$Mode=${psQuote(mode)}\nfunction Get-Command { param($Name,$CommandType,$ErrorAction) if ($Mode -in @('path','old','blocked','prerelease')) { return @{Source='Invoke-FixtureGit'} } }\nfunction Test-Path { param($LiteralPath,$PathType,$ErrorAction)\n if ($LiteralPath -like '*Git_is1') { if ($Mode -eq 'denied') { throw 'Registry unreadable' }; return ($Mode -eq 'registered') }\n if ($LiteralPath -like '*cmd\\git.exe') { return ($Mode -eq 'standard') }\n return ($Mode -eq 'directory')\n}\nfunction Get-ItemProperty { param($LiteralPath,$ErrorAction) return @{InstallLocation='C:\\fixture-git'} }\nfunction Resolve-Path { param($LiteralPath) return @{Path='Invoke-FixtureGit'} }\nfunction Invoke-FixtureGit { $global:LASTEXITCODE=0; if ($Mode -eq 'blocked') { $global:LASTEXITCODE=23; return }; if ($Mode -eq 'old') { 'git version 2.53.0.windows.1' } elseif ($Mode -eq 'prerelease') { 'git version 2.55.0.rc1' } else { 'git version 2.54.0.windows.1' } }`;
+    const prelude = `$Mode=${psQuote(mode)}\nfunction Get-Command { param($Name,$CommandType,[switch]$All,$ErrorAction) if ($Mode -in @('path','old','blocked','launch','prerelease')) { return @{Source='Invoke-FixtureGit'} }; if ($Mode -eq 'blocked-then-working') { return @(@{Source='Invoke-FixtureGit'}, @{Source='Invoke-SecondGit'}) } }\nfunction Test-Path { param($LiteralPath,$PathType,$ErrorAction)\n if ($LiteralPath -in @('Invoke-FixtureGit','Invoke-SecondGit')) { return $true }\n if ($LiteralPath -like '*Git_is1') { if ($Mode -eq 'denied') { throw 'Registry unreadable' }; return ($Mode -eq 'registered') }\n if ($LiteralPath -like '*Programs\\Git\\cmd\\git.exe') { return ($Mode -eq 'standard') }\n if ($LiteralPath -like '*cmd\\git.exe') { return $false }\n return ($Mode -eq 'directory')\n}\nfunction Get-ItemProperty { param($LiteralPath,$ErrorAction) return @{InstallLocation='C:\\fixture-git'} }\nfunction Resolve-Path { param($LiteralPath) if ($LiteralPath -eq 'Invoke-SecondGit') { return @{Path='Invoke-SecondGit'} }; return @{Path='Invoke-FixtureGit'} }\nfunction Invoke-SecondGit { $global:LASTEXITCODE=0; 'git version 2.54.0.windows.1' }\nfunction Invoke-FixtureGit { $global:LASTEXITCODE=0; if ($Mode -in @('launch','blocked-then-working')) { throw 'Fixture blocked by group policy' }; if ($Mode -eq 'blocked') { $global:LASTEXITCODE=23; return }; if ($Mode -eq 'old') { 'git version 2.53.0.windows.1' } elseif ($Mode -eq 'prerelease') { 'git version 2.55.0.rc1' } else { 'git version 2.54.0.windows.1' } }`;
     const r = runSnippet(directory, psBlock('git-check'), prelude);
-    assert.equal(r.status, ['path', 'standard', 'absent'].includes(mode) ? 0 : 11, r.stdout + r.stderr);
-    if (mode === 'absent') assert.match(r.stdout, /GIT_EXE=absent/);
-    else assert.doesNotMatch(r.stdout, /GIT_EXE=absent/);
+    assert.equal(r.status, status, r.stdout + r.stderr);
+    if (pattern) assert.match(r.stdout, pattern);
+    if (status !== 0) assert.doesNotMatch(r.stdout, /GIT_EXE=/);
   }));
 }
+
+test('Git discovery probes the managed copy first and never stops on an unusable copy', () => {
+  const block = psBlock('git-check');
+  assert.ok(block.indexOf("$Candidates = @($Managed)") < block.indexOf('Get-Command git.exe'), 'managed copy first');
+  assert.match(block, /Get-Command git\.exe -CommandType Application -All/);
+  assert.match(block, /catch \{ \$Reason = "failed to start/);
+  assert.match(block, /GIT_EXE=none/);
+  assert.doesNotMatch(block, /Set-ItemProperty|New-ItemProperty|Remove-Item|Start-Process|Unblock-File|-ExecutionPolicy/);
+});
 
 for (const mode of ['success', 'failed', 'leftover', 'collision']) {
   test('staged docs clone preserves fixture directories: ' + mode, windows, () => withTemp(directory => {
@@ -219,16 +237,19 @@ test('checkout identity and index provenance gate reuse, pulls and approved rebu
   assert.doesNotMatch(setup, /remote set-branches|git switch|--force.*--family/);
 });
 
-test('scope and prerequisite decisions allow only absent-Git bootstrap, not replacement', () => {
+test('scope and prerequisite decisions install beside unusable Git, never replace it', () => {
   contract(setup, [
     /Node\.js must already be installed/, /global SDK package install\/update/,
+    /authorizes the pinned per-user MinGit when no usable Git exists \(absent, blocked, broken or older\)/,
     /Authentication, deployment, other prerequisites and elevation are outside scope/,
-    /Missing\/failing\/old Node[^\n]*report the prerequisite failure/,
-    /Genuinely absent Git[^\n]*#git-download/,
-    /Older, blocked, broken, prerelease or ambiguous Git[^\n]*review, not automatic replacement/,
-    /stable Git \*\*>=2\.54\.0\*\*, preserved unchanged/,
+    /Node missing\/failing\/old[^\n]*Report the prerequisite failure/,
+    /`GIT_EXE=none`[^\n]*#git-download/,
+    /`GIT_UNUSABLE=` lines name skipped copies; they stay untouched/,
+    /first Git that runs as stable \*\*>=2\.54\.0\*\*/,
+    /Machine PATH precedes user PATH, hence, when shadowed, the profile `git` function/,
+    /not a policy bypass[^\n]*a block on it stops setup/,
   ]);
-  contract(appendix('git-download'), [/without cloning/, /only `-InstallIfMissing`/, /2\.54\.0\.windows\.1/, /find\/sort excluded.*\*\*before extraction\*\*/, /Migration\/replacement modes are outside setup/, /Verify completion.*absolute `\$GitExe` before step 2/]);
+  contract(appendix('git-download'), [/without cloning/, /only `-InstallIfMissing`/, /2\.54\.0\.windows\.1/, /find\/sort excluded.*\*\*before extraction\*\*/, /unusable copies stay untouched/, /Migration\/replacement modes are outside setup/, /Verify completion.*absolute `\$GitExe` before step 2/]);
   assert.match(psBlock('docs-clone'), /& \$GitExe clone/);
   assert.match(psBlock('agent-checkout'), /& \$GitExe -C "\$AgentRepo" pull --ff-only/);
 });
@@ -258,7 +279,7 @@ test('HTTPS handoff needs no Git and hashes the saved script before execution', 
 });
 
 test('Git registration preserves user environment and is verified outside the SDK profile', () => {
-  contract(setup, [/install --git-exe "\$GitExe"/, /configure-git --git-exe "\$GitExe"/, /SN_FLUENT_ENV_REFRESH/, /PATH itself is never passed through `setx`/, /independently of shell type/, /npm-cli\.js/]);
+  contract(setup, [/install --git-exe "\$GitExe"/, /configure-git --git-exe "\$GitExe"/, /SN_FLUENT_ENV_REFRESH/, /PATH itself is never passed through `setx`/, /registers it in \*\*Windows user PATH\*\*/, /npm-cli\.js/]);
   contract(appendix('rationale'), [/preserves raw Windows user PATH\/type and backups/, /Machine PATH, Git installation\/config and policy are unchanged/, /Unrelated custom settings remain preserved/]);
   contract(appendix('terminal-check'), [/including outside the SDK profile/, /report untested hosts separately/, /Reload Window alone is not a guaranteed environment refresh/, /refreshed launcher/]);
   assert.doesNotMatch(setup, /\$env:Path =/);
@@ -302,15 +323,15 @@ test('fresh-terminal acceptance requires live PID, strict command kinds and matc
     /incompatible override requires review rather than replacement/, /Settings are preconditions, not runtime proof/,
     /Set-Location -LiteralPath/, /recorded agent-repo absolute path, avoiding another project's SDK/,
     /Restore no old variables/, /without defining it, injecting PATH or copying startup commands/,
-    /Git Application path\/version with step 1/, /SDK version with the verified global package/,
+    /Application, or the profile Function when shadowed/, /SDK version with the verified global package/,
     /mismatches\/nonzero payload results fail acceptance/, /Missing Function[^\n]*not shims or npm reinstallation/,
     /Create New Terminal \(With Profile\)/, /genuinely new terminal, not a restored\/reconnected one/,
   ]);
   const verify = psBlock('terminal-verify');
-  contract(verify, [/\$GitCommand.CommandType -ne 'Application'/, /\$SdkCommand.CommandType -ne 'Function'/, /node bin\/sn-fluent-agent.cjs verify/]);
-  assert.ok(verify.indexOf("$GitCommand.CommandType -ne 'Application'") < verify.indexOf('\ngit --version'));
+  contract(verify, [/\$GitCommand.CommandType -notin @\('Application', 'Function'\)/, /execFileSync\('git'/, /\$SdkCommand.CommandType -ne 'Function'/, /node bin\/sn-fluent-agent.cjs verify/]);
+  assert.ok(verify.indexOf("$GitCommand.CommandType -notin") < verify.indexOf('\ngit --version'));
   assert.ok(verify.indexOf("$SdkCommand.CommandType -ne 'Function'") < verify.indexOf('\nnow-sdk --version'));
-  assert.equal((verify.match(/if \(\$LASTEXITCODE -ne 0\)/g) || []).length, 3, 'Git, SDK and payload native exits checked');
+  assert.equal((verify.match(/if \(\$LASTEXITCODE -ne 0\)/g) || []).length, 4, 'Git, Node Git, SDK and payload native exits checked');
   assert.match(appendix('rationale'), /source evidence, not an end-to-end acceptance result/);
   assert.match(setup, /Installation evidence alone is not fresh-terminal acceptance/);
   assert.doesNotMatch(final, /\[pscustomobject\]|ExecutionPolicy\s+Bypass|skipCheck|Stop-Process/i);
@@ -432,7 +453,9 @@ test('missing guide end marker blocks publication rather than publishing incompl
 test('worker retains the exact ZIP pin, absent-only guard and pre-extraction exclusions', () => {
   assert.match(worker, /\[switch\]\$InstallIfMissing/);
   assert.match(worker, /if \(\$InstallIfMissing\)/);
-  assert.match(worker, /Absent-only agent setup will not upgrade or replace/);
+  assert.match(worker, /Absent-only agent setup will not upgrade or replace any/);
+  assert.match(worker, /SIDE-BY-SIDE SETUP:/);
+  assert.match(worker, /Get-Inventory -All/);
   assert.match(worker, /v2\.54\.0\.windows\.1\/MinGit-2\.54\.0-64-bit\.zip/);
   assert.match(worker, /04F937E1F0918B17B9BE6F2294CB2BB66E96E1D9832D1C298E2DE088A1D0E668/);
   assert.match(worker, /\$excludedFiles = @\('usr\/bin\/find\.exe', 'usr\/bin\/sort\.exe'\)/);
@@ -461,7 +484,7 @@ test('skill pins, switches and outcome markers are the ones the worker implement
   }
   assert.match(skill, /-ReplaceFullGit`[^\n]*Never use this for automatic setup/);
   assert.match(skill, /Never run the worker with no mode switch/);
-  for (const marker of ['SKIP:', 'STAGED:', 'VALIDATED STAGING ONLY:', 'SUCCESS:', 'ENVIRONMENT UPDATED', 'FAILED:', 'ABSENT-ONLY SETUP:', 'Staged native Git version/init/status passed']) {
+  for (const marker of ['SKIP:', 'SELECTED_GIT=', 'STAGED:', 'VALIDATED STAGING ONLY:', 'SUCCESS:', 'ENVIRONMENT UPDATED', 'FAILED:', 'ABSENT-ONLY SETUP:', 'SIDE-BY-SIDE SETUP:', 'SHADOWED:', 'Staged native Git version/init/status passed']) {
     assert.ok(skill.includes(marker), `skill omits ${marker}`);
     assert.ok(worker.includes(marker), `worker never logs ${marker}`);
   }

@@ -20,7 +20,7 @@ If extraction is incomplete, use [setup.txt](https://bjornmv.github.io/serviceno
 
 The final step has the installing agent retire only its own idle setup shell after saving all results, then use `run_in_terminal` again to create a fresh SDK-profile terminal. It compares old/new PIDs and verifies Git, the `now-sdk` function and the payload without an extension or injected startup commands. This lifecycle is source-confirmed; a live Copilot run is still needed. If the handoff cannot be performed safely, report installation completion separately from pending terminal integration.
 
-Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step links to the separate [Windows Git setup procedure](git-setup.md), which uses the setup-only `win-git-bootstrap` procedure and worker. Working Git is preserved; only genuinely missing Git is installed, using pinned MinGit 2.54.0.windows.1 with blocked Unix find/sort omitted before extraction.
+Read [setup.md](setup.md) for the overall sequence. Its Git prerequisite step links to the separate [Windows Git setup procedure](git-setup.md), which uses the setup-only `win-git-bootstrap` procedure and worker. A usable Git (>=2.54.0) is preserved and selected by absolute path. If none is usable, including when an existing Git is blocked by application control, broken or older, the pinned MinGit 2.54.0.windows.1 is installed side by side in the per-user location (blocked Unix find/sort omitted before extraction); the other copies are never changed.
 
 The Git page provides a directly downloadable, SHA-256-checked worker, so no Git clone is required to bootstrap Git. The Pages workflow publishes both pages and copies the canonical payload script to `/downloads/Ensure-MinGit254.ps1` in the same deployment. These URLs become available after the change is pushed and Pages deployment succeeds.
 
@@ -66,7 +66,9 @@ The installer prints these manual steps and the guide link after a non-dry-run i
 
 ## Shell-independent Windows Git PATH
 
-On Windows, installation verifies Git >=2.54.0, registers its directory in **Windows user PATH**, and requests native Windows environment propagation. It does not add Git to any PowerShell/VS Code profile, shell startup script, function or alias. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. The Node installer never downloads/reinstalls Git.
+On Windows, installation selects the first usable Git >=2.54.0 (per-user copy first, then PATH, then Program Files), skipping and reporting copies that are blocked, broken or older. It registers the selected directory in **Windows user PATH** and requests native Windows environment propagation. Use `install --git-exe "C:\\path\\to\\git.exe"` to retain the exact executable selected during prerequisites. The Node installer never downloads/reinstalls Git.
+
+Windows puts machine PATH before user PATH, so a system Git (for example a non-whitelisted one under Program Files) can still win for bare `git`. When the installer detects that, it selects the chosen Git for VS Code in three ways, the same as the [VS Code Git repair](docs/fix-vscode-git.md): a `git` function beside the `now-sdk` function in the **PowerShell with now-sdk** profile (PowerShell runs functions before applications, so `git` there always reaches the selected copy), its directory prepended in `terminal.integrated.env.windows` (for Node child processes such as the SDK), and `git.path` for Source Control if unset. The function is removed again once nothing shadows the selected Git. Machine PATH is never edited; outside VS Code, use the absolute path.
 
 Raw PATH and its registry type are backed up and preserved, including long values and `%VARIABLE%` references. `reg.exe` reads the raw value; a typed Windows registry-provider write preserves quotes and the original type. Windows `setx.exe` receives **only** a short owned `SN_FLUENT_ENV_REFRESH` notification marker, never PATH. A missing/blocked native updater or failed readback stops setup. No elevation, machine PATH or policy changes are used. See Microsoft's [setx documentation](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/setx) for future-process behavior and its value-length limit.
 
@@ -76,7 +78,7 @@ For environment repair only, without Git/payload reinstallation:
 node bin/sn-fluent-agent.cjs configure-git --git-exe "C:\\path\\to\\git.exe"
 ```
 
-Known legacy Git profile overrides/startup blocks are removed conservatively, with settings backups. Other profiles and custom settings are preserved. `configure-terminal` now configures only the SDK profile; Git works independently of it. `--no-vscode-settings` does not skip the Windows user environment operation.
+Known legacy Git PATH overrides/startup blocks are removed conservatively, with settings backups. The installer always ensures the `now-sdk` function in the SDK profile and never rewrites other profiles or a modified `git` block (it warns instead). `configure-terminal` configures only the SDK profile: its `now-sdk` function, and the `git` function when shadowed. `--no-vscode-settings` does not skip the Windows user environment operation.
 
 Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 

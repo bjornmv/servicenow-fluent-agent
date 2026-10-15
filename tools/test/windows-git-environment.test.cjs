@@ -107,3 +107,15 @@ for (const scenario of ['blocked', 'concurrent', 'notify-failure']) {
     else assert.equal(result.Writes, 1); // partial registration must NOT be called complete
   });
 }
+
+test('registry PATH parsing keeps the raw value and expands references case-insensitively', () => {
+  const { parseRegistryPath, expandEnvironment, readRegistryPath } = require('../../lib/windows-git-environment.cjs');
+  const output = '\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\r\n    Path    REG_EXPAND_SZ    %SystemRoot%\\system32;C:\\Program Files\\Git\\cmd;%MISSING%\\bin\r\n\r\n';
+  assert.equal(parseRegistryPath(output), '%SystemRoot%\\system32;C:\\Program Files\\Git\\cmd;%MISSING%\\bin');
+  assert.equal(expandEnvironment(parseRegistryPath(output), { SYSTEMROOT: 'C:\\Windows' }), 'C:\\Windows\\system32;C:\\Program Files\\Git\\cmd;%MISSING%\\bin');
+  assert.equal(parseRegistryPath('ERROR: The system was unable to find the specified registry key or value.'), '');
+  const env = { SystemRoot: 'C:\\Windows' };
+  assert.equal(readRegistryPath('user', env, () => ({ status: 1, stdout: '' })), '', 'a user without a personal PATH is normal');
+  assert.throws(() => readRegistryPath('machine', env, () => ({ status: 1, stdout: '' })), /Cannot read machine PATH/);
+  assert.throws(() => readRegistryPath('machine', env, () => ({ error: new Error('EPERM') })), /Cannot read machine PATH: EPERM/);
+});

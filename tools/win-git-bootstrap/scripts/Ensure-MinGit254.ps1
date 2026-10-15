@@ -1,13 +1,15 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-Skip a working Git >=2.54.0; otherwise deploy only official MinGit 2.54.0.windows.1.
+Skip a usable Git >=2.54.0; otherwise deploy only official MinGit 2.54.0.windows.1.
 .DESCRIPTION
 Windows x64, current user, non-elevated. No installer, post-install scripts,
 policy changes, update checker or execution of bundled SSH/Bash/curl.
 .PARAMETER InstallIfMissing
-Agent-setup mode: install only if Git is genuinely absent. Never update,
-repair, replace or migrate an existing installation automatically.
+Agent-setup mode: install only if no usable Git >=2.54.0 exists. Blocked,
+broken or older copies elsewhere are left untouched; the pinned build goes side
+by side into the absent per-user target. Never update, repair, replace or
+migrate an existing installation automatically.
 .PARAMETER InstallForVSCode
 Explicit approved per-user deployment for VS Code only. Select only the managed
 Git path at the exact pinned version; never probe other Git installations or
@@ -154,16 +156,16 @@ function Get-VSCodeGit {
     param([switch]$RequireAbsent)
     # No PATH lookup, system registration reads or unselected executable probes.
     if ($RequireAbsent -and (Test-Path -LiteralPath $target)) {
-        throw 'VS Code target appeared during preparation; refusing to replace or repair it.'
+        throw 'Per-user target appeared during preparation; refusing to replace or repair it.'
     }
     if (Test-Path -LiteralPath $targetGit -PathType Leaf) {
-        if ($RequireAbsent) { throw 'VS Code target executable appeared during preparation.' }
+        if ($RequireAbsent) { throw 'Per-user target executable appeared during preparation.' }
         $git = Read-GitVersion $targetGit
-        if ($git.FullVersion -ne $pinned) { throw 'Selected VS Code Git is not the exact pinned build. No replacement is allowed.' }
+        if ($git.FullVersion -ne $pinned) { throw 'Selected per-user Git is not the exact pinned build. No replacement is allowed.' }
         return $git
     }
     if (Test-Path -LiteralPath $target) {
-        throw 'VS Code target exists without a verified executable. No overwrite or repair is allowed.'
+        throw 'Per-user target exists without a verified executable. No overwrite or repair is allowed.'
     }
     foreach ($key in @($fullGitKey, 'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
         if (-not (Test-Path -LiteralPath $key)) { continue }
@@ -172,33 +174,68 @@ function Get-VSCodeGit {
         $location = ([string]$record.InstallLocation).Trim().Trim('"').Replace('/', '\').TrimEnd('\')
         $uninstall = ([string]$record.UninstallString).Replace('/', '\')
         if ($location -notmatch '^[A-Za-z]:\\' -or $location -match '[%\r\n]|(^|\\)\.{1,2}(\\|$)' -or $location -ieq $target -or $uninstall.IndexOf($target + '\', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            throw 'Per-user Git registration remains associated with the VS Code target or has an unverifiable location. Stop for review.'
+            throw 'Per-user Git registration remains associated with the per-user target or has an unverifiable location. Stop for review.'
         }
     }
 }
 function Get-Inventory {
-    $paths = @()
-    $command = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) { $paths += $command.Source }
-    $paths += $targetGit
-    foreach ($key in @($fullGitKey, 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
-        if (Test-Path -LiteralPath $key) {
-            $record = Get-ItemProperty -LiteralPath $key
-            if ($record.InstallLocation) { $paths += Join-Path $record.InstallLocation 'cmd\git.exe' }
+    # A copy that cannot run is recorded as unusable, never as absence and never
+    # as a reason to touch it. The per-user target is probed first, before any
+    # other copy is even looked up, so an existing managed copy is selected
+    # without launching a blocked system Git. Unless -All is given, probing
+    # stops at the first usable copy.
+    param([switch]$All)
+    $seen = @()
+    foreach ($round in @('target', 'others')) {
+        if ($round -eq 'target') {
+            $paths = @($targetGit)
+        } else {
+            $paths = @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+            foreach ($key in @($fullGitKey, 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
+                if (Test-Path -LiteralPath $key) {
+                    $record = Get-ItemProperty -LiteralPath $key
+                    if ($record.InstallLocation) { $paths += Join-Path $record.InstallLocation 'cmd\git.exe' }
+                }
+            }
+            foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+                if ($base) { $paths += Join-Path $base 'Git\cmd\git.exe' }
+            }
+        }
+        foreach ($path in $paths) {
+            if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+            $resolved = (Resolve-Path -LiteralPath $path).Path
+            if ($seen -contains $resolved) { continue }
+            $seen += $resolved
+            try {
+                $git = Read-GitVersion $resolved
+                if ($git.Version -ge $minimum) { $git.Status = 'usable' } else { $git.Status = 'older' }
+            } catch {
+                $git = @{ Path = $resolved; Version = $null; FullVersion = 'unknown'; Status = 'unusable'; Reason = $_.Exception.Message }
+            }
+            $git
+            if ($git.Status -eq 'usable' -and -not $All) { return }
         }
     }
-    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-        if ($base) { $paths += Join-Path $base 'Git\cmd\git.exe' }
+}
+function Get-PathShadow {
+    # New processes get machine PATH first, then user PATH, so a system Git in
+    # machine PATH wins over any user PATH entry. Report the first other git.exe
+    # that a new process would find before GitDirectory. Read-only.
+    param([string]$GitDirectory)
+    $own = $GitDirectory.TrimEnd('\')
+    $machine = [string](Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -Name Path -ErrorAction Stop).Path
+    $user = ''
+    if ((Get-Item -LiteralPath 'HKCU:\Environment' -ErrorAction Stop).Property -contains 'Path') {
+        $user = [string](Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -ErrorAction Stop).Path
     }
-    $seen = @()
-    foreach ($path in $paths) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-        $resolved = (Resolve-Path -LiteralPath $path).Path
-        if ($seen -contains $resolved) { continue }
-        $seen += $resolved
-        # Blocked/unverifiable executable is an error, never "Git is absent".
-        Read-GitVersion $resolved
+    foreach ($entry in (($machine + ';' + $user) -split ';')) {
+        $entry = $entry.Trim().Trim('"').TrimEnd('\')
+        if (-not $entry) { continue }
+        if ($entry -ieq $own) { return $null }
+        try { $candidate = Join-Path $entry 'git.exe'; $found = Test-Path -LiteralPath $candidate -PathType Leaf } catch { $found = $false }
+        if ($found) { return $candidate }
     }
+    return $null
 }
 function Confirm-Archive {
     param([string]$Path)
@@ -339,6 +376,15 @@ function Add-UserGitPath {
     Write-Log 'Verified shell-independent user PATH registration and native environment update. No machine PATH or shell startup file was changed.'
     Write-Log 'Already-running terminals/hosts may retain old environments. Restart affected applications from a refreshed launcher; do not reinstall Git. Live terminal acceptance remains required.'
 }
+function Write-ShadowNotice {
+    param([string]$GitDirectory)
+    # Informational only: never fail an otherwise verified result over it.
+    try { $shadow = Get-PathShadow $GitDirectory }
+    catch { Write-Log "WARNING: Could not check Windows PATH precedence: $($_.Exception.Message)"; return }
+    if ($shadow) {
+        Write-Log "SHADOWED: $shadow precedes $GitDirectory in Windows PATH (machine PATH comes before user PATH). New processes resolve that copy for bare git; select this Git by absolute path. The agent installer configures VS Code terminals and Source Control for it."
+    }
+}
 
 try {
     New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
@@ -352,6 +398,7 @@ try {
         $groups = & "$env:SystemRoot\System32\whoami.exe" /groups /fo csv /nh 2>&1
         if ($LASTEXITCODE -ne 0 -or ($groups -join ' ') -match 'S-1-16-(12288|16384|20480)') { throw 'Use the intended non-elevated user context for environment updates.' }
         Add-UserGitPath (Split-Path -Parent $GitExecutable)
+        Write-ShadowNotice (Split-Path -Parent $GitExecutable)
         Write-Log "ENVIRONMENT UPDATED for $($git.FullVersion): $GitExecutable. No Git installation/configuration changes; existing process environments are not certified."
         exit 0
     }
@@ -360,30 +407,42 @@ try {
         Confirm-VSCodeHostGitConfig
         $inventory = @(Get-VSCodeGit)
         Write-Log 'EXPLICIT VS CODE MODE: only the approved per-user target is selected; other Git installations and Windows PATH remain untouched.'
-    } else {
+    } elseif ($InstallIfMissing) {
         $inventory = @(Get-Inventory)
+    } else {
+        $inventory = @(Get-Inventory -All)
     }
-    foreach ($git in $inventory) { Write-Log "Found $($git.FullVersion): $($git.Path)" }
-    if (-not $ReplaceFullGit -and -not $ValidateOnly -and $inventory.Count -gt 0 -and $inventory[0].Version -ge $minimum) {
-        if ($inventory[0].FullVersion -ne $pinned) { Write-Log 'WARNING: Existing version satisfies threshold but is not the pinned build; no application-control approval is implied.' }
+    foreach ($git in $inventory) {
+        if ($git.Status -eq 'unusable') { Write-Log "Unusable Git (cannot run; left untouched): $($git.Path). $($git.Reason)" }
+        elseif ($git.Status -eq 'older') { Write-Log "Older Git (left untouched): $($git.FullVersion): $($git.Path)" }
+        else { Write-Log "Found $($git.FullVersion): $($git.Path)" }
+    }
+    $usable = @($inventory | Where-Object { $_.Status -ne 'unusable' -and $_.Status -ne 'older' })
+    if (-not $ReplaceFullGit -and -not $ValidateOnly -and $usable.Count -gt 0) {
+        if ($usable[0].FullVersion -ne $pinned) { Write-Log 'WARNING: Existing version satisfies threshold but is not the pinned build; no application-control approval is implied.' }
+        Write-Log "SELECTED_GIT=$($usable[0].Path)"
         Write-Log 'SKIP: Working Git >=2.54.0 found. No download, install, uninstall or configuration changes.'
         exit 0
     }
     if ($InstallIfMissing) {
-        if ($inventory.Count -gt 0) { throw 'An older Git is already installed. Absent-only agent setup will not upgrade or replace it; ask the user.' }
-        foreach ($key in @($fullGitKey, 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
-            if (Test-Path -LiteralPath $key) { throw 'Git registration exists but no executable was verified. Treat this as a repair/policy issue, not absence; stop and ask.' }
+        # No usable Git. Absent-only agent setup will not upgrade or replace any
+        # copy: unusable/older copies elsewhere stay untouched and unselected, and
+        # the pinned build may only go into the absent per-user target.
+        if (Test-Path -LiteralPath $target) { throw 'The managed Git directory already exists but holds no usable Git. Absent-only agent setup will not upgrade, overwrite or repair it; stop and ask.' }
+        $null = Get-VSCodeGit
+        Confirm-VSCodeHostGitConfig
+        if ($inventory.Count -gt 0) { Write-Log 'SIDE-BY-SIDE SETUP: no usable Git >=2.54.0; the copies listed above stay installed, untouched and unselected.' }
+        else { Write-Log 'ABSENT-ONLY SETUP: no Git executable or managed installation directory found.' }
+    } elseif (-not $InstallForVSCode) {
+        foreach ($git in $inventory) { if ($git.Status -eq 'unusable') { throw $git.Reason } }
+        if ($inventory.Count -gt 1 -or ($inventory.Count -eq 1 -and $inventory[0].Path -ne $targetGit)) {
+            throw 'Conflicting or non-managed Git installation. Resolve its installation scope/PATH manually.'
         }
-        if (Test-Path -LiteralPath $target) { throw 'The Git installation directory already exists. Absent-only agent setup will not overwrite or repair it; stop and ask.' }
-        Write-Log 'ABSENT-ONLY SETUP: no Git executable, standard Git registration or managed installation directory found.'
     }
-    if ($inventory.Count -gt 1 -or ($inventory.Count -eq 1 -and $inventory[0].Path -ne $targetGit)) {
-        throw 'Conflicting or non-managed Git installation. Resolve its installation scope/PATH manually.'
-    }
-    if ($env:GIT_SSH -or $env:GIT_SSH_COMMAND -or $env:GIT_CONFIG_SYSTEM -or $env:GIT_CONFIG_NOSYSTEM -or ($env:GIT_CONFIG_COUNT -and -not $InstallForVSCode) -or $env:GIT_SSL_NO_VERIFY) {
+    if ($env:GIT_SSH -or $env:GIT_SSH_COMMAND -or $env:GIT_CONFIG_SYSTEM -or $env:GIT_CONFIG_NOSYSTEM -or ($env:GIT_CONFIG_COUNT -and -not ($InstallForVSCode -or $InstallIfMissing)) -or $env:GIT_SSL_NO_VERIFY) {
         throw 'Git environment overrides are present. Review them before deployment; values were not logged.'
     }
-    if ($InstallForVSCode -and ($env:GIT_DIR -or $env:GIT_WORK_TREE -or $env:GIT_COMMON_DIR -or $env:GIT_INDEX_FILE -or $env:GIT_OBJECT_DIRECTORY -or $env:GIT_ALTERNATE_OBJECT_DIRECTORIES -or $env:GIT_CONFIG_GLOBAL -or $env:GIT_CONFIG_PARAMETERS -or $env:GIT_EXEC_PATH -or $env:GIT_TEMPLATE_DIR)) {
+    if (($InstallForVSCode -or $InstallIfMissing) -and ($env:GIT_DIR -or $env:GIT_WORK_TREE -or $env:GIT_COMMON_DIR -or $env:GIT_INDEX_FILE -or $env:GIT_OBJECT_DIRECTORY -or $env:GIT_ALTERNATE_OBJECT_DIRECTORIES -or $env:GIT_CONFIG_GLOBAL -or $env:GIT_CONFIG_PARAMETERS -or $env:GIT_EXEC_PATH -or $env:GIT_TEMPLATE_DIR)) {
         throw 'Git repository/configuration overrides are present. Review them before VS Code deployment; values were not logged.'
     }
     $groups = & "$env:SystemRoot\System32\whoami.exe" /groups /fo csv /nh 2>&1
@@ -501,7 +560,10 @@ try {
     foreach ($key in @('http.sslBackend', 'core.sshCommand')) {
         if ((Invoke-Git $targetGit @('config', '--system', '--get', $key)) -ne $settings[$key]) { throw "Installed system setting mismatch: $key" }
     }
-    if (-not $InstallForVSCode) { Add-UserGitPath (Join-Path $target 'cmd') }
+    if (-not $InstallForVSCode) {
+        Add-UserGitPath (Join-Path $target 'cmd')
+        Write-ShadowNotice (Join-Path $target 'cmd')
+    }
     Confirm-NoDeploymentBlocks $auditStart
     Write-Log "SUCCESS: Official MinGit $pinned deployed at $target. Only native Git was exercised; private authentication is untested."
     Write-Log 'Check security events for this deployment interval before calling it warning-free. No automatic update or reboot.'

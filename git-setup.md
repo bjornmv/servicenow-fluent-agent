@@ -10,13 +10,16 @@ The authoritative installation rules are in the **[win-git-bootstrap skill](http
 
 ## 1. Decide whether installation is needed
 
-- Verify Node.js first as required by `setup.md`. Do not install other missing prerequisites automatically.
-- Preserve a working stable Git **>=2.54.0**. If only PATH is stale, use the verified executable's absolute path rather than adding a second installation.
-- Use the skill's standard-path and registry checks before treating Git as absent.
-- Stop if Git is older, registered but broken, or present but unable to run. Do not upgrade, repair, downgrade or migrate it automatically.
-- Run only as the intended non-elevated Windows x64 user. Windows PowerShell 5.1, Windows `tar.exe` and Windows OpenSSH must be available. If they are missing or policy blocks them, stop for review; do not install Windows features or change policy.
+Follow the discovery result from `setup.md` step 1. Only `GIT_EXE=none` reaches this page.
 
-Only genuinely missing Git proceeds below. The worker's **`-InstallIfMissing`** mode repeats the checks and refuses to replace an existing installation.
+| Situation | Action |
+| --- | --- |
+| A Git **>=2.54.0** runs anywhere (PATH, per-user, Program Files, registered) | Not this page. Select it by absolute path; do not install a second copy. |
+| No Git at all | Install the pinned MinGit (below). |
+| Only blocked, broken or older copies (`GIT_UNUSABLE=`) | Install the pinned MinGit **side by side** in the per-user target (below). The other copies stay installed, untouched and unselected. |
+| `%LOCALAPPDATA%\Programs\Git` exists without a usable Git | Stop and ask. Never overwrite, repair or upgrade it. |
+
+Side-by-side is not a policy bypass. The new copy runs under the same application-control policy; the worker checks the security logs for blocks on it and fails closed. If the organization blocks it too, stop and ask IT for an approved Git; setup can then select that copy by absolute path. Run only as the intended non-elevated Windows x64 user, with Windows PowerShell 5.1, Windows `tar.exe` and Windows OpenSSH available. If they are missing or blocked, stop: do not install Windows features or change policy.
 
 ## 2. Obtain and review the worker without Git
 
@@ -29,7 +32,7 @@ Run this **download-and-verify block only**, in non-elevated Windows PowerShell:
 ```powershell
 $ErrorActionPreference = 'Stop'
 $BootstrapUrl = 'https://bjornmv.github.io/servicenow-fluent-agent/downloads/Ensure-MinGit254.ps1'
-$ExpectedBootstrapSha256 = '430FA8AA6A577548D6A374B47A71CBFDDE4EF8112A4598A210A08590990B6F2B'
+$ExpectedBootstrapSha256 = 'ABA785D774837C83D2168780148CEA0C30AAA28EE614370400019CA378414F56'
 $RunId = '{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
 $BootstrapDirectory = Join-Path $env:LOCALAPPDATA "Git254Bootstrap\bootstrap\$RunId"
 New-Item -ItemType Directory -Path $BootstrapDirectory -Force -ErrorAction Stop | Out-Null
@@ -46,7 +49,7 @@ Read the saved script before executing it, using a file-reading tool with bounde
 
 If the URL is unavailable, the download fails, or the hash mismatches, stop. Do not silently substitute another Git release, installer, script or download source. If execution policy (`Restricted`, `AllSigned`, or `RemoteSigned` with Mark-of-the-Web) or application control prevents execution, the worker never ran and wrote no log; request the organization's approval/signing process. Do not remove the zone marker (`Unblock-File`), run `Set-ExecutionPolicy` at any scope, pass `-ExecutionPolicy`, elevate, or retry through another interpreter.
 
-## 3. Run the reviewed script in absent-only mode
+## 3. Run the reviewed script in setup mode
 
 After the hash check and source review, run it synchronously and wait:
 
@@ -62,7 +65,7 @@ Use the command as shown; do not add a `2>&1` capturing wrapper around child Pow
 
 In an agent harness, use the approved direct-process tool with an absolute executable and argument array. Environment variables in tool arguments must be resolved to real paths; do not use a CMD/batch launcher. Do not start a detached job and assume success.
 
-The worker installs only the pinned MinGit **2.54.0.windows.1** ZIP, with Unix `find.exe` and `sort.exe` omitted **before extraction**. It keeps Windows OpenSSH, Schannel/certificate verification and deployment-path security checks. Never pass `-ReplaceFullGit` during setup; staging-only modes are not installation success.
+The worker repeats discovery (per-user target first, then PATH, registrations and Program Files) and logs `SKIP:` with `SELECTED_GIT=` if a usable Git exists. Otherwise it installs only the pinned MinGit **2.54.0.windows.1** ZIP into the absent per-user target, with Unix `find.exe` and `sort.exe` omitted **before extraction**, and logs `SIDE-BY-SIDE SETUP:` when unusable copies were found. It keeps Windows OpenSSH, Schannel/certificate verification and deployment-path security checks. Never pass `-ReplaceFullGit` during setup; staging-only modes are not installation success.
 
 ## 4. Verify, then return to setup
 
@@ -79,14 +82,12 @@ $GitExe = Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe'
 
 Require successful commands, exact `git version 2.54.0.windows.1`, `schannel`, the Windows OpenSSH path, and absence of `usr\bin\find.exe` and `usr\bin\sort.exe` beneath the managed Git directory. On any failure or relevant security block, stop and report it rather than relaxing the checks.
 
-If the worker reports `SKIP`, verify the existing executable at the path it found and set `$GitExe` to **that** path; do not assume it is the per-user managed path. Use `$GitExe` for all subsequent clone/pull commands. Parent processes can retain stale PATH; do not reinstall to fix that.
+If the worker reports `SKIP`, set `$GitExe` to the logged `SELECTED_GIT=` path, not the per-user managed path. Use `$GitExe` for all subsequent clone/pull commands. Parent processes can retain stale PATH; do not reinstall to fix that.
 
-A fresh bootstrap registers Git in Windows **user PATH** and requests native Windows environment propagation. It preserves the raw PATH/type and never passes PATH through `setx`; only a short owned `SN_FLUENT_ENV_REFRESH` marker uses that native updater. The full Agent setup also provides `configure-git` / the worker's explicit `-RefreshEnvironment -GitExecutable <absolute path>` mode for an existing verified Git, without reinstalling it. No shell-specific Git overrides are required. Existing terminal hosts may still need restarting from a refreshed launcher; do not call setup complete until bare `git` resolves in the actual terminal hosts the user uses.
+A fresh install registers Git in Windows **user PATH** and requests native environment propagation (PATH itself never goes through `setx`). Machine PATH precedes user PATH, so a `SHADOWED:` line means another `git.exe` (typically the blocked one) still wins for bare `git` in new processes. That is expected: setup step 5 selects this Git for VS Code with a `git` function beside `now-sdk` in the SDK profile, a `terminal.integrated.env.windows` prefix and `git.path`. Outside VS Code, use the absolute path.
 
-Only then return to **step 2 of `setup.md`**. Report the version, verified path, whether Git was preserved/installed, and the worker result/log path. Do not claim private authentication or ServiceNow connectivity.
+Then return to **step 1 of `setup.md`**, rerun discovery and continue. Report the version, verified path, whether Git was preserved/installed, unusable copies left untouched, and the worker result/log path. Do not claim private authentication or ServiceNow connectivity.
 
-## Scope and evidence
+## Evidence
 
-The reduced MinGit staging copy passed native init/add/commit/branch/merge/local push/clone/fetch/status and public HTTPS tests. The excluded Unix utilities were never written, and no new Defender ASR or executable/code-integrity blocks were found in that test window. PowerShell constrained-language script-policy records can still occur.
-
-Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. The initial shell-specific profile workaround was insufficient and has been replaced by user PATH registration plus native environment propagation. A real Windows Terminal fresh-environment test resolved Git through a native child process, Windows `where.exe`, and PowerShell with `-NoProfile`, without injecting PATH or SDK startup code. That is not certification of every already-running host; actual user-terminal checks remain mandatory. See the canonical [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/references/validation.md). This is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.
+Test history, including the selective-extraction rationale and fresh-install terminal results, is in the [validation record](https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/main/tools/win-git-bootstrap/references/validation.md). It is not permission to weaken security policy or a guarantee of notification-free behavior on every machine.

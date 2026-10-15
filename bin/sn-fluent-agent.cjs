@@ -7,8 +7,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
 const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
-const { prepareTerminalSettings, writeTerminalSettings } = require('../lib/vscode-terminal.cjs');
-const { configureWindowsGit } = require('../lib/windows-git-environment.cjs');
+const { findGit, prepareTerminalSettings, writeTerminalSettings, terminalEnvKey } = require('../lib/vscode-terminal.cjs');
+const { configureWindowsGit, detectPathShadow } = require('../lib/windows-git-environment.cjs');
 const { payloadFiles } = require('../lib/payload-files.cjs');
 const { generate: generateBaseline } = require('../tools/generate-baseline.cjs');
 
@@ -275,17 +275,24 @@ function ensureObjectSetting(settings, key) {
 }
 
 function configureVsCodeSettings(summary) {
+  const shadowedBy = summary.windowsGit?.shadowedBy || null;
   if (noVscodeSettings) {
     summary.vscodeSettings = 'skipped (--no-vscode-settings)';
+    if (shadowedBy) summary.gitSelectionWarnings = [`VS Code Git selection skipped: ${shadowedBy} precedes the selected Git in Windows PATH. Run configure-git, or add the profile git function, ${terminalEnvKey} prefix and git.path as in docs/fix-vscode-git.md.`];
     return;
   }
 
   const file = settingsPath();
   const original = readTextIfExists(file) ?? '{}\n';
-  // SDK profile only; Git PATH belongs to the Windows user environment.
-  const terminal = process.platform === 'win32' ? prepareTerminalSettings(file, flagValue('--git-exe')) : null;
+  // SDK profile, plus VS Code Git selection only when another Git shadows the
+  // selected one in Windows PATH. Git PATH itself is the Windows user environment.
+  const gitExe = summary.windowsGit?.git.executable || flagValue('--git-exe');
+  const terminal = process.platform === 'win32' ? prepareTerminalSettings(file, gitExe, { shadowedBy }) : null;
   let updated = terminal ? terminal.text : original;
-  if (terminal) summary.vscodeGit = terminal.git;
+  if (terminal) {
+    summary.vscodeGit = terminal.git;
+    summary.gitSelectionWarnings = terminal.warnings;
+  }
   let settings;
 
   try {
@@ -409,22 +416,42 @@ function install() {
 }
 
 function configureGit() {
-  const plan = prepareTerminalSettings(settingsPath(), flagValue('--git-exe'), { cleanupOnly: true });
+  if (process.platform !== 'win32') throw new Error('configure-git requires Windows.');
+  const git = findGit(flagValue('--git-exe'));
+  // Read-only; checked before any change so settings problems stop early.
+  const shadowedBy = detectPathShadow(git.executable);
+  const plan = prepareTerminalSettings(settingsPath(), git.executable, { cleanupOnly: true, shadowedBy });
   const result = configureWindowsGit({ gitExe: plan.git.executable, dryRun });
-  const cleanup = writeTerminalSettings(plan, { dryRun });
+  const settings = writeTerminalSettings(plan, { dryRun });
   console.log(`Windows Git environment: ${result.status}`);
   if (result.log) console.log(result.log);
-  console.log(`Legacy profile workaround cleanup: ${cleanup.status}`);
-  if (cleanup.backup) console.log(`Settings backup: ${cleanup.backup}`);
+  console.log(`VS Code Git settings: ${settings.status}`);
+  if (settings.backup) console.log(`Settings backup: ${settings.backup}`);
+  printGitSelection(plan.git, shadowedBy, plan.warnings);
   console.log('Restart affected terminal applications from a refreshed launcher. Existing processes are not forced to refresh or killed.');
-  console.log('Verify bare git --version in the actual terminal hosts you use; no shell/profile-specific PATH is required.');
+}
+
+function printGitSelection(git, shadowedBy, warnings = []) {
+  console.log(`Selected Git: ${git.executable} (${git.version})`);
+  for (const entry of git.unusable || []) console.log(`Unusable Git left untouched: ${entry}`);
+  if (shadowedBy) {
+    console.log(`Shadowed in Windows PATH by: ${shadowedBy}`);
+    console.log(`PowerShell with now-sdk terminals run the selected Git through a git function beside now-sdk; VS Code terminals prepend its directory (${terminalEnvKey}) for child processes; Source Control uses git.path. Other terminal applications still resolve ${shadowedBy}; use the absolute path there.`);
+  } else {
+    console.log('Bare git resolves to the selected Git in new processes after the user PATH update.');
+  }
+  for (const warning of warnings) console.log(`WARNING: ${warning}`);
+  console.log('Verify bare git --version in a NEW VS Code terminal and in any other terminal host you use.');
 }
 
 function configureTerminal() {
   if (process.platform !== 'win32') throw new Error('configure-terminal requires Windows.');
-  const plan = prepareTerminalSettings(settingsPath(), flagValue('--git-exe'));
+  const git = findGit(flagValue('--git-exe'));
+  // Keeps the profile git function in step with Git shadowing (read-only check).
+  const plan = prepareTerminalSettings(settingsPath(), git.executable, { shadowedBy: detectPathShadow(git.executable) });
   const result = writeTerminalSettings(plan, { dryRun });
   console.log(`VS Code terminal settings: ${result.status}`);
+  for (const warning of plan.warnings) console.log(`WARNING: ${warning}`);
   console.log(`Verified Git: ${plan.git.executable} (${plan.git.version})`);
   if (result.backup) console.log(`Settings backup: ${result.backup}`);
   console.log('SDK profile configuration only. Create a NEW PowerShell with now-sdk terminal; Get-Command now-sdk must resolve to a Function before running now-sdk --version.');
@@ -591,6 +618,7 @@ function printInstallSummary(summary, receiptCount) {
   if (summary.windowsGit) {
     console.log(`Windows Git environment: ${summary.windowsGit.status}`);
     if (summary.windowsGit.log) console.log(summary.windowsGit.log);
+    printGitSelection(summary.windowsGit.git, summary.windowsGit.shadowedBy, summary.gitSelectionWarnings);
   }
 
   if (summary.skippedConflicts.length) {
@@ -611,7 +639,7 @@ function printInstallSummary(summary, receiptCount) {
   console.log('\nFor SDK acceptance, create a NEW PowerShell with now-sdk terminal after profile configuration.');
   console.log('Require Get-Command now-sdk to resolve to a Function before running now-sdk --version; do not probe batch shims or reinstall for an old terminal.');
   console.log('Restart affected terminal applications from a refreshed launcher if Git PATH remains stale; reload alone may retain old process environments.');
-  console.log('Run bare git --version in actual fresh terminals before reporting setup complete. No shell-specific Git PATH workaround is installed.');
+  console.log('Run bare git --version in actual fresh terminals before reporting setup complete. The profile git function is added only when another Git shadows the selected one.');
 
   if (!summary.dryRun && !summary.skippedConflicts.length && !summary.skippedObsoleteConflicts.length) {
     console.log('\nNext: connect your PDI (if not already connected).');
@@ -637,8 +665,8 @@ function help() {
 
 Commands:
   install    Copy payload files into this user's profile and configure VS Code settings.
-  configure-git    Register existing Git in user PATH, request native Windows environment propagation and remove known legacy profile workarounds. No Git/payload reinstall.
-  configure-terminal    Configure the SDK terminal profile only, not Git PATH.
+  configure-git    Register the selected Git in user PATH, request native Windows environment propagation, select it for VS Code terminals/Source Control when another Git precedes it in Windows PATH, and remove known legacy profile workarounds. No Git/payload reinstall.
+  configure-terminal    Configure the SDK terminal profile: now-sdk function, plus the git function when another Git shadows the selected one. Not Git PATH.
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
   check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.

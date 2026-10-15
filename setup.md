@@ -5,7 +5,7 @@ permalink: /setup/
 # Agent-Assisted Installation
 
 ```text
-SETUP_PROTOCOL_VERSION=0.3.12
+SETUP_PROTOCOL_VERSION=0.3.13
 ```
 
 Give a new agent session this prompt to install this agent:
@@ -18,7 +18,7 @@ Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its ins
 
 **Target: Windows x64, VS Code, GitHub Copilot agent mode.** Another harness may perform supported steps 1–6; step 7 requires real VS Code terminal evidence.
 
-Node.js must already be installed. Full setup authorizes missing-Git bootstrap, global SDK package install/update, the two checkouts, agent configuration and missing-index creation. Existing-index replacement and corpus changes require separate approval. Authentication, deployment, other prerequisites and elevation are outside scope.
+Node.js must already be installed. Full setup authorizes the pinned per-user MinGit when no usable Git exists (absent, blocked, broken or older), global SDK package install/update, the two checkouts, agent configuration and missing-index creation. Existing-index replacement and corpus changes require separate approval. Authentication, deployment, other prerequisites and elevation are outside scope.
 
 Use these rules throughout:
 
@@ -41,13 +41,20 @@ Work through the cards in order. Read the complete verified guide, including app
 
 ### 1. Check prerequisites and ensure Git
 
-**Pre:** Node.js **>=20.18.0**; Git discovery includes PATH, standard locations and registration.
+**Pre:** Node.js **>=20.18.0**. Discovery selects the first Git that runs as stable **>=2.54.0**.
 
 **Run:** [B: prerequisite checks](#prerequisites).
 
-**Expect:** A verified absolute `$GitExe` and stable Git **>=2.54.0**, preserved unchanged.
+**Expect:** A verified absolute `$GitExe`, preserved unchanged. `GIT_UNUSABLE=` lines name skipped copies; they stay untouched.
 
-**If–then:** Missing/failing/old Node → report the prerequisite failure. Genuinely absent Git → [A2: verified Git bootstrap](#git-download). Older, blocked, broken, prerelease or ambiguous Git → ask for review, not automatic replacement. Continue only after verification.
+**If–then:**
+
+| Result | Next action |
+| --- | --- |
+| Node missing/failing/old | Report the prerequisite failure. |
+| `GIT_EXE=<path>` | Continue with that path. |
+| `GIT_EXE=none` | [A2](#git-download), then rerun B. |
+| Discovery throws | Ask for review. |
 
 ### 2. Install now-sdk
 
@@ -74,15 +81,15 @@ if ($LASTEXITCODE -ne 0) { throw 'SDK worker stopped; inspect this run, do not r
 | Confirmed native or launch/policy failure | Report the actual failure and logs. |
 | No supported completion route | Ask the concrete question in [Outcome](#outcome); preserve the run. |
 
-### 3. Keep Git shell-independent
+### 3. Select Git, not the first Git on PATH
 
-**Pre:** Git is verified, but this process may still have stale PATH.
+**Pre:** Git is verified; this process may have stale PATH, and another copy may precede it.
 
-**Run:** Continue using `$GitExe`; step 5 registers its directory in **Windows user PATH**, independently of shell type.
+**Run:** Keep using `$GitExe`; step 5 registers it in **Windows user PATH**. If another `git.exe` precedes it (machine PATH first), step 5 also adds a profile `git` function, a VS Code PATH prefix and `git.path`.
 
-**Expect:** Existing PATH values/type and unrelated settings preserved with backups.
+**Expect:** PATH values/type, other Git copies and unrelated settings preserved with backups.
 
-**If–then:** Stale terminal host → refresh it safely during step 7, not by reinstalling Git or injecting shell-specific PATH. [Why](#rationale).
+**If–then:** Stale host → refresh during step 7, not by reinstalling. Shadowed outside VS Code → use `$GitExe`. [Why](#rationale).
 
 ### 4. Clone ServiceNowDocs
 
@@ -106,7 +113,7 @@ node bin/sn-fluent-agent.cjs install --git-exe "$GitExe"
 if ($LASTEXITCODE -ne 0) { throw 'Agent installation failed; stop setup.' }
 ```
 
-**Expect:** Payload installed, Git user environment registered, **PowerShell with now-sdk** profile configured. The Function uses Node with project-local SDK when present, otherwise global SDK; Git is profile-independent.
+**Expect:** Payload installed, Git registered (selected for VS Code when shadowed), **PowerShell with now-sdk** profile with its `now-sdk` function. The Function uses Node with project-local SDK when present, otherwise global SDK; Git is profile-independent.
 
 **If–then:** Incomplete command → recover it; confirmed failure → report it. Preserve custom settings. Opening this folder in VS Code is optional. Maintenance-only commands are in [F](#rationale).
 
@@ -156,7 +163,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Documentation lookup verification failed; stop
 
 **Run:** The agent performs [E: terminal handoff and checks](#terminal-check) with supported terminal tools.
 
-**Expect:** Different old/new PIDs; Git resolves to the recorded Application path/version, `now-sdk` to the profile Function with the verified global version; payload verification passes.
+**Expect:** Different old/new PIDs; Git reports the recorded `GIT_EXE` version, `now-sdk` to the profile Function with the verified global version; payload verification passes.
 
 **If–then:** Missing function, mismatched version or native error → report that specific failure. Unsafe/unavailable handoff → ask the user to create a new terminal with the named profile and provide the same checks. Installation evidence alone is not fresh-terminal acceptance.
 
@@ -206,7 +213,7 @@ Write-Output "MANIFEST_PATH=$ManifestPath"
 ```
 
 <a id="git-download"></a>
-### A2. Genuinely absent Git only
+### A2. No usable Git: pinned MinGit
 
 Restore `$GuideDir` / `$ManifestPath` from A1 if needed. Fetch the separate [Windows Git setup procedure](https://bjornmv.github.io/servicenow-fluent-agent/git-setup/) without cloning:
 
@@ -222,7 +229,7 @@ Write-Output "GIT_GUIDE=$GitGuide"
 Write-Output "GIT_WORKER_SHA256=$($Manifest.gitWorker.sha256)"
 ```
 
-Read the saved guide completely. Its expected digest and saved worker must also match `manifest.gitWorker.sha256`. Follow only `-InstallIfMissing`: pinned MinGit **2.54.0.windows.1**, Unix find/sort excluded **before extraction**. Migration/replacement modes are outside setup. Verify completion and record the absolute `$GitExe` before step 2.
+Read the saved guide completely. Its expected digest and saved worker must also match `manifest.gitWorker.sha256`. Follow only `-InstallIfMissing`: pinned MinGit **2.54.0.windows.1**, Unix find/sort excluded **before extraction**; unusable copies stay untouched. Migration/replacement modes are outside setup. Verify completion, rerun B and record the absolute `$GitExe` before step 2.
 
 <a id="sdk-download"></a>
 ### A3. Prepare the SDK worker
@@ -232,7 +239,7 @@ Download without executing; read the saved script with bounded file tools. A rev
 <!-- setup-block:sdk-download -->
 ```powershell
 $ErrorActionPreference = 'Stop'
-$ExpectedSdkSetupSha256 = '382756E2036370193FA580084F2432BD75CE122112691F6BD905BF43C4F4F291'
+$ExpectedSdkSetupSha256 = 'CA3AB4C333BEEA32BF1A5CCBB385D10E6ED579B5D05BB2B07C44812E49AE4406'
 # Restore the recorded absolute manifest path if the shell context changed.
 $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 if ($Manifest.sdkWorker.file -ne 'downloads/Invoke-SdkSetup.ps1' -or $Manifest.sdkWorker.sha256 -ne $ExpectedSdkSetupSha256) { throw 'SDK worker manifest/guide mismatch; stop.' }
@@ -263,48 +270,47 @@ node.exe -e "const [a,b]=process.versions.node.split('.').map(Number);process.ex
 if ($LASTEXITCODE -ne 0) { throw 'Node.js >=20.18.0 required; stop.' }
 ```
 
-Then discover Git; an executable that fails or remaining registry/directory evidence is not absence:
+Then discover Git; unusable copies are recorded and skipped:
 
 <!-- setup-block:git-check -->
 ```powershell
 $ErrorActionPreference = 'Stop'
 $GitExe = $null
-$Found = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($Found) { $GitExe = $Found.Source }
-$GitRoots = @((Join-Path $env:LOCALAPPDATA 'Programs\Git'), (Join-Path $env:ProgramFiles 'Git'))
-if (${env:ProgramFiles(x86)}) { $GitRoots += Join-Path ${env:ProgramFiles(x86)} 'Git' }
-$GitKeys = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')
-$Registered = @()
-if (-not $GitExe) {
-    foreach ($Root in $GitRoots) {
-        $Candidate = Join-Path $Root 'cmd\git.exe'
-        if (Test-Path -LiteralPath $Candidate -PathType Leaf -ErrorAction Stop) { $GitExe = $Candidate; break }
-    }
-}
-if (-not $GitExe) {
-    $Registered = @($GitKeys | Where-Object { Test-Path -LiteralPath $_ -ErrorAction Stop })
-    foreach ($Key in $Registered) {
+$Unusable = @()
+$Managed = Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe'
+$Candidates = @($Managed)
+$Candidates += @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+foreach ($Root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) { if ($Root) { $Candidates += Join-Path $Root 'Git\cmd\git.exe' } }
+foreach ($Key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1')) {
+    if (Test-Path -LiteralPath $Key -ErrorAction Stop) {
         $Location = (Get-ItemProperty -LiteralPath $Key -ErrorAction Stop).InstallLocation
-        if ($Location) {
-            $GitRoots += $Location
-            $Candidate = Join-Path $Location 'cmd\git.exe'
-            if (Test-Path -LiteralPath $Candidate -PathType Leaf -ErrorAction Stop) { $GitExe = $Candidate; break }
-        }
+        if ($Location) { $Candidates += Join-Path $Location 'cmd\git.exe' }
     }
 }
+$Seen = @()
+foreach ($Candidate in $Candidates) {
+    if ($GitExe -or -not (Test-Path -LiteralPath $Candidate -PathType Leaf -ErrorAction Stop)) { continue }
+    $Candidate = (Resolve-Path -LiteralPath $Candidate).Path
+    if ($Seen -contains $Candidate) { continue }
+    $Seen += $Candidate
+    $Reason = $null
+    try {
+        $global:LASTEXITCODE = $null
+        $Version = @(& $Candidate --version)
+        if ($LASTEXITCODE -ne 0) { $Reason = "exit $LASTEXITCODE" }
+        elseif ($Version.Count -ne 1 -or $Version[0] -notmatch '^git version (\d+)\.(\d+)\.(\d+)(?:\.windows\.\d+)?$') { $Reason = 'unrecognized or prerelease version' }
+        elseif ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 54)) { $Reason = "older than 2.54.0: $($Version[0])" }
+    } catch { $Reason = "failed to start: $($_.Exception.Message)" }
+    if ($Reason) { $Unusable += "$Candidate | $Reason" } else { $GitExe = $Candidate; $GitVersion = $Version[0] }
+}
+foreach ($Entry in $Unusable) { Write-Output "GIT_UNUSABLE=$Entry" }
 if ($GitExe) {
-    $GitExe = (Resolve-Path -LiteralPath $GitExe).Path
-    $GitVersion = & $GitExe --version
-    if ($LASTEXITCODE -ne 0) { throw 'Existing Git failed to run; stop for review.' }
-    if (@($GitVersion).Count -ne 1) { throw 'Ambiguous Git version output; stop for review.' }
-    if ($GitVersion -notmatch '^git version (\d+)\.(\d+)\.(\d+)(?:\.windows\.\d+)?$') { throw 'Unrecognized or prerelease Git; stop for review.' }
-    if ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 54)) { throw 'Existing Git is older than 2.54.0; stop for review.' }
     Write-Output "GIT_EXE=$GitExe"
     Write-Output "GIT_VERSION=$GitVersion"
+} elseif (Test-Path -LiteralPath (Split-Path -Parent (Split-Path -Parent $Managed)) -ErrorAction Stop) {
+    throw 'The managed Git directory exists without a usable Git; stop for review.'
 } else {
-    $ExistingRoots = @($GitRoots | Where-Object { Test-Path -LiteralPath $_ -ErrorAction Stop })
-    if ($Registered.Count -gt 0 -or $ExistingRoots.Count -gt 0) { throw 'Git registration/directory exists without a verified executable; stop for review.' }
-    Write-Output 'GIT_EXE=absent'
+    Write-Output 'GIT_EXE=none'
 }
 ```
 
@@ -348,7 +354,7 @@ For either evidence path, reject malformed/conflicting records. The expected glo
 | Path | Required evidence |
 | --- | --- |
 | Original durable result | `npm.exit-code.txt` exactly `0`; both install logs; valid `sdk.result.json`: `schemaVersion: 1`, `state: package-verified`, `npmExitCode: 0`, expected worker version, exact recorded `runDirectory`, expected `packagePath`. Current metadata name `@servicenow/sdk`, version equal to `packageVersion`, and `bin/index.js` exists. |
-| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.3.12`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
+| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.3.13`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
 
 For both: scan **complete stderr** for `EBADENGINE`, not only the tail; engine warnings require compatibility review even with npm exit 0. Report deprecations/optional-add-on failures separately; they do not themselves prove npm failed or affected features work. Further diagnosis may use saved npm debug logs, not automatic build-tool installation or Node changes.
 
@@ -484,9 +490,12 @@ Set cwd with `Set-Location -LiteralPath` and the recorded agent-repo absolute pa
 $ErrorActionPreference = 'Stop'
 $GitCommand = Get-Command git -ErrorAction Stop
 $GitCommand | Select-Object CommandType, Source
-if ($GitCommand.CommandType -ne 'Application') { throw 'Expected Git to resolve to an application.' }
+if ($GitCommand.CommandType -notin @('Application', 'Function')) { throw 'Expected Git to resolve to an application, or to the profile git function when shadowed.' }
+(Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 git --version
 if ($LASTEXITCODE -ne 0) { throw 'Git terminal verification failed.' }
+node.exe -e "console.log(require('node:child_process').execFileSync('git', ['--version'], {encoding: 'utf8'}).trim())"
+if ($LASTEXITCODE -ne 0) { throw 'Git from a Node child failed.' }
 $SdkCommand = Get-Command now-sdk -ErrorAction Stop
 $SdkCommand | Select-Object CommandType, Name
 if ($SdkCommand.CommandType -ne 'Function') { throw 'Expected the SDK profile function. Check the selected profile/new terminal; do not run a shim or reinstall the package.' }
@@ -496,7 +505,7 @@ node bin/sn-fluent-agent.cjs verify
 if ($LASTEXITCODE -ne 0) { throw 'Agent payload verification failed.' }
 ```
 
-Compare Git Application path/version with step 1 and SDK version with the verified global package. Keep output and native exits; mismatches/nonzero payload results fail acceptance. Missing Function → inspect selected profile/custom startup arguments, not shims or npm reinstallation.
+Compare Git path/version (Application, or the profile Function when shadowed) with step 1 and SDK version with the verified global package. Keep output and native exits; mismatches/nonzero payload results fail acceptance. Missing Function → inspect selected profile/custom startup arguments, not shims or npm reinstallation.
 
 If safe agent-owned handoff is unavailable, ask the user for **Terminal: Create New Terminal (With Profile)** → **PowerShell with now-sdk**, then the same checks from the agent repo. Use a genuinely new terminal, not a restored/reconnected one.
 
@@ -507,7 +516,8 @@ For Git, also check plain `git --version` in the actual permitted hosts/shells t
 
 - **One operation, durable evidence:** terminal tools can return early while npm still runs. Missing output does not determine native success/failure. Instructions cannot repair a lost host completion signal.
 - **Saved worker:** separates stdout/stderr, records native exits and avoids closing the interactive shell. Avoid whole-script terminal dumps, `[pscustomobject]`/non-core static diagnostics, merged strict-error streams and discarded native output.
-- **Shell-independent Git:** registration preserves raw Windows user PATH/type and backups. Only the owned `SN_FLUENT_ENV_REFRESH` marker goes through `setx.exe`; PATH itself is never passed through `setx`. Existing hosts may retain old environments. Machine PATH, Git installation/config and policy are unchanged.
+- **Selected Git:** selecting a verified copy is not a policy bypass; it runs under the same policy, and a block on it stops setup. Machine PATH precedes user PATH, hence, when shadowed, the profile `git` function (functions beat applications), the VS Code prefix (Node children) and `git.path`.
+- **Shell-independent Git:** registration preserves raw Windows user PATH/type and backups. Only the owned `SN_FLUENT_ENV_REFRESH` marker goes through `setx.exe`; PATH itself is never passed through `setx`. Machine PATH, Git installation/config and policy are unchanged.
 - **Profile lifecycle:** inspected Copilot code recreates exited cached terminals using the selected profile; this is source evidence, not an end-to-end acceptance result. Test actual PID/commands. Existing SDK terminals do not gain new startup Functions retroactively.
 - **Maintenance only:** `node bin/sn-fluent-agent.cjs configure-git --git-exe "$GitExe"` repairs user Git registration and known legacy overrides with backups, not packages. `configure-terminal` is SDK-profile-only. `install` / `configure-git` support `--dry-run`; `--no-vscode-settings` skips profile/settings, not Git registration. The Install/Update task can discover Git without `--git-exe`. Unrelated custom settings remain preserved.
 
@@ -538,5 +548,5 @@ NEXT_STEP=
 ```
 
 ```text
-SETUP_GUIDE_END=0.3.12
+SETUP_GUIDE_END=0.3.13
 ```

@@ -142,8 +142,9 @@ For the portable MinGit created by this setup:
 2. Save work and close applications using that installation. Do not force-kill user processes to unlock files.
 3. Delete that specific installation folder in File Explorer.
 4. Search Windows for **Edit environment variables for your account**. In your **user Path**, remove only the entry pointing to the deleted Git directory, normally `%LOCALAPPDATA%\Programs\Git\cmd` or its expanded equivalent. Preserve all other entries and the system PATH; do not restore an old full PATH snapshot over newer changes.
-5. The setup notification variable `SN_FLUENT_ENV_REFRESH` may also be removed if its value starts with `Git254Bootstrap:` and you no longer use this setup integration. Leave unfamiliar values alone.
-6. Restart affected applications. Existing terminals can retain stale environment values.
+5. If VS Code user settings contain `git.path` pointing at that Git, or a `terminal.integrated.env.windows` `Path` value starting with its `cmd` directory (or `${env:LOCALAPPDATA}\Programs\Git\cmd`), remove only that setting or that leading entry. In the **PowerShell with now-sdk** profile, remove only the `# sn-fluent-agent:approved-user-git:start` … `:end` block, keeping `now-sdk`.
+6. The setup notification variable `SN_FLUENT_ENV_REFRESH` may also be removed if its value starts with `Git254Bootstrap:` and you no longer use this setup integration. Leave unfamiliar values alone.
+7. Restart affected applications. Existing terminals can retain stale environment values.
 
 For a separately installed full Git for Windows, use its normal **Windows Settings -> Apps -> Installed apps** uninstaller only if you intend to remove that shared installation. Do not treat it as portable MinGit or delete it by following the folder instructions above. Leave your user-level `.gitconfig` and `.ssh` files alone; other repositories and connections may need them.
 

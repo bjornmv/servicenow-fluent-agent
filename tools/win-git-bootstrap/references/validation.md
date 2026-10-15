@@ -84,3 +84,17 @@ References:
 - https://github.com/git-for-windows/git/releases/tag/v2.54.0.windows.1
 - https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference
 - https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/applocker/script-rules-in-applocker
+
+## Fresh-install terminal results (moved from the Git setup page)
+
+The reduced MinGit staging copy passed native init/add/commit/branch/merge/local push/clone/fetch/status and public HTTPS tests. The excluded Unix utilities were never written, and no new Defender ASR or executable/code-integrity blocks were found in that test window. PowerShell constrained-language script-policy records can still occur.
+
+Custom hooks/scripts requiring the omitted utilities and private authentication are not certified. After correcting the SSH stderr probe, a user-run fresh installation successfully promoted MinGit and registered user PATH using the verified cached ZIP. The initial shell-specific profile workaround was insufficient and has been replaced by user PATH registration plus native environment propagation. A real Windows Terminal fresh-environment test resolved Git through a native child process, Windows `where.exe`, and PowerShell with `-NoProfile`, without injecting PATH or SDK startup code. That is not certification of every already-running host; actual user-terminal checks remain mandatory.
+
+## Blocked existing Git (0.3.13)
+
+Earlier releases installed only when Git was genuinely absent. A machine with a non-whitelisted Git (present but blocked by application control, typically under Program Files in machine PATH) therefore stopped setup with no supported route: discovery threw on the first PATH hit, `-InstallIfMissing` refused any existing copy, and user PATH registration of a per-user copy could never take precedence over machine PATH.
+
+From 0.3.13, discovery records blocked, broken and older copies as unusable and selects the first usable one, probing the per-user target first. `-InstallIfMissing` installs the pinned MinGit beside unusable copies without touching them, and accepts the same indexed agent-host Git settings as `-InstallForVSCode`. When another Git shadows the selected one in Windows PATH, the agent installer selects it for VS Code the same way as the repair guide: the `git` function beside `now-sdk` in the SDK profile, the `terminal.integrated.env.windows` prefix and `git.path`.
+
+Worker orchestration for these cases passed the mocked scenario suite under PowerShell 7 (Linux container, FullLanguage). Windows PowerShell 5.1 ConstrainedLanguage runs and a live blocked-Git machine remain the acceptance gate.
