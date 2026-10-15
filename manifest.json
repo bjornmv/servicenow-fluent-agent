@@ -1,7 +1,7 @@
 {
   "name": "ServiceNow Fluent Agent",
   "packageName": "servicenow-fluent-agent",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "VS Code custom agent, instructions, and skills for ServiceNow now-sdk / Fluent development.",
   "payloadRoot": "payload",
   "installRoots": [
@@ -14,6 +14,7 @@
   "vscodeSettings": {
     "chat.promptFiles": true,
     "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    "chat.agentHost.customTerminalTool.enabled": true,
     "chat.agentFilesLocations": ["~/.copilot/agents"],
     "chat.instructionsFilesLocations": ["~/.agents/instructions", ".github/instructions"],
     "chat.skillsFilesLocations": ["~/.agents/skills"]

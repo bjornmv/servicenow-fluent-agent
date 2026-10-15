@@ -115,7 +115,7 @@ The agent-file uninstaller intentionally leaves settings unchanged.
 
 1. Open **Preferences: Open User Settings (JSON)** from the Command Palette. Back up the file first.
 2. In `chat.agentFilesLocations`, `chat.instructionsFilesLocations` and `chat.skillsFilesLocations`, remove only location entries that are no longer needed. Entries may use `~` or absolute user-profile paths.
-3. Keep locations still used by other agents. Do not remove the whole `chat.*` configuration or disable shared settings such as `chat.promptFiles` or `github.copilot.chat.codeGeneration.useInstructionFiles` merely because this agent is gone.
+3. Keep locations still used by other agents. Do not remove the whole `chat.*` configuration or disable shared settings such as `chat.promptFiles`, `github.copilot.chat.codeGeneration.useInstructionFiles` or `chat.agentHost.customTerminalTool.enabled` merely because this agent is gone.
 4. If you no longer need the SDK terminal configuration, choose another default using **Terminal: Select Default Profile**, then remove only **PowerShell with now-sdk** from `terminal.integrated.profiles.windows`. Ensure `terminal.integrated.defaultProfile.windows` no longer names the removed profile. Keep this profile if you still use the SDK.
 5. Check workspace settings for overrides you added yourself; preserve unrelated settings and JSON comments. Reload VS Code after saving.
 

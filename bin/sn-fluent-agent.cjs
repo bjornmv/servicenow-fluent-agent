@@ -334,6 +334,8 @@ function configureVsCodeSettings(summary) {
 
   setScalar('chat.promptFiles', true);
   setScalar('github.copilot.chat.codeGeneration.useInstructionFiles', true);
+  // Agent-host terminal tool; avoids Copilot terminal errors with the SDK profile.
+  setScalar('chat.agentHost.customTerminalTool.enabled', true);
   setMapValue('chat.agentFilesLocations', agentPath, true);
   setMapValue('chat.instructionsFilesLocations', instructionsPath, true);
   setMapValue('chat.instructionsFilesLocations', '.github/instructions', true);
@@ -356,6 +358,7 @@ function requiredSettingsBlock() {
   return {
     'chat.promptFiles': true,
     'github.copilot.chat.codeGeneration.useInstructionFiles': true,
+    'chat.agentHost.customTerminalTool.enabled': true,
     'chat.agentFilesLocations': { [agentPath]: true },
     'chat.instructionsFilesLocations': { [instructionsPath]: true, '.github/instructions': true },
     'chat.skillsFilesLocations': { [skillsPath]: true },

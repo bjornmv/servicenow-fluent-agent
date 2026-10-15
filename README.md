@@ -188,6 +188,7 @@ It also attempts to add the required VS Code user settings:
 {
   "chat.promptFiles": true,
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "chat.agentHost.customTerminalTool.enabled": true,
   "chat.agentFilesLocations": {
     "C:/Users/<you>/.copilot/agents": true
   },

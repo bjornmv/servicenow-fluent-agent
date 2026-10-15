@@ -157,7 +157,7 @@ These are per-user defaults, not project-relative paths:
 | `%LOCALAPPDATA%\Git254Bootstrap` | Git bootstrap/environment evidence and cache. |
 | `%LOCALAPPDATA%\SNDocs\repo` and `index` | Documentation checkout and generated lookup index. |
 
-Settings edits preserve unrelated JSONC content and create adjacent timestamped backups. The installed location maps are `chat.agentFilesLocations`, `chat.instructionsFilesLocations` and `chat.skillsFilesLocations`. The installer also enables `chat.promptFiles` and `github.copilot.chat.codeGeneration.useInstructionFiles`.
+Settings edits preserve unrelated JSONC content and create adjacent timestamped backups. The installed location maps are `chat.agentFilesLocations`, `chat.instructionsFilesLocations` and `chat.skillsFilesLocations`. The installer also enables `chat.promptFiles`, `github.copilot.chat.codeGeneration.useInstructionFiles` and `chat.agentHost.customTerminalTool.enabled` (Copilot's agent-host terminal tool, which avoids agent terminal errors).
 
 `--no-vscode-settings` skips the settings edit, **not** Windows Git environment configuration. An existing custom SDK profile is not blindly replaced; review incompatible customization.
 

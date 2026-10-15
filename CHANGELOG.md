@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.14 — Agent-host terminal tool setting
+
+### Behavior changes
+
+- `install` adds `"chat.agentHost.customTerminalTool.enabled": true` to VS Code user settings (with the usual settings backup), to avoid Copilot agent terminal errors. It is also listed in the manual settings block, `manifest.json` and the README. `--no-vscode-settings` skips it like the other settings; uninstall leaves it in place as a shared setting.
+
 ## 0.3.13 — Setup proceeds past a blocked existing Git
 
 A machine with an existing Git that cannot run (for example a non-whitelisted Git under Program Files that application control blocks, and that the user cannot uninstall) previously stopped setup with no supported route. Setup now selects a usable Git, or installs the pinned MinGit beside the unusable one, and makes VS Code use it.

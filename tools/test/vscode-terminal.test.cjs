@@ -217,3 +217,13 @@ test('modified Git block, other profiles and profiles without -Command are not r
   const noCommand = ensureProfileFunctions(JSON.stringify({ [profilesKey]: { [profileName]: { path: 'custom.exe', args: ['--user-flag'] } } }), managedExe, { gitFunction: true, env });
   assert.match(noCommand.warnings[0], /no -Command string; the now-sdk and git functions were not added/);
 });
+
+test('agent-host terminal tool setting is managed everywhere the installer lists its settings', () => {
+  const key = 'chat.agentHost.customTerminalTool.enabled';
+  const root = path.resolve(__dirname, '../..');
+  const cli = fs.readFileSync(path.join(root, 'bin/sn-fluent-agent.cjs'), 'utf8');
+  assert.match(cli, new RegExp(`setScalar\\('${key.replaceAll('.', '\\.')}', true\\)`));
+  assert.match(cli, new RegExp(`'${key.replaceAll('.', '\\.')}': true`), 'manual settings block');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).vscodeSettings[key], true);
+  assert.ok(fs.readFileSync(path.join(root, 'README.md'), 'utf8').includes(`"${key}": true`));
+});
