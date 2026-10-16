@@ -1,11 +1,24 @@
-# ServiceNow Source Control (SC) — app ↔ git binding
+# ServiceNow source control — which model is this project using?
 
-## Flow direction (DO NOT confuse)
-**Local Fluent source → `now-sdk install` (uploads to instance) → instance → manual "Commit Changes" in Studio → GitHub branch.**
+## Recommended model: local Git is the source of truth
+ServiceNow's SDK SDLC guide (`now-sdk explain sdlc-guide`) makes Git the source of truth for app state; update sets only group work on the dev instance.
+- The project folder is a Git working tree. The developer branches, commits, pushes and opens pull requests with their own Git tooling (VS Code Source Control or the terminal). The agent never commits, pushes or opens PRs.
+- Commit Fluent and module source, `src/fluent/generated/keys.ts` and `@types/servicenow`. Never commit credentials.
+- Other developers clone the project from Git instead of downloading and transforming it from the instance.
+- Changes made on the instance with platform builders come back through **sn-transform**, then get reviewed and committed like any other change.
+- `now-sdk install` targets the development instance. Test and production install from the Application Repository (`now-sdk cicd publish/install`, see **sn-cicd**), never through local install to production.
+- Do not mix update sets and the Application Repository for the same app on the same instance (KB0715422).
 
-SC is OUTBOUND from the instance. It does NOT gate the SDK upload, does NOT pull from git on install, and does NOT alter what `now-sdk install` does. Local project folder is NOT a git working tree (typically has no `.git`); the git working copy is managed inside the instance.
+After a successful install in this model, remind the user that the source change still needs review and a commit in their Git repository; the install did not record it anywhere.
 
-After every successful `now-sdk install` on a SC-bound app, remind the user: **Studio → Source Control → Commit Changes** is needed to push to the bound branch. The SDK will not do it.
+## Legacy model: Studio Source Control (instance-bound)
+Some apps are linked to a Git repository from the instance instead. There the working copy lives inside the instance and the flow is **local Fluent source → `now-sdk install` → instance → manual "Commit Changes" in Studio → bound branch** (typically `sn_instances/<instance>`). It allows one branch per repository per instance (or sandbox) and is not the recommended model for SDK projects.
+
+SC is OUTBOUND from the instance. It does NOT gate the SDK upload, does NOT pull from git on install, and does NOT alter what `now-sdk install` does.
+
+After a successful `now-sdk install` on a SC-bound app, remind the user: **Studio → Source Control → Commit Changes** is needed to push to the bound branch. The SDK will not do it.
+
+If the project is a local Git repository **and** the app is SC-bound, two writers can push to the same remote. Report both facts and ask the user which path is authoritative; do not pick one or commit from either side.
 
 ## Tables
 - `sys_repo_config` — the binding. Fields: `sys_app` (sys_id of `sys_app`), `url` (e.g. `https://github.com/org/repo.git`), `current_branch` (typical: `sn_instances/<instance>`), `current_ref` (HEAD commit), `credential` (`discovery_credentials` sys_id), `authentication`.

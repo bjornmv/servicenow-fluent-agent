@@ -122,9 +122,11 @@ A marker only proves the record was written. For end-to-end proof, exercise the 
 
 User-facing UI: before claiming it runtime-smoked, working, verified or complete, also confirm in a browser that it mounted, its ready content appeared, required reads succeeded and no new uncaught console error occurred. React UI Pages: follow the **sn-ui-page-vite** conditional target-runtime compatibility slice.
 
-## 4. Source Control commit (if app is SC-bound)
+## 4. Source control after install
 
-`now-sdk install` does NOT push to git. If the scope has a `sys_repo_config` row, after a successful install + verify **remind the user to run Studio → Source Control → Commit Changes** to push to the bound branch (typically `sn_instances/<instance>`).
+`now-sdk install` does NOT record the change in Git. Which reminder applies depends on the project's model ([source control reference](../../reference/servicenow-source-control.md)):
+- **Local Git (recommended, default for SDK projects):** if `git -C <project> rev-parse` succeeds, remind the user to review the diff and commit/push through their own Git tooling. Do not commit, push or open a PR yourself.
+- **Studio Source Control (legacy, instance-bound):** if the scope has a `sys_repo_config` row, after a successful install + verify **remind the user to run Studio → Source Control → Commit Changes** to push to the bound branch (typically `sn_instances/<instance>`). If the project is also a local Git repository, report both and ask which path is authoritative.
 - Reuse a verified binding fact for the same project, scope, instance and alias. Keep it in the workspace's memory facility or evidence location (no specific memory tool or path is required), else in the conversation; do not create an arbitrary memory directory.
 - Recheck after a target/scope/alias change, a reported binding change or evidence that the cached result is stale.
 - With no applicable fact, run the two-call lookup in [Detect SC binding](../../reference/servicenow-source-control.md#detect-sc-binding-for-the-current-app) and record the binding, branch, target and date without credentials. A failed call or blank output is UNKNOWN; say so instead of reporting unbound.
@@ -133,4 +135,4 @@ SC is outbound from the instance: it does not block or alter `now-sdk install`, 
 
 ## Report
 
-Terse, stages reached only: build pass evidence; install output AND exit code, completion and rollback lines, any flow-activation line; content-marker check per changed record type; runtime evidence if exercised; outstanding manual steps (Playbook Designer activation, flows left draft by `--skip-flow-activation`); the SC commit reminder if bound.
+Terse, stages reached only: build pass evidence; install output AND exit code, completion and rollback lines, any flow-activation line; content-marker check per changed record type; runtime evidence if exercised; outstanding manual steps (Playbook Designer activation, flows left draft by `--skip-flow-activation`); the source-control reminder that applies (Git commit, or Studio commit if SC-bound).

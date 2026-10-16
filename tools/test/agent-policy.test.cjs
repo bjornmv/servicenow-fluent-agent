@@ -253,3 +253,15 @@ test('generation detects source-contract or output drift in an isolated fixture'
   generate(temp);
   assert.equal(fs.readFileSync(path.join(temp, baselinePath), 'utf8'), baseline);
 });
+
+test('source control guidance recommends local Git and keeps Studio SC as legacy', () => {
+  const sc = read('payload/.agents/reference/servicenow-source-control.md');
+  assert.match(sc, /## Recommended model: local Git is the source of truth/);
+  assert.match(sc, /The agent never commits, pushes or opens PRs/);
+  assert.match(sc, /never through local install to production/);
+  assert.match(sc, /## Legacy model: Studio Source Control \(instance-bound\)/);
+  assert.doesNotMatch(sc, /Local project folder is NOT a git working tree/);
+  const install = skill('sn-build-install');
+  assert.match(install, /\*\*Local Git \(recommended, default for SDK projects\):\*\*/);
+  assert.match(install, /Do not commit, push or open a PR yourself/);
+});

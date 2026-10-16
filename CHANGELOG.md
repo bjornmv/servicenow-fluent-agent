@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.15 — Local Git is the recommended source-control model
+
+### Behavior changes
+
+- The source-control reference (`payload/.agents/reference/servicenow-source-control.md`) now follows ServiceNow's SDK SDLC guide: the project folder is a Git repository and Git is the source of truth. The developer commits, pushes and opens pull requests with their own Git tooling (the agent never does); `keys.ts` and `@types/servicenow` are committed; other developers clone from Git; instance-side edits come back through `sn-transform`; `now-sdk install` targets dev, and test/production install from the Application Repository via `sn-cicd`.
+- Studio Source Control (instance-bound `sys_repo_config` binding with "Commit Changes" in Studio) is kept as the legacy model, with its detection calls unchanged. When a project is both a local Git repository and SC-bound, the agent reports both and asks which path is authoritative.
+- `sn-build-install` §4 checks the project's model after an install: for a local Git repository it reminds the user to review the diff and commit; the Studio commit reminder applies only to SC-bound apps.
+- New policy test guards the recommended model.
+
 ## 0.3.14 — Agent-host terminal tool setting
 
 ### Behavior changes
