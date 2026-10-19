@@ -76,8 +76,17 @@ test('skill uses the bundled CLI, not native integration discovery, and states a
 });
 
 test('every documented Node request invokes the actual CLI with mocked transport only', async () => {
-  const commands = [...(skill + '\n' + recipes).matchAll(/^node "\$env:USERPROFILE\\.agents\\skills\\sn-rest\\sn-rest.js" --agent --alias "([^"]+)" --instance "([^"]+)" "([^"]+)"$/gm)];
+  // One OS-neutral dispatcher line per request; single-quoted values are literal in PowerShell and bash.
+  const commands = [...(skill + '\n' + recipes).matchAll(/^sn-skill rest --agent --alias '([^'"]+)' --instance '([^'"]+)' '([^'"]+)'$/gm)];
   assert.equal(commands.length, 5);
+  assert.doesNotMatch(skill + recipes, /sn-rest\.js"|\$env:USERPROFILE|\$HOME\/\.agents|bash \(Linux/, 'no per-shell helper variants');
+  // File paths are double-quoted (literal for ' in both shells); an apostrophe in a query is %27 and reaches the instance unchanged.
+  assert.match(source, /--body-file "<reviewed-json-file>"/);
+  const apostrophe = await run(['--agent', '--alias', 'fixture', '--instance', 'https://fixture.invalid',
+    '/api/now/table/sys_user?sysparm_query=last_name=O%27Neill^active=true&sysparm_fields=sys_id&sysparm_limit=1&sysparm_no_count=true']);
+  assert.equal(apostrophe.exitCode, 0);
+  assert.match(apostrophe.calls[0].url, /O%27Neill/);
+  assert.equal(new URL(apostrophe.calls[0].url).searchParams.get('sysparm_query'), "last_name=O'Neill^active=true");
   const values = { 'confirmed-alias': 'fixture', 'confirmed-host': 'fixture.invalid', 'confirmed-table': 'sys_app',
     'confirmed-field-list': 'sys_id,name,scope', nextOffset: '10', 'confirmed-scope-sys-ids': 'a'.repeat(32) };
   const resolve = s => s.replace(/<([^>]+)>/g, (_, key) => { assert.ok(values[key], key); return values[key]; });
@@ -282,4 +291,62 @@ test('CLI alias metadata is redacted and reports the stored instance', async () 
   assert.equal(result.calls.length, 0);
   assert.deepEqual(result.result, { alias: 'other', host: 'https://other.invalid', has_access_token: true, expires_at: 4102444800 });
   assert.equal(JSON.stringify(result.logs).includes('offline-other'), false);
+});
+
+test('CLI content check reports rows and a case-sensitive literal match without changing exit codes', async () => {
+  const markerPath = '/api/now/table/sp_widget?sysparm_query=id=fixture&sysparm_fields=template&sysparm_limit=1&sysparm_no_count=true';
+  const expect = ['--expect-field', 'template', '--expect-contains', 'marker-v2'];
+  const hit = await run([...common, markerPath, ...expect], { records: [{ template: '<div>marker-v2</div>' }] });
+  assert.equal(hit.exitCode, 0); assert.equal(hit.calls.length, 1);
+  assert.deepEqual(hit.result.expect, { field: 'template', rows: 1, present: true, contains: true });
+  assert.equal(hit.result.ok, true); assert.equal(hit.result.count, 1);
+  const miss = await run([...common, markerPath, ...expect], { records: [{ template: '<div>MARKER-V2</div>' }] });
+  assert.deepEqual(miss.result.expect, { field: 'template', rows: 1, present: true, contains: false });
+  const absent = await run([...common, markerPath, ...expect], { records: [{ name: 'marker-v2' }] });
+  assert.deepEqual(absent.result.expect, { field: 'template', rows: 1, present: false, contains: false }, 'a missing field is UNKNOWN, not a mismatch');
+  const inherited = await run([...common, markerPath, '--expect-field', 'constructor', '--expect-contains', 'native'], { records: [{ template: 'x' }] });
+  assert.deepEqual(inherited.result.expect, { field: 'constructor', rows: 1, present: false, contains: false }, 'only own properties count');
+  const object = await run([...common, markerPath, ...expect], { records: [{ template: { value: 'marker-v2', display_value: 'marker-v2' } }] });
+  assert.deepEqual(object.result.expect, { field: 'template', rows: 1, present: false, contains: false }, 'an object value is not compared');
+  const none = await run([...common, markerPath, ...expect]);
+  assert.deepEqual(none.result.expect, { field: 'template', rows: 0, present: false, contains: false });
+  const two = await run([...common, markerPath, ...expect], { records: [{ template: 'marker-v2' }, { template: 'marker-v2' }] });
+  assert.deepEqual(two.result.expect, { field: 'template', rows: 2, present: false, contains: false });
+  const single = await run([...common, '/api/now/table/sp_widget/fixture?sysparm_fields=template', '--expect-field=template', '--expect-contains=marker-v2'],
+    { payload: { result: { template: 'x marker-v2 y' } } });
+  assert.deepEqual(single.result.expect, { field: 'template', rows: 1, present: true, contains: true });
+  const denied = await run([...common, markerPath, ...expect], { status: 403, payload: { error: { message: 'fixture access denied' } } });
+  assert.equal(denied.exitCode, 1); assert.equal(denied.result.ok, false);
+  assert.deepEqual(denied.result.expect, { field: 'template', rows: 0, present: false, contains: false });
+  const plain = await run([...common, markerPath]);
+  assert.equal('expect' in plain.result, false);
+});
+
+test('CLI refuses a half or write-side content check before any request', async () => {
+  const markerPath = '/api/now/table/sp_widget?sysparm_fields=template&sysparm_limit=1';
+  await refused([...common, markerPath, '--expect-field', 'template'], /--expect-field and --expect-contains together/);
+  await refused([...common, markerPath, '--expect-contains', 'marker'], /--expect-field and --expect-contains together/);
+  await refused([...common, markerPath, '--expect-field', 'template', '--expect-contains', ''], /--expect-contains requires a value/);
+  await refused([...common, markerPath, '--expect-field', 'template', '--expect-contains', '  '], /--expect-contains needs a non-blank marker literal/);
+  await refused([...common, markerPath, '--expect-field', 'template', '--expect-contains=\t'], /--expect-contains needs a non-blank marker literal/);
+  await refused(['--alias', 'fixture', markerPath, '--expect-field', 'template', '--expect-contains', 'marker'], /need --agent and a GET API path/);
+  await refused([...common, '--expect-field', 'template', '--expect-contains', 'marker'], /need --agent and a GET API path/);
+  await refused([...common, '--method', 'DELETE', '/api/now/table/fixture/record', '--expect-field', 'template', '--expect-contains', 'marker'], /need --agent and a GET API path/);
+  await refused([...common, markerPath, '--expect-field', 'a', '--expect-field', 'b', '--expect-contains', 'marker'], /--expect-field was given more than once/);
+});
+
+test('the sn-build-install marker check is one sn-skill rest line that runs through the CLI', async () => {
+  const install = fs.readFileSync(path.join(dir, '../sn-build-install/SKILL.md'), 'utf8');
+  const section = install.slice(install.indexOf('Example marker check'), install.indexOf('A marker only proves'));
+  assert.ok(section.length > 0);
+  assert.doesNotMatch(section, /ConvertFrom-Json|node -e|```(?:powershell|bash)/, 'one plain marker-check fence, no per-shell variants');
+  const lines = [...install.matchAll(/^sn-skill rest --agent --alias '([^'"]+)' --instance '([^'"]+)' '([^'"]+)' --expect-field (\w+) --expect-contains '([^'"]+)'$/gm)];
+  assert.equal(lines.length, 1);
+  const [, , , api, field, marker] = lines[0];
+  assert.doesNotMatch(api, /sysparm_limit=1(?!\d)/, 'limit 2 keeps a duplicate match visible as rows:2');
+  const resolved = api.replace('<widget-id>', 'fixture');
+  const result = await run([...common, resolved, '--expect-field', field, '--expect-contains', marker], { records: [{ [field]: `x ${marker} y` }] });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.result.expect, { field, rows: 1, present: true, contains: true });
+  assert.match(install, /no quote marks/);
 });

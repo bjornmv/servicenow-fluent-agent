@@ -10,7 +10,7 @@ Verified against: now-sdk 4.13.6 (`@servicenow/isomorphic-rollup` 1.3.11) with V
 
 Follow the official sample: `https://github.com/ServiceNow/sdk-examples/tree/main/react-ui-page-vite-sample`. Pages using `@servicenow/react-components` follow `https://github.com/ServiceNow/sdk-examples/tree/main/react-components-vite-sample` instead; it adds `optimizeDeps.exclude: ['@servicenow/react-components']` to the shared Vite config and an authenticated `/amb` WebSocket proxy to `now.dev.mjs`.
 
-Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`) per the [SDK command policy](../../reference/sdk-commands.md).
+Run `now-sdk` directly in the VS Code terminal (PowerShell with now-sdk on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`) per the [SDK command policy](../../reference/sdk-commands.md) and its [bash notes](../../reference/sdk-commands.md#linux-and-vs-code-server-bash).
 
 For a new page or any user-visible layout, copy or interaction change, load [sn-react-ui-design](../sn-react-ui-design/SKILL.md) before implementation; this skill owns only the runtime integration. Neither skill authorizes deployment or a framework migration merely for styling.
 
@@ -60,9 +60,15 @@ On locked Windows invoke the `dev` script directly with the confirmed auth alias
 now-sdk run dev --auth <alias>
 ```
 
+bash (Linux, VS Code server):
+
+```bash
+now-sdk run dev --auth <alias>
+```
+
 `run` is missing from `now-sdk --help`; `now-sdk run --help` shows it. The first log line `Running script "dev" from <path>` names the script that ran; `No user script for "dev", using built-in default` means the Vite script was not found.
 
-It does not exit by itself: give it its own terminal, send that terminal nothing else, stop it with Ctrl+C. Start evidence is the log line `Vite dev server running at http://localhost:<port>` (use that URL), not an exit status; never report the dev run as completed. The proxy uses the alias's credential, so the page hits the real instance; stay read-only unless a write is approved.
+It does not exit by itself: give it its own terminal, send that terminal nothing else, stop it with Ctrl+C. Start evidence is the log line `Vite dev server running at http://localhost:<port>` (use that URL), not an exit status; never report the dev run as completed. On a remote server that URL is server-local: forward the port (VS Code Ports view, `ssh -L`); do not set Vite's host to `0.0.0.0` without approval. The proxy uses the alias's credential, so the page hits the real instance; stay read-only unless a write is approved.
 
 For production run `now-sdk build` (it invokes `now.prebuild.mjs`; log `Running script "prebuild" from <path>`), then search the static build directory and build XML for development URLs (defaults shown; substitute the configured `staticContent.buildDir` and `appOutputDir`):
 
@@ -70,7 +76,13 @@ For production run `now-sdk build` (it invokes `now.prebuild.mjs`; log `Running 
 Get-ChildItem -Recurse -File dist/static, dist/app/update | Select-String -SimpleMatch -List 'localhost', '127.0.0.1' | Select-Object -ExpandProperty Path
 ```
 
-No output passes. Review each listed file; stop if a match is a dev-server URL, credential or proxy setting rather than third-party library text.
+bash (Linux, VS Code server):
+
+```bash
+grep -rlF -e localhost -e 127.0.0.1 dist/static dist/app/update; echo "exit=$?"
+```
+
+No output passes (in bash `exit=1`; `exit=2` is an error, not a pass). Review each listed file; stop if a match is a dev-server URL, credential or proxy setting rather than third-party library text.
 
 ## Install and verify
 

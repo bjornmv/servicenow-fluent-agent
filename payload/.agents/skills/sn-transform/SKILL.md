@@ -8,7 +8,7 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 source, bundled docs and local `--from`/`--table` runs; instance-backed modes (`--auth`, `--id`, `--ids`) were read in source, not run.
 
-Convert existing ServiceNow records into Fluent `.now.ts` source in this app. Run `now-sdk` in VS Code PowerShell from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md). `transform` never changes record ownership on the instance (see Record reassignment in that policy). To reference records you do not own (OOB Action / Trigger / ACL / table) without adopting them, or to refresh other-scope or platform type definitions (`now-sdk dependencies`), read [references/dependencies.md](references/dependencies.md); use `transform` only to OWN a record in this app.
+Convert existing ServiceNow records into Fluent `.now.ts` source in this app. Run `now-sdk` in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md). `transform` never changes record ownership on the instance (see Record reassignment in that policy). To reference records you do not own (OOB Action / Trigger / ACL / table) without adopting them, or to refresh other-scope or platform type definitions (`now-sdk dependencies`), read [references/dependencies.md](references/dependencies.md); use `transform` only to OWN a record in this app.
 
 ## Before any transform
 - `now-sdk build` passes. Transform compiles first and aborts with `Found N diagnostic error(s) while building the project`; fix with **sn-fix-build**.

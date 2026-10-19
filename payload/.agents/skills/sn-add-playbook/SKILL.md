@@ -8,11 +8,18 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 bundled docs and local `now-sdk build` output; not installed on an instance.
 
-Author a Playbook with the documented `PlaybookDefinition(...)` and `wfa.playbook.*` DSL; its callbacks are Fluent construction syntax, so do not externalize them with `Now.include`. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Scope/layout check, placement outside the generated directory and reporting follow [sn-add-record](../sn-add-record/SKILL.md). To enhance, edit the existing `PlaybookDefinition` source; a playbook that exists only on the instance starts with [sn-transform](../sn-transform/SKILL.md).
+Author a Playbook with the documented `PlaybookDefinition(...)` and `wfa.playbook.*` DSL; its callbacks are Fluent construction syntax, so do not externalize them with `Now.include`. Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the [`now-sdk` function](../../reference/sdk-commands.md#linux-and-vs-code-server-bash) on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Scope/layout check, placement outside the generated directory and reporting follow [sn-add-record](../sn-add-record/SKILL.md). To enhance, edit the existing `PlaybookDefinition` source; a playbook that exists only on the instance starts with [sn-transform](../sn-transform/SKILL.md).
 
 ## Explain first
 
 ```powershell
+now-sdk explain playbook-api --format raw
+now-sdk explain --list playbook --format raw
+```
+
+bash (Linux, VS Code server):
+
+```bash
 now-sdk explain playbook-api --format raw
 now-sdk explain --list playbook --format raw
 ```

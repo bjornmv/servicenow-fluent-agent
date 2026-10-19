@@ -35,7 +35,7 @@ test('first-session instruction gates the skill on the shared stamp rather than 
   const startup = section(agent, 'Session start');
   assert.ok(agent.indexOf('## Session start') < agent.indexOf('## Routing'));
   assert.match(startup, /Before task work in every new session/);
-  assert.match(startup, /sn-update-advisor.cjs" session-start/);
+  assert.match(startup, /^sn-skill update session-start$/m);
   assert.match(startup, /only when missing or older than 48 hours/);
   assert.match(startup, /If `due: true`, follow `sn-update-advisor` for all applicable components/);
   assert.match(startup, /Otherwise continue/);
@@ -257,11 +257,12 @@ test('generation detects source-contract or output drift in an isolated fixture'
 test('source control guidance recommends local Git and keeps Studio SC as legacy', () => {
   const sc = read('payload/.agents/reference/servicenow-source-control.md');
   assert.match(sc, /## Recommended model: local Git is the source of truth/);
-  assert.match(sc, /The agent never commits, pushes or opens PRs/);
+  assert.match(sc, /The agent commits only when the user explicitly asks it to, never on its own initiative/);
+  assert.match(sc, /cannot push until a GitHub connection has been configured/);
   assert.match(sc, /never through local install to production/);
   assert.match(sc, /## Legacy model: Studio Source Control \(instance-bound\)/);
   assert.doesNotMatch(sc, /Local project folder is NOT a git working tree/);
   const install = skill('sn-build-install');
   assert.match(install, /\*\*Local Git \(recommended, default for SDK projects\):\*\*/);
-  assert.match(install, /Do not commit, push or open a PR yourself/);
+  assert.match(install, /Do not commit on your own initiative — only when the user asks/);
 });

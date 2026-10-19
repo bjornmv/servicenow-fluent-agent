@@ -46,8 +46,106 @@ test('payload is free of personal examples, and SDK version claims are historica
     for (const line of text.split('\n').filter(l => /(?:now-sdk|SDK)\s+4\.11/.test(l))) assert.match(line, /^Verified against:/, file);
   }
   assert.match(read('tools/win-git-bootstrap/SKILL.md'), /Routine Git-dependent work does not trigger/);
-  assert.match(read('payload/.agents/skills/sn-doc-export/render.py'), /SN_AGENT_HOME/);
-  assert.match(read('payload/.agents/skills/sn-doc-export/render.js'), /process.env.SN_AGENT_HOME \|\| ''/);
+  assert.equal(fs.existsSync(path.join(payload, '.agents/skills/sn-doc-export/render.py')), false);
+  assert.doesNotMatch(read('payload/.agents/skills/sn-doc-export/render.js'), /SN_AGENT_HOME/);
+});
+
+test('sn-skill fallback and per-user paths use one OS-neutral wording', () => {
+  const fallback = 'sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs")';
+  let mentions = 0;
+  for (const file of skillFiles) {
+    const compatibility = fs.readFileSync(file, 'utf8').match(/^compatibility: (.+)$/m)[1];
+    if (!compatibility.includes('sn-skill')) continue;
+    mentions += 1;
+    assert.ok(compatibility.includes(fallback), `${rel(file)}: use the unified sn-skill fallback`);
+    assert.equal(compatibility.split('sn-skill.cjs').length, 2, rel(file));
+  }
+  assert.ok(mentions >= 9, `only ${mentions} skills declare sn-skill`);
+  assert.match(read('payload/.agents/reference/sdk-commands.md'), /run `node "<user-profile>\/\.agents\/tools\/sn-skill\.cjs"` \(`<user-profile>` = your absolute user profile folder\) with the same arguments/);
+  const advisorDir = path.join(payload, '.agents', 'skills', 'sn-update-advisor');
+  for (const file of files.filter(f => f.startsWith(advisorDir) && f.endsWith('.md'))) {
+    const text = fs.readFileSync(file, 'utf8');
+    assert.doesNotMatch(text, /%USERPROFILE%|\$env:USERPROFILE|\$HOME|~\/\.agents|On Linux, every/, rel(file));
+    assert.doesNotMatch(text, /<repoRoot>\\bin/, rel(file));
+  }
+  assert.match(read('payload/.agents/skills/sn-update-advisor/SKILL.md'), /`<user-profile>\/\.agents\/\.servicenow-fluent-agent-update-check\.stamp`/);
+});
+
+test('skill helper calls use the one OS-neutral sn-skill dispatcher line', () => {
+  const { COMMANDS } = require('../../payload/.agents/tools/sn-skill.cjs');
+  let lines = 0;
+  for (const file of files.filter(f => f.endsWith('.md'))) {
+    const text = fs.readFileSync(file, 'utf8');
+    // No per-shell helper paths: the PowerShell and bash twins are retired.
+    assert.doesNotMatch(text, /node "\$env:USERPROFILE\\\.agents|node "\$HOME\/\.agents/, rel(file));
+    // `list` is the dispatcher's own built-in (the new-terminal readiness check), not a helper.
+    for (const [, name] of text.matchAll(/`sn-skill ([a-z][\w-]*)/g)) assert.ok(name === 'list' || Object.hasOwn(COMMANDS, name), `${rel(file)}: unknown sn-skill ${name}`);
+    for (const [line, name] of text.matchAll(/^ *sn-skill ([a-z][\w-]*)(?: .*)?$/gm)) {
+      assert.ok(Object.hasOwn(COMMANDS, name), `${rel(file)}: unknown sn-skill ${name}`);
+      lines += 1;
+    }
+    // Every call, including ones inside the remaining PowerShell/bash blocks and inline examples.
+    const calls = [...text.matchAll(/^(?:\$\w+ = |\w+=\$\(|.*&& )?(sn-skill [a-z].*)$/gm), ...text.matchAll(/`(sn-skill [a-z][^`]*)`/g)];
+    for (const [, call] of calls) assertSkillQuoting(call, rel(file));
+    // Prose examples of path flags too, not only full sn-skill calls.
+    assert.doesNotMatch(text, /--(?:project|run-dir|npm-cli|body-file|docs|component) '/, `${rel(file)}: single-quoted path flag value`);
+  }
+  assert.ok(lines >= 30, `only ${lines} sn-skill command lines found`);
+});
+
+// Quoting that means the same in PowerShell 5.1 and bash: file paths in double quotes (literal for
+// `'` and spaces in both), everything else in single quotes; no empty argument, `--` or inline JSON.
+const PATH_FLAGS = new Set(['--project', '--run-dir', '--npm-cli', '--body-file', '--docs', '--index', '--in', '--out', '--input', '--component', '--path']);
+const PATH_PLACEHOLDER = /^<[^>]*(?:path|root|project|dir|directory|checkout|file|cli|component|source_rel)[^>]*>$|\.\w+>$/;
+function isPathValue(value) {
+  if (/^https?:|^\/api\/|[?&=]/.test(value)) return false;
+  return PATH_PLACEHOLDER.test(value) || /^(?:[A-Za-z]:\\|\/)/.test(value) || /^[\w.<>-]+(?:[\\/][\w.<>-]+)+[\\/]?$/.test(value);
+}
+function skillTokens(call) {
+  const tokens = [];
+  const re = /\s*(?:'([^']*)'|"([^"]*)"|([^\s'"|;)]+))/y;
+  for (let m; re.lastIndex < call.length && (m = re.exec(call));) {
+    if (m[3] === undefined && m[1] === undefined && m[2] === undefined) break;
+    tokens.push(m[1] !== undefined ? { q: "'", v: m[1] } : m[2] !== undefined ? { q: '"', v: m[2] } : { q: '', v: m[3] });
+  }
+  return tokens;
+}
+function assertSkillQuoting(call, where) {
+  const ctx = `${where}: ${call}`;
+  assert.doesNotMatch(call, /''|"" | -- |[{}]/, ctx);
+  const tokens = skillTokens(call);
+  tokens.forEach((t, i) => {
+    if (t.q === '"') {
+      assert.ok(isPathValue(t.v), `double quotes only around a file path: ${ctx}`);
+      assert.doesNotMatch(t.v, /\\$|[$`"!]|\\\\/, `double-quoted path ends in a backslash or holds $, !, backtick, " or \\\\: ${ctx}`);
+    }
+    // PowerShell treats typographic quotes as quote characters; an unquoted comma makes an array.
+    assert.doesNotMatch(t.v, /[‘’‚‛“”„]/, `quote mark inside a value: ${ctx}`);
+    if (t.q === '' && i > 1) assert.doesNotMatch(t.v, /,/, `unquoted comma list (PowerShell array): ${ctx}`);
+    if (t.q === "'" && PATH_FLAGS.has(tokens[i - 1]?.v)) assert.fail(`path value of ${tokens[i - 1].v} must be double-quoted: ${ctx}`);
+  });
+}
+
+test('sn-skill quoting checker accepts the decided rule and rejects the old pitfalls', () => {
+  assertSkillQuoting(`sn-skill update check --only sdk --project "<absolute-project-root>"`, 'fixture');
+  assertSkillQuoting(`sn-skill doc-render --check --format 'pdf,docx'`, 'fixture');
+  assertSkillQuoting(`sn-skill project-sdk status --run-dir "C:\\Users\\o'neill\\My Proj\\run"`, 'fixture');
+  assertSkillQuoting(`sn-skill rest --agent --alias 'a' --instance 'https://h' '/api/now/table/sys_user?sysparm_query=last_name=O%27Neill^active=true&a=1'`, 'fixture');
+  for (const bad of [
+    `sn-skill update check --only sdk --project '<absolute-project-root>'`,
+    `sn-skill project-sdk status --run-dir "C:\\Users\\x\\"`,
+    `sn-skill rest --alias "<confirmed-alias>" '/api/now/table/x'`,
+    `sn-skill docs search --query '' --json`,
+    `sn-skill rest -- '/api/now/table/x'`,
+    `sn-skill rest --body '{"a":1}' '/api/now/table/x'`,
+    `sn-skill doc-render --check --format pdf,docx`,
+    `sn-skill update check --only sdk --project "C:\\Users\\bob!x\\proj"`,
+    `sn-skill update check --only sdk --project "\\\\server\\share\\proj"`,
+    `sn-skill docs search --query 'the user’s audit log'`,
+  ]) assert.throws(() => assertSkillQuoting(bad, 'fixture'), bad);
+  const policy = read('payload/.agents/reference/sdk-commands.md');
+  assert.match(policy, /%27/);
+  assert.match(policy, /ends in `\\`/);
 });
 
 test('thin authoring wrappers and ambiguous export name are retired, with type traps preserved', () => {
@@ -238,6 +336,11 @@ test('manual uninstall guide separates components and preserves shared installat
   assert.match(guide, /SN_FLUENT_ENV_REFRESH/);
   assert.match(guide, /\.servicenow-fluent-agent-update-check\.stamp/);
   assert.match(guide, /does not remove SDK dependencies inside individual projects/);
+  assert.match(guide, /^sn-skill docs paths$/m);
+  assert.match(guide, /Removes the managed `sn-skill` shim \(`~\/\.local\/bin\/sn-skill` on Linux\/macOS; `~\/bin\/sn-skill` on Windows when Git Bash was found\)/);
+  const readme = read('README.md');
+  for (const term of ['an `sn-skill` PowerShell function beside `now-sdk`', '`~/bin/sn-skill` shim for Git Bash', '`~/.local/bin/sn-skill` shim, with a PATH guard', '`--no-shell-function` skips the shims']) assert.ok(readme.includes(term), term);
+  assert.doesNotMatch(readme, /sn-rest\\sn-rest\.js/);
 });
 
 test('installer backs up retired owned files and preserves local edits (isolated virtual host)', async t => {

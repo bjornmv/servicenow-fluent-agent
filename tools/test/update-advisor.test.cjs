@@ -402,20 +402,33 @@ test('routing and owning skill preserve update scope and UNKNOWN without mirrore
   assert.match(skill, /Outside the session gate, documentation-only questions skip update checks and maintenance/);
   assert.match(skill, /Run the checks below once for each resolved component, without `--force`/);
   for (const target of ['**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**']) assert.ok(skill.includes(target));
-  assert.match(skill, /--only sdk --project/);
+  assert.match(skill, /--only sdk --project "<absolute-project-root>"/);
+  assert.match(skill, /--npm-cli "<resolved-npm-cli\.js>" --run-dir "<absolute-new-evidence-directory>"/);
   assert.match(skill, /package updated; build unverified/);
   assert.match(skill, /Recording \*\*Update\*\* records authorization, not installation/);
   assert.match(skill, /One owner per mutation/);
-  assert.match(skill, /scripts\\update-project-sdk\.cjs/);
+  assert.match(skill, /`sn-skill project-sdk`/);
   // Guidance must match what the shipped launcher, worker and lookup CLI actually do.
   assert.doesNotMatch(skill, /<skill>|temporary sibling index|advisor state through the approved workflow/);
-  assert.match(skill, /sn-update-advisor\.cjs" state\n/);
+  assert.match(skill, /^sn-skill update state$/m);
   assert.match(skill, /no staged-swap or promote command/);
   assert.match(skill, /advisor state has no indexed-commit field/);
   assert.match(skill, /Recorded <selected-decision> for N update component\(s\)\./);
   assert.match(skill, /withholds further notices for that component for seven days, also under `--force`/);
   assert.match(skill, /pull --ff-only origin main/);
-  for (const [, block] of skill.matchAll(/```powershell\n([\s\S]*?)```/g)) assert.match(block, /=\$LASTEXITCODE"\n$/, block);
+  // Helper calls are single OS-neutral sn-skill lines whose dispatcher prints the exit; remaining
+  // PowerShell blocks (SDK build) still print their own native exit marker.
+  for (const [, block] of skill.matchAll(/```powershell\n([\s\S]*?)```/g)) {
+    assert.match(block, /=\$LASTEXITCODE"\n$/, block);
+    assert.doesNotMatch(block, /sn-skill|\.agents[\\/]/, block);
+  }
+  assert.doesNotMatch(skill, /advisor(?:-state|-decision)?-exit=|docs-paths-exit=|sdk-update-exit=|doc-lookup-exit=/);
+  assert.match(skill, /`sn-skill: update exit=0` with empty output/);
+  const neutral = [...skill.matchAll(/^```([a-z]*)\n([\s\S]*?)^```$/gm)].filter(([, lang]) => !lang).map(([, , body]) => body);
+  assert.ok(neutral.length >= 9, 'neutral helper fences');
+  for (const block of neutral) {
+    for (const line of block.trim().split('\n')) assert.match(line, /^sn-skill (?:update|project-sdk|docs) [a-z]/, line);
+  }
   const lookup = load('payload/.agents/skills/sn-doc-lookup/bin/sn-doc-md.js');
   for (const flag of ['--family', '--force', '--out', '--index']) assert.ok(lookup.includes(flag), `lookup CLI no longer documents ${flag}`);
 });

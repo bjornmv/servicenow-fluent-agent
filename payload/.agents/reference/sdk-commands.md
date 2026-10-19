@@ -5,7 +5,8 @@ Canonical launcher guidance for the ServiceNow agent, instructions and skills. O
 ## VS Code launcher
 
 - **VS Code PowerShell:** use the configured `now-sdk` function directly from the intended project directory. The `PowerShell with now-sdk` terminal profile defines it; it invokes Node with the project-local SDK first, then the installed global SDK. A function is not the blocked batch shim. Do not prepend a resolver to each command.
-- **Other terminals / function unavailable:** use the bounded fallback below only if permitted. Never interpret an explicit policy denial as permission to switch executables, shells or tools.
+- **Linux bash (VS Code server):** use the `now-sdk` function from `~/.bashrc` the same way; see [Linux and VS Code server (bash)](#linux-and-vs-code-server-bash).
+- **Other terminals / function unavailable:** use the bounded fallback below only if permitted; a missing `sn-skill` has its own fallback in [Skill helpers](#skill-helpers-sn-skill). Never interpret an explicit policy denial as permission to switch executables, shells or tools.
 
 Authentication/confirmation belongs in the interactive parent; a headless child cannot approve mutations. Never expose OAuth tokens or inspect credential storage.
 
@@ -18,18 +19,29 @@ now-sdk explain table-api --format raw
 now-sdk build
 ```
 
+bash (Linux, VS Code server):
+
+```bash
+now-sdk explain table-api --format raw
+now-sdk build
+```
+
 Run only the command needed for the task, not this block as a startup checklist. If the user asks to run `now-sdk` itself, run exactly `now-sdk`; help output with a missing-subcommand exit does not mean the executable is unavailable. A single bounded command check needs no subagent, authentication probe, recursive file search or package installation.
 
 For a running terminal, wait or retrieve its output; do not send probe commands to a busy terminal. A shell/terminal-integration error makes the SDK result inconclusive. Keep command execution, SDK success, authentication and deployment verification separate. For mutations, capture output and exit status and retain all existing confirmation gates. Do not retry a possibly applied install merely because its status check failed.
 
 ## Fallback: missing function, not policy bypass
 
-1. Prefer opening the configured **PowerShell with now-sdk** terminal if the current terminal lacks the function. Do not modify profiles/settings automatically.
-2. If that profile is unavailable on this machine, inspect only the expected project-local `node_modules/@servicenow/sdk/bin/index.js`, then the installed global SDK location (commonly `%APPDATA%/npm/node_modules/@servicenow/sdk/bin/index.js`). Confirm the chosen file and SDK package metadata. Do not search the whole profile or reinstall the SDK just to resolve its launcher.
+1. Prefer opening the configured **PowerShell with now-sdk** terminal (on Linux, a new bash terminal, which sources `~/.bashrc`) if the current terminal lacks the function. Do not modify profiles/settings automatically.
+2. If that profile is unavailable on this machine, inspect only the expected project-local `node_modules/@servicenow/sdk/bin/index.js`, then the installed global SDK location (commonly `%APPDATA%/npm/node_modules/@servicenow/sdk/bin/index.js`; on Linux `$(npm root -g)/@servicenow/sdk/bin/index.js`). Confirm the chosen file and SDK package metadata. Do not search the whole profile or reinstall the SDK just to resolve its launcher.
 3. Only when direct Node execution is permitted, print and run `node "<resolved-sdk-cli>" <command>`. Keep the confirmed path with that command; do not depend on a variable assigned in a previous terminal call. An existing but broken/incompatible project SDK is a diagnostic finding, not permission to silently substitute the global version.
-4. If no allowed entry point exists, stop and ask for an approved toolchain. Never use CMD, batch shims, execution-policy overrides, credential extraction, or an alternate tool to bypass a refusal.
+4. If no allowed entry point exists, stop and ask for an approved toolchain. Never use CMD, batch shims, execution-policy overrides, credential extraction, or an alternate tool to bypass a refusal. On Linux the same applies to sudo, permission changes or another shell.
 
-Distribution installers should verify/provision the terminal profile with user approval or report it missing. They must not claim the function is available merely because the instruction files were copied. This document does not install a profile.
+Distribution installers should verify/provision the terminal profile (on Linux, the `~/.bashrc` function) with user approval or report it missing. They must not claim the function is available merely because the instruction files were copied. This document does not install a profile.
+
+## Skill helpers (`sn-skill`)
+
+One `sn-skill <name> ...` line runs a helper in the **PowerShell with now-sdk** terminal and in bash. Double-quote file paths (`"<absolute-project-root>"`); if one ends in `\` or contains `$`, `!`, a backtick or `\\`, stop and report. Single-quote other placeholders and values with spaces, commas or symbols (queries, URLs, lists like `'pdf,docx'`). Quoted values never contain quote marks (`'` `"` `‘` `’` `“` `”`): in API paths and URLs write `'` as `%27` and `’` as `%E2%80%99`; search text omits them. No empty argument, `--` or inline JSON (use a file). The final stderr line `sn-skill: <name> exit=<N>` is native exit evidence; without it, UNKNOWN. If `sn-skill` is not found, do not reinstall or switch shells: run `node "<user-profile>/.agents/tools/sn-skill.cjs"` (`<user-profile>` = your absolute user profile folder) with the same arguments and report the missing command.
 
 ## Package managers
 
@@ -42,9 +54,27 @@ node "<resolved-npm-cli.js>" ci
 node "<resolved-npm-cli.js>" install
 ```
 
-Choose `ci` when the project has a valid npm lockfile; use `install` when appropriate to the authorized task. Do not run both. Invoke the resolved package-manager JavaScript entry with direct Node execution from the confirmed project directory; SDK commands use the configured `now-sdk` function.
+bash (Linux, VS Code server):
+
+```bash
+npm ci
+npm install
+```
+
+Choose `ci` when the project has a valid npm lockfile; use `install` when appropriate to the authorized task. Do not run both. Invoke the resolved package-manager JavaScript entry with direct Node execution from the confirmed project directory; SDK commands use the configured `now-sdk` function. On Linux, run `npm` directly from the confirmed project directory.
 
 Dependency installation/upgrades, global tool changes, lifecycle scripts and network access retain their normal approval requirements. Follow stronger skill-specific restrictions such as initial `--ignore-scripts` for Lux. Never use `audit fix --force` or upgrade to `latest` as a generic launcher repair.
+
+## Linux and VS Code server (bash)
+
+On Linux (desktop VS Code, `code serve-web`, Remote-SSH, containers) the terminal is bash. Windows forms elsewhere stay unchanged.
+
+- **Launcher:** the installer adds a managed `now-sdk` function to `~/.bashrc` with the PowerShell profile's precedence: project-local SDK first, then the global SDK at `$(npm root -g)/@servicenow/sdk`. `type now-sdk` should report a function; otherwise use the fallback above.
+- **Skill helpers:** the same `sn-skill` lines as on Windows ([Skill helpers](#skill-helpers-sn-skill)); the installer puts an `sn-skill` shim on `PATH`.
+- **Exit evidence:** `sn-skill` lines need no idiom. Elsewhere, where PowerShell appends `; "exit=$LASTEXITCODE"`, bash appends `; echo "exit=$?"` with the same label text (for example `sdk-build-exit=`). Outside `sn-skill`, single-quote arguments containing `&`, `$` or `!`.
+- **npm:** `npm ci` / `npm install` run directly; the `npm-cli.js` indirection is a locked-Windows workaround.
+- **OAuth:** `now-sdk auth --add ... --type oauth` (see **sn-auth**) prints a URL; the user opens it in their own browser and pastes the code into the terminal (no localhost callback). Tokens live in the Secret Service (gnome-keyring). `Platform secure storage failure`, or credentials that vanish after a restart, mean that store is unavailable: report a host finding; re-authenticating does not fix it.
+- **Remote browser:** the user's browser is not on the server, so server `localhost` URLs need port forwarding (VS Code Ports view, `ssh -L`) or a user-performed check. Never bind a dev server to `0.0.0.0` without approval.
 
 ## Execution evidence and recovery
 
@@ -55,7 +85,7 @@ Dependency installation/upgrades, global tool changes, lifecycle scripts and net
 - Recover the ORIGINAL run's logs/result through read-only file or execution-handle tools before deciding whether another operation is safe.
 - Keep UNKNOWN and report the gap when attributable evidence is unavailable rather than queueing a build or retrying a mutation.
 - Preserve the actual excerpts, stdout/stderr, exit/error evidence and saved-output paths when delegating an investigation.
-- Bind a mutation's working directory in the approved execution mechanism rather than delegation prose or a fallible `Set-Location ...; command` chain.
+- Bind a mutation's working directory in the approved execution mechanism rather than delegation prose or a fallible `Set-Location ...; command` (PowerShell) / `cd ... && command` (bash) chain.
 - Preserve busy or user-owned terminals during recovery because closing them may lose work or interrupt an operation.
 
 ## SDK query output

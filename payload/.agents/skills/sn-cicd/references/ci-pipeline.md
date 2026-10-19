@@ -4,7 +4,7 @@ Read before writing a pipeline definition, configuring CI authentication or addi
 
 ## Authentication
 
-- Put these variables in a pipeline job, never in a developer terminal. Use the CI provider's protected secret store. Never commit, print, or write secrets with `SETX`.
+- Put these variables in a pipeline job, never in a developer terminal. Use the CI provider's protected secret store. Never commit, print, or write secrets with `SETX` (or `export` lines in a Linux shell profile such as `~/.bashrc`).
 - `SN_SDK_NODE_ENV=SN_SDK_CI_INSTALL` makes every now-sdk command read credentials from the environment: `--auth` and the keychain are ignored and the target is `SN_SDK_INSTANCE_URL`.
 - `SN_SDK_AUTH_TYPE=oauth` is required for `SN_SDK_OAUTH_CLIENT_ID` and `SN_SDK_OAUTH_CLIENT_SECRET` to be read; unset means basic (`SN_SDK_USER` / `SN_SDK_USER_PWD`).
 - Export one environment's variables per job or step (source for publish, target for ATF, install and rollback), omit `--auth`, and treat that step's `SN_SDK_INSTANCE_URL` as the approved target.

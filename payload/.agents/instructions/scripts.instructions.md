@@ -22,9 +22,9 @@ Conventions:
 - One script file per record. Name it after the record it backs (e.g. `set_priority_on_insert.js`).
 - If a script needs to be shared, make it a Script Include and reference it — don't `Now.include` the same file into two records.
 
-Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw`, adding the guide only for net-new or complex composition (see [sn-explain](../skills/sn-explain/SKILL.md)). Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
+Before writing a server script for a given record type, check what globals/signature that record exposes via `now-sdk explain <recordtype>-api --format raw`, adding the guide only for net-new or complex composition (see [sn-explain](../skills/sn-explain/SKILL.md)). Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the `now-sdk` function on Linux) from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md); do not prepend a resolver to each command.
 
 ## Service Portal widget gotchas
 
 - **AngularJS dropdown + `ng-blur` close**: the input's blur fires when the user clicks the dropdown's scrollbar (no `mousedown` on an item). A short `$timeout` in blur will still kill the dropdown mid-scroll. Guard with a hover flag (`ng-mouseenter`/`ng-mouseleave` on the dropdown) and skip the close when hover=true. Do NOT remove that hover flag thinking it's dead code — `ng-mousedown` on items alone isn't enough.
-- After install, SP caches widget HTML/JS aggressively. Tell users to hard refresh (Ctrl+F5).
+- After install, SP caches widget HTML/JS aggressively. Tell users to hard refresh (Ctrl+F5; Cmd+Shift+R on macOS).

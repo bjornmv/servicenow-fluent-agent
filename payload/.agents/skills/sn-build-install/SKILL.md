@@ -2,13 +2,13 @@
 name: sn-build-install
 description: Builds a Fluent app and installs it to a dev or test instance. Use when building, deploying, or checking whether a failed, hung or unclear install landed; not compile errors (sn-fix-build).
 argument-hint: '[optional: records/tables to verify]'
-compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; installation requires an authorized target and OAuth alias.
+compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; installation requires an authorized target and OAuth alias; sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs").
 metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.13.6; on another version confirm flags with `now-sdk build --help` / `now-sdk install --help` first.
 
-Build the current app and, only when deployment was requested, install it to the user-confirmed auth alias and instance (scope from `now.config.json`) and verify it. For a build-only request, stop after section 1 and report. Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it.
+Build the current app and, only when deployment was requested, install it to the user-confirmed auth alias and instance (scope from `now.config.json`) and verify it. For a build-only request, stop after section 1 and report. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it.
 
 ## Automation ownership
 
@@ -45,7 +45,7 @@ Rules:
 - Local install is for dev/test. Production promotion uses the App Repository workflow in **sn-cicd**, with target and version approvals.
 - Demo data installs by default; add `--demoData=false` when the user does not want it.
 - Do NOT use `--reinstall` (destructive) without confirming first.
-- Install is slow: let it finish; don't retry on a hang. Its errors are instance-side (auth, scope conflict, activation), not Fluent syntax. Stale auth: re-run **sn-auth**.
+- Install is slow: let it finish; don't retry on a hang. Its errors are instance-side (auth, scope conflict, activation), not Fluent syntax. Stale auth: re-run **sn-auth** (on Linux a keyring failure is a host finding; see [bash notes](../../reference/sdk-commands.md#linux-and-vs-code-server-bash)).
 
 ### Pre-install flow/action scan — REQUIRED BEFORE COMMAND
 
@@ -56,6 +56,11 @@ Before every install, after the final build, check all three:
 ```powershell
 Get-ChildItem -Path dist\app -Recurse -Filter 'sys_hub_*.xml' | Select-String -SimpleMatch -Pattern '<master_snapshot>' -List | Select-Object -ExpandProperty Path
 ```
+bash (Linux, VS Code server):
+```bash
+grep -rlF --include='sys_hub_*.xml' '<master_snapshot>' dist/app; echo "exit=$?"
+```
+In bash `exit=1` with no paths means none found; `exit=2` (for example no `dist/app`) is an error, not a clean result. A command error in either shell is not a clean result.
 Inspect `dist/app/`, not `target/`: `now-sdk build` deletes `target/`, and the zip exists only after `now-sdk pack` or `now-sdk install`.
 
 If any are present:
@@ -80,6 +85,13 @@ $failed = -not $commandOk -or $exit -ne 0 -or (($out | Out-String) -cmatch '\[no
 if ($failed) { throw "now-sdk install failed or reported an error (exit $exit). Read the execution tracker URL in the output, if any, and Upgrade History via sn-rest before retrying." }
 if (($out | Out-String) -cnotmatch 'Installation completed\. Access the application at:|Changes installed successfully to update set:') { throw "now-sdk install printed no completion line (exit $exit): outcome UNKNOWN. Recover the original output and read Upgrade History via sn-rest before retrying." }
 ```
+bash (Linux, VS Code server):
+```bash
+out=$(now-sdk install --auth <alias> 2>&1); rc=$?
+printf '%s\n' "$out"; echo "exit=$rc"
+if [ "$rc" -ne 0 ] || grep -qE '\[now-sdk\][[:space:]]+ERROR:|Could not determine app installation status' <<<"$out"; then echo "FAILED: now-sdk install failed or reported an error (exit $rc). Read the execution tracker URL in the output, if any, and Upgrade History via sn-rest before retrying."
+elif ! grep -qE 'Installation completed\. Access the application at:|Changes installed successfully to update set:' <<<"$out"; then echo "UNKNOWN: now-sdk install printed no completion line (exit $rc). Recover the original output and read Upgrade History via sn-rest before retrying."; fi
+```
 
 Transformed-flow approved pattern:
 ```powershell
@@ -90,6 +102,13 @@ $out
 $failed = -not $commandOk -or $exit -ne 0 -or (($out | Out-String) -cmatch '\[now-sdk\]\s+ERROR:|Could not determine app installation status')
 if ($failed) { throw "now-sdk install failed or reported an error (exit $exit). Read the execution tracker URL in the output, if any, and Upgrade History via sn-rest before retrying." }
 if (($out | Out-String) -cnotmatch 'Installation completed\. Access the application at:|Changes installed successfully to update set:') { throw "now-sdk install printed no completion line (exit $exit): outcome UNKNOWN. Recover the original output and read Upgrade History via sn-rest before retrying." }
+```
+bash (Linux, VS Code server):
+```bash
+out=$(now-sdk install --auth <alias> --skip-flow-activation 2>&1); rc=$?
+printf '%s\n' "$out"; echo "exit=$rc"
+if [ "$rc" -ne 0 ] || grep -qE '\[now-sdk\][[:space:]]+ERROR:|Could not determine app installation status' <<<"$out"; then echo "FAILED: now-sdk install failed or reported an error (exit $rc). Read the execution tracker URL in the output, if any, and Upgrade History via sn-rest before retrying."
+elif ! grep -qE 'Installation completed\. Access the application at:|Changes installed successfully to update set:' <<<"$out"; then echo "UNKNOWN: now-sdk install printed no completion line (exit $rc). Recover the original output and read Upgrade History via sn-rest before retrying."; fi
 ```
 
 Install evidence, all required: exit 0, no `[now-sdk] ERROR:` line, and the line `Installation completed. Access the application at: <url>`. A tracked install also prints `Rollback (undo installation): <host>/sys_rollback_context.do?sys_id=<id>`; record it in the report and do not act on it without separate explicit approval.
@@ -105,27 +124,23 @@ Confirm the records actually landed (targets from the argument, if given). Build
 - Proof is a narrow read of the changed field on the live record showing a literal that exists only in the new version (the marker), picked from the changed source; no extra edit is needed. Read [verify-fields.md](references/verify-fields.md) when choosing the field for a record type (flows/actions, playbooks, GraphQL and UI pages differ).
 - Deleting local source is not proof that a live record was deleted. Verify an approved deletion with a narrow `sn-rest` read.
 
-Example marker check (literal, case-sensitive match; double any `'` inside the marker):
-```powershell
-$r = node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/table/sp_widget?sysparm_query=id=<widget-id>&sysparm_fields=template&sysparm_limit=1&sysparm_no_count=true"
-$exit = $LASTEXITCODE
-$j = ($r | Out-String) | ConvertFrom-Json
-$rows = @($j.records).Count
-"exit=$exit ok=$($j.ok) rows=$rows marker=$($rows -eq 1 -and ([string]$j.records[0].template).Contains('<new-marker-string>'))"
+Example marker check (literal, case-sensitive match; pick a marker literal with no quote marks that does not start with `-`, per the [quoting rule](../../reference/sdk-commands.md#skill-helpers-sn-skill)):
 ```
-Keep `sysparm_fields` to the one content field, or the marker can false-positive on a `sys_id`, audit field or name. Results:
-- `ok=True rows=1 marker=True`: that field holds the new content.
-- `rows=1 marker=False`: the install did not update that record; do not claim success.
-- `rows=0` (wrong id, scope or ACL), a missing `ok=True` or a non-zero exit: UNKNOWN, not proof either way.
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/table/sp_widget?sysparm_query=id=<widget-id>&sysparm_fields=template&sysparm_limit=2&sysparm_no_count=true' --expect-field template --expect-contains '<new-marker-string>'
+```
+Keep `sysparm_fields` to the one content field, or the marker can false-positive on a `sys_id`, audit field or name. Read `expect` in the JSON and the final `sn-skill: rest exit=<N>` line:
+- `exit=0`, `ok:true`, `expect` `rows:1` `present:true` `contains:true`: that field holds the new content.
+- `rows:1` `present:true` `contains:false`: the install did not update that record; do not claim success.
+- `rows:0` (wrong id, scope or ACL), `rows:2` (more than one match), `present:false` or no `present` (field name wrong or hidden), no `expect`, `ok:false` or a non-zero exit: UNKNOWN, not proof either way.
 
 A marker only proves the record was written. For end-to-end proof, exercise the feature through the user's trigger, then read `syslog` / `sys_flow_context` / `sys_flow_log`.
 
-User-facing UI: before claiming it runtime-smoked, working, verified or complete, also confirm in a browser that it mounted, its ready content appeared, required reads succeeded and no new uncaught console error occurred. React UI Pages: follow the **sn-ui-page-vite** conditional target-runtime compatibility slice.
+User-facing UI: before claiming it runtime-smoked, working, verified or complete, also confirm in a browser that it mounted, its ready content appeared, required reads succeeded and no new uncaught console error occurred. React UI Pages: follow the **sn-ui-page-vite** conditional target-runtime compatibility slice. On a remote host (VS Code server) the agent cannot use the user's browser: ask the user to open the page and report, or use a permitted headless browser; until then the UI is not verified.
 
 ## 4. Source control after install
 
 `now-sdk install` does NOT record the change in Git. Which reminder applies depends on the project's model ([source control reference](../../reference/servicenow-source-control.md)):
-- **Local Git (recommended, default for SDK projects):** if `git -C <project> rev-parse` succeeds, remind the user to review the diff and commit/push through their own Git tooling. Do not commit, push or open a PR yourself.
+- **Local Git (recommended, default for SDK projects):** if `git -C <project> rev-parse` succeeds, remind the user to review the diff and commit/push through their own Git tooling. Do not commit on your own initiative — only when the user asks; pushing also needs a configured GitHub connection.
 - **Studio Source Control (legacy, instance-bound):** if the scope has a `sys_repo_config` row, after a successful install + verify **remind the user to run Studio → Source Control → Commit Changes** to push to the bound branch (typically `sn_instances/<instance>`). If the project is also a local Git repository, report both and ask which path is authoritative.
 - Reuse a verified binding fact for the same project, scope, instance and alias. Keep it in the workspace's memory facility or evidence location (no specific memory tool or path is required), else in the conversation; do not create an arbitrary memory directory.
 - Recheck after a target/scope/alias change, a reported binding change or evidence that the cached result is stale.

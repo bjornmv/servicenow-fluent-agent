@@ -8,11 +8,17 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 `explain testsuite-api` and local builds; nothing was installed or run on an instance.
 
-`TestSuite(...)` creates `sys_atf_test_suite` and membership metadata; it does not run or schedule the suite. Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md).
+`TestSuite(...)` creates `sys_atf_test_suite` and membership metadata; it does not run or schedule the suite. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the [`now-sdk` function](../../reference/sdk-commands.md#linux-and-vs-code-server-bash) on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Explain first
 
 ```powershell
+now-sdk explain testsuite-api --format raw
+```
+
+bash (Linux, VS Code server):
+
+```bash
 now-sdk explain testsuite-api --format raw
 ```
 

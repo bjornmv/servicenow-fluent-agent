@@ -1,6 +1,6 @@
 # Advisor state rules: when notices appear
 
-State file: `%USERPROFILE%\.agents\.servicenow-fluent-agent-update.json`.
+State file: `<user-profile>/.agents/.servicenow-fluent-agent-update.json`.
 
 - **Remind me in 7 days** suppresses notices and unforced remote checks for seven days, even if the remote advances. A `--force` check still contacts the remote; its notice stays withheld.
 - **Skip this release** suppresses only the displayed version/revision. A later release becomes eligible once the 48-hour check gate has elapsed **and** seven days have passed since the last notice shown for that component.

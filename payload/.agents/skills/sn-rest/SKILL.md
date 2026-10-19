@@ -2,32 +2,33 @@
 name: sn-rest
 description: Queries and changes live instance data over REST with existing OAuth. Use when reading schemas, records, counts or deployed content, or making an approved change; not app source (sn-add-record).
 argument-hint: <confirmed instance, alias, table or API, fields, filters and read/write intent>
-compatibility: VS Code PowerShell terminal on Windows with Node.js, the bundled sn-rest.js helper, an installed ServiceNow SDK and an existing SDK OAuth alias.
+compatibility: Node.js 20+, sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs"), an installed ServiceNow SDK and an existing SDK OAuth alias; on Linux a Secret Service credential store.
 metadata:
   version: '1'
 ---
 # ServiceNow schema and REST
 
-**This is a skill, not a registered VS Code tool:** invoke the bundled `sn-rest.js` CLI with Node in the approved VS Code terminal. Do not search for a native integration named after this skill, install an extension, or report REST unavailable because no dedicated tool exists. The helper reuses the SDK's OAuth credentials; do not inspect credential storage, print tokens, use raw-token debug modes or implement another OAuth client.
+**This is a skill, not a registered VS Code tool:** run `sn-skill rest` in the approved VS Code terminal. Do not search for a native integration named after this skill, install an extension, or report REST unavailable because no dedicated tool exists. The helper reuses the SDK's OAuth credentials; do not inspect credential storage, print tokens, use raw-token debug modes or implement another OAuth client.
 
 ## Run one small request
 
 - Take the instance and alias from the user's task and project facts; if either is not stated, stop and ask. Do not change aliases or probe authentication as routine discovery.
 - Always pass both `--alias` and `--instance`: without `--alias` the SDK default alias is used; `--instance` only confirms the alias's stored host, never overrides it.
-- The last argument is one quoted instance-relative path starting with `/api/`, never a full URL, even when the user supplied one.
+- Pass the API path as exactly one single-quoted instance-relative argument starting with `/api/` (options may come before or after it), never a full URL, even when the user supplied one.
 - Run from the confirmed project directory, whose `node_modules` supplies the SDK keyring dependency before the global SDK ([SDK command policy](../../reference/sdk-commands.md)). Do not depend on variables from an earlier terminal call.
 - Run simple reads directly, not through an execution subagent. Never run the helper in parallel with another helper or SDK command: a request may refresh and store back the alias's OAuth token.
 
 Replace every placeholder before running:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/table/sys_app?sysparm_fields=sys_id,name,scope&sysparm_query=ORDERBYsys_id&sysparm_limit=10&sysparm_no_count=true"
+```
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/table/sys_app?sysparm_fields=sys_id,name,scope&sysparm_query=ORDERBYsys_id&sysparm_limit=10&sysparm_no_count=true'
 ```
 
 ## Read the result
 
-- Exit 0: HTTP 2xx. Exit 1 with `ok:false` on stdout: HTTP error. Exit 1 with only stderr: token-refresh, network or keyring-load failure; a write's outcome is then UNKNOWN. Exit 2: refused before sending; correct the command from confirmed facts, do not drop the flag or switch alias. If the terminal tool does not report the native exit, append `; "exit=$LASTEXITCODE"` to the same call.
+- Exit 0: HTTP 2xx. Exit 1 with `ok:false` on stdout: HTTP error. Exit 1 with only stderr: token-refresh, network, keyring-load or credential-store failure; a write's outcome is then UNKNOWN. Exit 2: refused before sending; correct the command from confirmed facts, do not drop the flag or switch alias. The final stderr line `sn-skill: rest exit=<N>` is the native exit evidence; without it the helper did not complete (UNKNOWN).
 - Table lists and grouped Stats come back as `ok`, `count`, `hasMore`, `nextOffset`, `records`; other JSON as `{ok:true,result:<body>}` (data at `result.result`); HTTP errors as `{ok:false,error:{status,statusText,body}}`. HTML from an `/api/` path is a failed request, not data. Read [CLI output](references/cli-output.md) when output does not match these shapes or exit 2 needs diagnosis.
+- Content check (GET with `--agent` only): add `--expect-field <field> --expect-contains '<literal>'` to get `expect:{field,rows,present,contains}`; `present` is true only when exactly one row returned that field, and `contains` only when that field holds the literal (case-sensitive). `present:false` means UNKNOWN, not a mismatch. Exit codes still follow the HTTP result.
 - Tool status `ok` or a subagent's assertion is not native exit evidence. Blank, delayed, unrelated or truncated output without attributable native completion is UNKNOWN, not an empty result. Recover the original output with terminal/file read tools; do not blindly repeat the query, feed commands into a suspect terminal, or reconstruct wrapped JSON or identifiers from guesses.
 
 ## Discover → inspect → read → aggregate
@@ -59,6 +60,6 @@ GET is the default. POST/PATCH/PUT/DELETE require explicit user intent and appro
 
 ## Authentication errors
 
-HTTP 401, or stderr starting `Refresh failed`, `No credentials in keychain` or `No OAuth access token` (basic-auth or incomplete alias; OAuth is required): stop and use [sn-auth](../sn-auth/SKILL.md) in the interactive parent. HTTP 403 (access denial), `Cannot load @napi-rs/keyring` (toolchain finding) and a missing skill/tool search result are not auth errors. Never use `--raw` or `--dump`, print credentials, or follow diagnostic suggestions that expose token storage.
+HTTP 401, or stderr starting `Refresh failed`, `No credentials in keychain` or `No OAuth access token` (basic-auth or incomplete alias; OAuth is required): stop and use [sn-auth](../sn-auth/SKILL.md) in the interactive parent. HTTP 403 (access denial), `Cannot load @napi-rs/keyring` (toolchain finding), `Cannot read the OS credential store` / `Platform secure storage failure` (Linux store unavailable; host finding, see [sn-auth Verify results](../sn-auth/references/verify-results.md)) and a missing skill/tool search result are not auth errors. Never use `--raw` or `--dump`, print credentials, or follow diagnostic suggestions that expose token storage.
 
 Start a **new VS Code agent chat** after updating installed skills or instructions; an existing chat may keep old guidance.

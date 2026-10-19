@@ -8,11 +8,19 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 bundled docs and local `now-sdk build` output; not exercised on an instance.
 
-Author a scripted ServiceNow GraphQL API with `GraphQLApi(...)`. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md).
+Author a scripted ServiceNow GraphQL API with `GraphQLApi(...)`. Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the [`now-sdk` function](../../reference/sdk-commands.md#linux-and-vs-code-server-bash) on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md).
 
 ## Explain first
 
 ```powershell
+now-sdk explain graphqlapi-api --format raw
+now-sdk explain graphql-api-guide --format raw
+now-sdk explain acl-api --format raw
+```
+
+bash (Linux, VS Code server):
+
+```bash
 now-sdk explain graphqlapi-api --format raw
 now-sdk explain graphql-api-guide --format raw
 now-sdk explain acl-api --format raw
@@ -47,6 +55,15 @@ Run `now-sdk build`; map errors with [sn-fix-build](../sn-fix-build/SKILL.md) (a
 Get-ChildItem -Path dist\app -Recurse -Filter 'sys_graphql_schema_*.xml' | Select-String -Pattern '<application_namespace>|<namespace>|<contextual_acl_max_depth>|<requires_'
 Get-ChildItem -Path dist\app -Recurse -Filter 'sys_security_acl_*.xml' | Select-String -SimpleMatch -Pattern '<name>'
 ```
+
+bash (Linux, VS Code server):
+
+```bash
+grep -rE --include='sys_graphql_schema_*.xml' '<application_namespace>|<namespace>|<contextual_acl_max_depth>|<requires_' dist/app
+grep -rF --include='sys_security_acl_*.xml' '<name>' dist/app
+```
+
+In bash, grep exit 1 means no match; exit 2 is a command error, not a clean result.
 
 - Except the schema-gate ACLs in `enforceAcl`, every GraphQL ACL `<name>` must start with `/<application_namespace>/<namespace>/` exactly as built (copy it; `x_1234567_my_app` becomes `x1234567MyApp`), have no more segments than `<contextual_acl_max_depth>`, and follow SDL field names.
 - The three `<requires_*>` values must be `true` unless a weaker model was approved.

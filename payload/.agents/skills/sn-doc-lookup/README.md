@@ -10,16 +10,17 @@ Design goals:
 - Fast local deterministic search with citations back to official markdown/canonical URLs.
 - Easy to package as a VS Code/agent skill.
 
-Commands below are run from this skill directory. From elsewhere, give the full path to `bin/sn-doc-md.js`.
+Commands below are run from this skill directory. From elsewhere, give the full path to `bin/sn-doc-md.js`. They are shell-neutral: the same lines run in bash on Linux.
 
-## Shared Windows defaults
+## Default locations
 
 - Docs: `%LOCALAPPDATA%\SNDocs\repo`
 - Index: `%LOCALAPPDATA%\SNDocs\index`
+- Linux/macOS: `$XDG_DATA_HOME/SNDocs/{repo,index}`, or `~/.local/share/SNDocs/{repo,index}` when `XDG_DATA_HOME` is unset or relative.
 
-Explicit path flags override `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, which override the defaults. No old-machine paths or current-directory fallbacks are used. Other platforms can use explicit paths or environment overrides.
+Explicit path flags override `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, which override the defaults. No old-machine paths or current-directory fallbacks are used. `SN_DOCS_HOME` / `--docs` should name the checkout root (containing `markdown/`); a directory without `markdown/` is indexed as-is.
 
-`node bin/sn-doc-md.js paths` only reports the resolved paths: no directory creation, download or migration.
+`node bin/sn-doc-md.js paths` only reports the resolved paths and whether the checkout, index and its `manifest.json` exist (`docsExists`, `indexExists`, `manifestExists`): no directory creation, download or migration.
 
 ## Build an index
 
