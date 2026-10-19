@@ -17,23 +17,30 @@ node -e "console.log(require.resolve('@servicenow/aiux/aiux-sdk/build',{paths:[p
 Test-Path node_modules\@servicenow\sdk\bin\index.js
 ```
 
+bash (Linux, VS Code server):
+
+```bash
+node -e "console.log(require.resolve('@servicenow/aiux/aiux-sdk/build',{paths:[process.cwd()]}))"
+test -f node_modules/@servicenow/sdk/bin/index.js && echo True || echo False
+```
+
 - First command fails: the project's AIUX dependency is not installed/resolved. Resolve dependencies through an allowed launcher with reviewed versions and lifecycle scripts disabled initially.
 - First command prints a path: the dependency is installed and the SDK that ran was not the project's. Do not reinstall dependencies. The build's first line, `Initiating the build process with SDK <version>`, shows which SDK ran.
   - `Test-Path` is `False`: no project SDK exists and a global one ran. When `package.json` declares `@servicenow/sdk`, install the declared dependencies; when it does not, stop and ask before adding a project SDK pin.
-  - `Test-Path` is `True`: the terminal did not use the project SDK. Open the configured terminal profile per the [command policy](../../../reference/sdk-commands.md) and report the mismatch.
+  - `Test-Path` is `True`: the terminal did not use the project SDK. Open the configured terminal profile per the [command policy](../../../reference/sdk-commands.md) and report the mismatch. In bash, `type now-sdk` must report the managed function ([bash notes](../../../reference/sdk-commands.md#linux-and-vs-code-server-bash)).
 
 ## Output inspection
 
 - Resolve the actual output paths, not a hardcoded demo path: `appOutputDir` in `now.config.json` (SDK default `dist/app`) holds the install categories as folders; the AIUX builder writes its generated JSON records to `dist-metadata/aiux-json` unless `aiux.json` `build.metadataOutputDir` overrides it. Where another skill names `dist/app`, substitute the resolved `appOutputDir`.
-- `now-sdk build` creates no archive; the zip (`target/<name>_<version>.zip`) exists only after the local-only `now-sdk pack` or after an install. To inspect it, run `now-sdk pack`, then `Expand-Archive` it into a temporary folder.
+- `now-sdk build` creates no archive; the zip (`target/<name>_<version>.zip`) exists only after the local-only `now-sdk pack` or after an install. To inspect it, run `now-sdk pack`, then `sn-skill zip list "target/<name>_<version>.zip"`; to read files, `sn-skill zip extract "target/<name>_<version>.zip"` unpacks into a new temporary folder and prints its path (`--out "<new-or-empty-dir>"` to choose one).
 - The AIUX starter sets `packageSourceCodeOnInstance: true` in `now.config.json`, so a source archive is produced unless that was set to `false`; it is expected only when source packaging was approved.
 - The tombstone registry is the generated keys file (`src/fluent/generated/keys.ts` by default; created by the first build, so absent before it): look for per-key `deleted: true` flags and a top-level `deleted` table-to-ids map. An ACL-filtered empty query alone does not prove a record's absence.
 
 ## Local preview
 
 - The dev server is separate from install and optional. `run` is not listed in `now-sdk --help`; use `now-sdk run --help`.
-- The HTTP port comes from the `PORT` environment variable (default 80; HMR on 3101), as read in `@servicenow/aiux` 22.67.1: confirm against the installed version. `$env:PORT` lasts for that terminal session.
-- The server logs an `open → <url>` line; use that URL, not a guessed one.
+- The HTTP port comes from the `PORT` environment variable (default 80; HMR on 3101), as read in `@servicenow/aiux` 22.67.1: confirm against the installed version. `$env:PORT` lasts for that terminal session; in bash, `export PORT=3000` does the same.
+- The server logs an `open → <url>` line; use that URL, not a guessed one. On a remote server it is server-local: forward the HTTP port and 3101 for the user's browser.
 - `Could not resolve aiux-sdk/serve` is the [resolve diagnosis](#could-not-resolve-aiux-sdk). Review dependency risks and native requirements before starting it.
 
 ## Dependency installation and Windows commands
@@ -42,9 +49,13 @@ A scaffold manifest is not an installed dependency tree. Prefer the project's ex
 
 Resolve the real Node/npm/SDK locations rather than hardcoding a maintainer's profile. A common Windows layout is `<node-directory>/node_modules/npm/bin/npm-cli.js`; confirm it exists and read its package metadata. Use it only when permitted. A direct Node command is a normal entry point, not authorization to evade an explicit policy denial. If denied, stop for an approved path.
 
+Linux/macOS: no shim or execution-policy block; `npm` and `corepack pnpm` run directly ([bash notes](../../../reference/sdk-commands.md#linux-and-vs-code-server-bash)).
+
 For npm, use `ci --ignore-scripts` with an existing valid lockfile or `install --ignore-scripts` when creating one. Review and pin versions, preserve the lockfile, review needed hooks individually and inspect audit findings separately. `ignore-scripts` skips the official skill-copy postinstall as well as native dependency hooks; read any setup script before running it manually.
 
 ## Windows asset 404
+
+Not expected from Linux/macOS builds; act only on an actual backslash hit.
 
 **Symptom:** SSR heading/shell appears, but the page/widget never hydrates or makes its RPC. A script URL returns 404. Generated `component_compile_metadata.asset` contains e.g. `home\\page-hash.js` instead of `home/page-hash.js`.
 
