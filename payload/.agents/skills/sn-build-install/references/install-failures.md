@@ -14,10 +14,11 @@ Read when `now-sdk install` failed, hung, printed no completion line, or its out
 
 `now-sdk install --info --auth <alias>` only prints the URL (`<host>/sys_upgrade_history_list.do`); it does not read install history, test the stored token, or honor `-b`/`--open-browser`. Read the rows headlessly via **sn-rest**, using the selector the SDK itself polls:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/table/sys_upgrade_history?sysparm_query=to_version=<scope>%5EORDERBYDESCupgrade_started&sysparm_fields=sys_id,to_version,upgrade_started,upgrade_finished&sysparm_limit=3&sysparm_no_count=true"
+```
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/table/sys_upgrade_history?sysparm_query=to_version=<scope>%5EORDERBYDESCupgrade_started&sysparm_fields=sys_id,to_version,upgrade_started,upgrade_finished&sysparm_limit=3&sysparm_no_count=true'
 ```
 
+- The final stderr line `sn-skill: rest exit=<N>` is the native exit evidence; without it the read did not complete (UNKNOWN).
 - A row for this scope that started after the install began and has `upgrade_finished` populated shows the instance finished processing a package, not that every record applied.
 - Per-record detail is in `sys_upgrade_history_log`; if the instance REST-blocks that table, dot-walk `upgrade_detail.*` from `upgrade_history_task`.
 - To confirm the alias is alive, use the `sn-rest` health check from **sn-auth**.

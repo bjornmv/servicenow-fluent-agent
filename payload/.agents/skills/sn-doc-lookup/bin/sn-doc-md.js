@@ -1,15 +1,27 @@
 #!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
 const { resolveDocs, resolveIndex } = require('../src/paths');
 const { parseArgs } = require('../src/common');
 const { buildIndex } = require('../src/build-index');
 const { DocSearch } = require('../src/search');
+
+const isDir = p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+const isFile = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   try {
     if (cmd === 'paths') {
-      console.log(JSON.stringify({ docs: resolveDocs(args.docs), index: resolveIndex(args.index || args.out) }, null, 2));
+      // Existence is reported, never acted on: paths still creates nothing.
+      const docs = resolveDocs(args.docs), index = resolveIndex(args.index || args.out);
+      console.log(JSON.stringify({
+        docs, index,
+        docsExists: isDir(docs),
+        indexExists: isDir(index),
+        manifestExists: isFile(path.join(index, 'manifest.json')),
+      }, null, 2));
       return;
     }
     if (cmd === 'build') {
@@ -92,10 +104,10 @@ function printSearch(res) {
 }
 
 function usage() {
-  console.log(`sn-doc-md
+  console.log(`sn-doc-md (run as: sn-skill docs <command> ...)
 
 Commands:
-  paths  [--docs <repo>] [--index <index>] (report paths only; no filesystem changes)
+  paths  [--docs <repo>] [--index <index>] (report paths and whether docs, index and manifest exist; no filesystem changes)
   build  [--docs <ServiceNowDocs root or markdown dir>] [--out <index dir>] [--family australia] [--force]
          (--force only replaces an existing recognized index)
   search [--index <index dir>] --query <text> [--keywords <terms>] [--limit 10] [--json]
@@ -105,7 +117,9 @@ Commands:
          (--path returns every chunk of the page; a miss exits 1)
   test   [--index <index dir>] [--json]
 
-Defaults: %LOCALAPPDATA%\\SNDocs\\repo and %LOCALAPPDATA%\\SNDocs\\index.
+${process.platform === 'win32'
+    ? 'Defaults: %LOCALAPPDATA%\\SNDocs\\repo and %LOCALAPPDATA%\\SNDocs\\index.'
+    : 'Defaults: $XDG_DATA_HOME/SNDocs/{repo,index} (XDG_DATA_HOME unset: ~/.local/share/SNDocs/{repo,index}).'}
 Precedence: explicit flags > SN_DOCS_HOME / SN_DOC_MD_INDEX > defaults.
 No legacy-location fallback, automatic download or migration.
 `);

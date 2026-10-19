@@ -25,7 +25,7 @@ For transformed/generated `Flow(...)`, `Subflow(...)`, and `Action(...)`, follow
 
 ## SDK commands
 
-Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.
+Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the `now-sdk` function on Linux) from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.
 
 ## The 12 ordinary-record rules
 

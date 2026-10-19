@@ -20,11 +20,13 @@ You can remove the agent without removing its supporting tools. **Choose only th
 - **Do not delete the entire `.agents` or `.copilot` folders.** They may contain other agents and your own work. Do not remove `.pi` or project folders.
 - If removing everything, remove selected credentials **before** the SDK, and delete the checkout **last**. Keep Node.js installed until the command-line steps are finished.
 
-If you use custom documentation paths, record them before removing the agent files. In **Terminal -> New Terminal**, this read-only command reports the configured paths:
+If you use custom documentation paths, record them before removing the agent files. In a new **PowerShell with now-sdk** terminal (bash on Linux), this read-only command reports the configured paths:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths
 ```
+sn-skill docs paths
+```
+
+If `sn-skill` is not found (for example after an install with `--no-vscode-settings`, or in a terminal without the profile), run the dispatcher directly: `node "$env:USERPROFILE\.agents\tools\sn-skill.cjs" docs paths` in PowerShell, or `node ~/.agents/tools/sn-skill.cjs docs paths` in bash.
 
 ## 1. Optional: remove saved PDI credentials
 
@@ -67,7 +69,8 @@ The uninstaller:
 - Backs up and removes files that still match their install-receipt hashes.
 - Preserves locally modified files and reports them as **skipped modified**.
 - Removes the install receipt only when no modified files were skipped.
-- Leaves empty folders, VS Code settings, SDK, credentials, Git, documentation and project files alone.
+- Removes the managed `sn-skill` shim (`~/.local/bin/sn-skill` on Linux/macOS; `~/bin/sn-skill` on Windows when Git Bash was found) and, on Linux/macOS, the managed `now-sdk` block in `~/.bashrc`. Files it did not create are left unchanged; `--no-shell-function` keeps both.
+- Leaves empty folders, VS Code settings (including the profile's `now-sdk` and `sn-skill` functions), SDK, credentials, Git, documentation and project files alone.
 
 **If modified files are skipped:** inspect and back them up before deciding whether to delete those exact files manually. Do not add `--force` just to clear the warning. An exit code of 0 alone does not mean every file was removed—check the skipped count.
 
@@ -116,8 +119,9 @@ The agent-file uninstaller intentionally leaves settings unchanged.
 1. Open **Preferences: Open User Settings (JSON)** from the Command Palette. Back up the file first.
 2. In `chat.agentFilesLocations`, `chat.instructionsFilesLocations` and `chat.skillsFilesLocations`, remove only location entries that are no longer needed. Entries may use `~` or absolute user-profile paths.
 3. Keep locations still used by other agents. Do not remove the whole `chat.*` configuration or disable shared settings such as `chat.promptFiles`, `github.copilot.chat.codeGeneration.useInstructionFiles` or `chat.agentHost.customTerminalTool.enabled` merely because this agent is gone.
-4. If you no longer need the SDK terminal configuration, choose another default using **Terminal: Select Default Profile**, then remove only **PowerShell with now-sdk** from `terminal.integrated.profiles.windows`. Ensure `terminal.integrated.defaultProfile.windows` no longer names the removed profile. Keep this profile if you still use the SDK.
-5. Check workspace settings for overrides you added yourself; preserve unrelated settings and JSON comments. Reload VS Code after saving.
+4. If you no longer need the SDK terminal configuration, choose another default using **Terminal: Select Default Profile**, then remove only **PowerShell with now-sdk** (with its `now-sdk` and `sn-skill` functions) from `terminal.integrated.profiles.windows`. Ensure `terminal.integrated.defaultProfile.windows` no longer names the removed profile. Keep this profile if you still use the SDK.
+5. **Linux / VS Code server:** edit the settings file the installer reported (`VS Code settings file:`), for example a serve-web Machine settings file, and also remove `chat.agentSkillsLocations` entries for `~/.agents/skills`. `uninstall` already removed the managed `~/.bashrc` block and `sn-skill` shim (section 2).
+6. Check workspace settings for overrides you added yourself; preserve unrelated settings and JSON comments. Reload VS Code after saving.
 
 Settings backups created by this installer are named `settings.json.servicenow-fluent-agent.<timestamp>.bak` alongside the settings file. Use them to compare previous values; do not overwrite current settings wholesale with an old backup.
 
@@ -163,7 +167,7 @@ Only after reviewing the uninstall results, you may remove these exact items if 
 
 If an install receipt remains, first review the modified files it still tracks. Keep or archive that receipt until the remaining files have been accounted for.
 
-**Leave Node.js, npm, VS Code, Python and any separate `SN_AGENT_HOME` backend installed** unless you independently want to remove those shared tools. VS Code/Copilot extensions and chat history are separate and are not removed by the agent uninstaller. Agent removal does not remove ServiceNow applications from an instance.
+**Leave Node.js, npm, VS Code and the doc-export renderer packages installed** unless you independently want to remove those shared tools. VS Code/Copilot extensions and chat history are separate and are not removed by the agent uninstaller. Agent removal does not remove ServiceNow applications from an instance.
 
 ## Final check
 

@@ -8,7 +8,7 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 and 4.11.2 `explain` runs; the project's installed SDK is authoritative.
 
-Look up the SDK docs for the requested type/topic and report how to author it. Run `now-sdk` in VS Code PowerShell from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md).
+Look up the SDK docs for the requested type/topic and report how to author it. Run `now-sdk` in the VS Code terminal (PowerShell on Windows; bash with the `now-sdk` function on Linux) from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md). The commands below are identical in bash.
 
 **Always pass `--format raw`** — `pretty` adds ANSI codes that waste tokens.
 

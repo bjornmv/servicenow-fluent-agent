@@ -7,9 +7,9 @@
  * built-in fetch. Refreshes the token when it is near expiry and once on 401, then
  * stores the refreshed token back for the SDK.
  *
- * RUN  (PowerShell; resolve every <placeholder> first, keep the API path quoted):
- *   node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<alias>" --instance "https://<host>" "/api/now/table/sys_app?sysparm_fields=name,scope,sys_id&sysparm_limit=10"
- *   node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<alias>" --instance "https://<host>" --method PATCH --body-file "<reviewed-json-file>" "/api/now/table/<table>/<sys_id>"
+ * RUN  (same line in PowerShell and bash; resolve every <placeholder> first; double-quote file paths, single-quote other values):
+ *   sn-skill rest --agent --alias '<alias>' --instance 'https://<host>' '/api/now/table/sys_app?sysparm_fields=name,scope,sys_id&sysparm_limit=10'
+ *   sn-skill rest --agent --alias '<alias>' --instance 'https://<host>' --method PATCH --body-file "<reviewed-json-file>" '/api/now/table/<table>/<sys_id>'
  *
  * OPTIONS
  *   --alias <name>       SDK auth alias. Required for every non-GET request.
@@ -18,6 +18,11 @@
  *   --body-file <path>   UTF-8 JSON request body. --body <json> is the inline form.
  *   --agent              Compact envelope: {ok,count,hasMore,nextOffset,records} or {ok,result}.
  *   --pretty             Indented JSON.
+ *   --expect-field <f> --expect-contains <literal>
+ *                        GET with --agent only, both together: adds "expect":{field,rows,present,contains}
+ *                        to the envelope. present is true only for exactly one row that carries the field as
+ *                        a plain value; contains only when that value holds the literal (case-sensitive).
+ *                        Read-only check; exit codes still follow the HTTP result.
  *   Value options also accept --name=value. With no API path, prints redacted alias metadata.
  *
  * SAFETY CONTRACT (covered by tools/test/sn-rest/cli-guidance.test.cjs in the distribution repo)
@@ -30,7 +35,7 @@
  * EXIT CODES
  *   0  HTTP 2xx.
  *   1  HTTP error (with --agent: {ok:false,error:{status,...}} on stdout), or a token-refresh,
- *      network or keyring-load failure (stderr only).
+ *      network, keyring-load or OS credential-store failure (stderr only).
  *   2  Refused before any request was sent: usage, alias, credential or target problem.
  *
  * --raw (token only, no API path) is an internal interface for the bundled
@@ -45,7 +50,7 @@ const fs = require('fs');
 // Same resolution as the SDK: built-in public OAuth client unless the SDK override is set.
 const CLIENT_ID = process.env.SDK_OAUTH_APP_CLIENT_ID ?? '543e5655f77746a28228c6009a599dfb';
 
-const VALUE_FLAGS = new Set(['--alias', '--method', '--body', '--body-file', '--instance']);
+const VALUE_FLAGS = new Set(['--alias', '--method', '--body', '--body-file', '--instance', '--expect-field', '--expect-contains']);
 const BOOL_FLAGS = new Set(['--raw', '--pretty', '--agent']);
 const METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const BODY_REQUIRED = new Set(['POST', 'PATCH', 'PUT']);
@@ -101,6 +106,11 @@ function parseArgs(argv) {
       case '--body':      opts.body = v; break;
       case '--body-file': opts.bodyFile = v; break;
       case '--instance':  opts.instance = v; break;
+      case '--expect-field':    opts.expectField = v; break;
+      case '--expect-contains':
+        if (!v.trim()) refuse('--expect-contains needs a non-blank marker literal');
+        opts.expectContains = v;
+        break;
     }
   }
 
@@ -118,6 +128,10 @@ function parseArgs(argv) {
     if (opts.method === 'GET' && hasBody) refuse('A request body needs --method POST, PATCH or PUT');
     if (BODY_REQUIRED.has(opts.method) && !hasBody) refuse(`--method ${opts.method} requires --body-file with a JSON body`);
     if (opts.method !== 'GET' && opts.alias === undefined) refuse(`--method ${opts.method} requires an explicit --alias`);
+  }
+  if (opts.expectField !== undefined || opts.expectContains !== undefined) {
+    if (opts.expectField === undefined || opts.expectContains === undefined) refuse('Use --expect-field and --expect-contains together');
+    if (opts.restPath === undefined || opts.method !== 'GET' || !opts.agent) refuse('--expect-field and --expect-contains need --agent and a GET API path');
   }
   return opts;
 }
@@ -180,8 +194,23 @@ function openEntry() {
   return new Entry('ServiceNow', 'now-sdk');
 }
 
+// Linux/macOS: the OS store itself can be unavailable (Linux without a D-Bus Secret Service
+// such as gnome-keyring, e.g. in a container). @napi-rs/keyring then
+// throws e.g. "Platform secure storage failure". That is a host finding, not an auth result.
+// Windows keeps the original error unchanged.
+function credentialStoreError(e) {
+  if (process.platform === 'win32' || e instanceof CliError || /Cannot load @napi-rs\/keyring/.test(String(e && e.message))) return e;
+  const detail = String((e && e.message) || e).split('\n')[0];
+  return new CliError(1, `Cannot read the OS credential store (${detail}). ` +
+    'On Linux this needs a running, unlocked Secret Service (for example gnome-keyring) on the D-Bus session ' +
+    'that this terminal inherits; on macOS, an unlocked login Keychain. ' +
+    'This is a host/toolchain finding, not an authentication error: re-running now-sdk auth does not fix it. Nothing was sent.');
+}
+
 function readStore() {
-  const blob = openEntry().getPassword();
+  let blob;
+  try { blob = openEntry().getPassword(); }
+  catch (e) { throw credentialStoreError(e); }
   if (!blob) refuse('No credentials in keychain. ' + AUTH_HELP);
   let store;
   try { store = JSON.parse(blob); } catch { store = null; }
@@ -339,6 +368,18 @@ function agentEnvelope(parsed, response) {
   return { ok: true, result: parsed };
 }
 
+// Read-only content check on the response rows. Exactly one row must carry the field as an
+// own, non-object value (present) and that value must hold the literal (contains).
+function expectResult(parsed, field, literal) {
+  const result = parsed && typeof parsed === 'object' ? parsed.result : undefined;
+  const rows = Array.isArray(result) ? result : result && typeof result === 'object' ? [result] : [];
+  const row = rows.length === 1 && rows[0] !== null && typeof rows[0] === 'object' ? rows[0] : null;
+  const present = row !== null && Object.prototype.hasOwnProperty.call(row, field) &&
+    row[field] !== null && typeof row[field] !== 'object';
+  const contains = present && String(row[field]).includes(literal);
+  return { field, rows: rows.length, present, contains };
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const body = loadBody(opts);
@@ -391,6 +432,7 @@ async function main() {
       let parsed;
       try { parsed = JSON.parse(text); } catch { parsed = text; }
       const error = { ok: false, error: { status: res.status, statusText: res.statusText, body: parsed } };
+      if (opts.expectField !== undefined) error.expect = { field: opts.expectField, rows: 0, present: false, contains: false };
       console.log(pretty ? JSON.stringify(error, null, 2) : JSON.stringify(error));
     } else {
       console.error('HTTP ' + res.status);
@@ -401,6 +443,7 @@ async function main() {
   try {
     const parsed = JSON.parse(text);
     const output = opts.agent ? agentEnvelope(parsed, res) : parsed;
+    if (opts.expectField !== undefined) output.expect = expectResult(parsed, opts.expectField, opts.expectContains);
     console.log(pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output));
   } catch { console.log(text); }
 }

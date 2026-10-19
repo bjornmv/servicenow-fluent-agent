@@ -7,4 +7,4 @@
 - Direct list URL: `/sys_ux_banner_announcement_list.do`.
 
 ## REST hide pattern (sn-rest)
-Hiding a banner is an instance write. Follow the **sn-rest** skill's write gate: get explicit approval of the exact `sys_id` and `end` value, put the JSON in a reviewed UTF-8 body file and send it with the helper's `--method PATCH --body-file` (PowerShell mangles inline JSON passed as `--body`). Do not read the credential store or write another OAuth client.
+Hiding a banner is an instance write. Follow the **sn-rest** skill's write gate: get explicit approval of the exact `sys_id` and `end` value, put the JSON in a reviewed UTF-8 body file and send it with the helper's `--method PATCH --body-file` (shell quoting, notably PowerShell's, mangles inline JSON passed as `--body`). Do not read the credential store or write another OAuth client.

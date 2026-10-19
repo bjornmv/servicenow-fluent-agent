@@ -12,5 +12,5 @@
 - The OAuth client-credentials setup requires an Application Registry and a mapped service user; it is different from the interactive PKCE client.
 - Basic CI instead uses `SN_SDK_USER` / `SN_SDK_USER_PWD`.
 - Instance setup details: `now-sdk explain ci-integration --format raw`; pipeline rules: **sn-cicd**.
-- Never commit CI variables, print their values, or persist secrets with `SETX`. Use the CI provider's protected secret store.
+- Never commit CI variables, print their values, or persist secrets with `SETX` or shell profile files (`~/.bashrc`, `~/.profile`). Use the CI provider's protected secret store.
 - On a developer machine these variables override `--auth <alias>`; see Session and CI overrides in SKILL.md.

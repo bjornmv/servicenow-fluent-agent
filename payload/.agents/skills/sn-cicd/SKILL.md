@@ -8,13 +8,13 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6 `cicd` help, CLI source and bundled `ci-integration` / `sdlc-guide` docs.
 
-`now-sdk cicd` calls `sn_cicd` APIs: it executes tests and mutates application versions on instances. Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Only the interactive parent can obtain the approvals below.
+`now-sdk cicd` calls `sn_cicd` APIs: it executes tests and mutates application versions on instances. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Only the interactive parent can obtain the approvals below.
 
 ## Required preflight
 
 1. `now-sdk cicd publish --help` must list `--app-sys-id`; an SDK without `cicd` prints its general help and still exits 0. If the option is missing, stop and report the project's SDK version; do not upgrade or switch SDKs for this skill. Check the SDK's declared Node engine.
 2. Read `now.config.json` (scope, `scopeId`) and `package.json` (version). The auth alias and instance host for each stage (source, test, target) come from the user; ask if one is missing. Always pass `--auth <alias>`, or the SDK uses its default alias.
-3. List credential variable names only: `Get-ChildItem Env:SN_SDK_* | Select-Object -ExpandProperty Name`. If `SN_SDK_NODE_ENV`, `SN_SDK_SESSION_TOKEN` or `SN_SDK_SESSION_BEARER_TOKEN` is listed, stop and report it without values: the SDK then ignores `--auth`, targets `SN_SDK_INSTANCE_URL`, and machine output (`--output json` or `--select`) says nothing about it.
+3. List credential variable names only: `Get-ChildItem Env:SN_SDK_* | Select-Object -ExpandProperty Name` (PowerShell) / `compgen -e | grep '^SN_SDK_' || echo '(none)'` (bash). If `SN_SDK_NODE_ENV`, `SN_SDK_SESSION_TOKEN` or `SN_SDK_SESSION_BEARER_TOKEN` is listed, stop and report it without values: the SDK then ignores `--auth`, targets `SN_SDK_INSTANCE_URL`, and machine output (`--output json` or `--select`) says nothing about it.
 4. Confirm before running ATF on an instance, naming the alias and instance host: ATF steps can create/update/delete test data.
 5. Stop and obtain explicit approval before every `cicd publish`, `cicd install`, or `cicd rollback`. State the source/target alias and instance host, app sys_id or scope, the version currently on the target (read it first, see [Verify versions](#verify-versions); it is the expected rollback version), and the target version.
 6. Never use local `now-sdk install` as a production promotion path; production change management, approvals and rollback depend on App Repo installs. Build/install to dev/test with **sn-build-install**, validate, publish to App Repo, then `cicd install` downstream through normal approvals.
@@ -25,6 +25,10 @@ End every call with the exit report; do not add `2>&1` (it mixes stderr into the
 
 ```powershell
 now-sdk cicd testsuite run --auth <test-alias> --test-suite-sys-id <sys_id> --output json; "exit=$LASTEXITCODE"
+```
+bash (Linux, VS Code server):
+```bash
+now-sdk cicd testsuite run --auth <test-alias> --test-suite-sys-id <sys_id> --output json; echo "exit=$?"
 ```
 
 - Machine output prints nothing until the command ends, up to the poll timeout (no progress, target or defaults notice).
@@ -38,6 +42,11 @@ now-sdk cicd testsuite run --auth <test-alias> --test-suite-sys-id <sys_id> --ou
 ```powershell
 now-sdk cicd testsuite run --auth <test-alias> --test-suite-name "Regression Suite" --output json; "exit=$LASTEXITCODE"
 now-sdk cicd test run --auth <test-alias> --test-name "Critical test" --output json; "exit=$LASTEXITCODE"
+```
+bash (Linux, VS Code server):
+```bash
+now-sdk cicd testsuite run --auth <test-alias> --test-suite-name 'Regression Suite' --output json; echo "exit=$?"
+now-sdk cicd test run --auth <test-alias> --test-name 'Critical test' --output json; echo "exit=$?"
 ```
 
 - These run what is already on the instance; install a locally authored suite or test first (**sn-build-install** or App Repo), or the previous version runs.
@@ -56,6 +65,11 @@ Inside the project, `--app-sys-id` defaults from `now.config.json.scopeId` and, 
 now-sdk cicd publish --auth <validated-source-alias> --app-sys-id <sys_id> --app-version <version> --dev-notes "<notes>" --output json; "exit=$LASTEXITCODE"
 now-sdk cicd install --auth <target-alias> --app-sys-id <sys_id> --app-version <version> --output json; "exit=$LASTEXITCODE"
 ```
+bash (Linux, VS Code server):
+```bash
+now-sdk cicd publish --auth <validated-source-alias> --app-sys-id <sys_id> --app-version <version> --dev-notes '<notes>' --output json; echo "exit=$?"
+now-sdk cicd install --auth <target-alias> --app-sys-id <sys_id> --app-version <version> --output json; echo "exit=$?"
+```
 
 After a successful install, report `result.rollback_version`; it should equal the pre-install version. A failed or timed-out install prints no `result`, leaving the pre-install read as the only rollback record. Verify the installed version; dispatch alone is not success.
 
@@ -70,11 +84,15 @@ Destructive. `--app-version` is the version expected after rollback, not the one
 ```powershell
 now-sdk cicd rollback --auth <target-alias> --app-sys-id <sys_id> --app-version <expected-previous-version> --output json; "exit=$LASTEXITCODE"
 ```
+bash (Linux, VS Code server):
+```bash
+now-sdk cicd rollback --auth <target-alias> --app-sys-id <sys_id> --app-version <expected-previous-version> --output json; echo "exit=$?"
+```
 
 Obtain separate explicit approval immediately before rollback. Verify the resulting installed version.
 
 ## CI pipelines
 
-`SN_SDK_*` credentials belong in a pipeline's protected secret store, never a developer terminal; never commit, print, or `SETX` secrets. Read [references/ci-pipeline.md](references/ci-pipeline.md) before writing a pipeline, configuring CI auth or adding the `--frozenKeys` pre-merge check.
+`SN_SDK_*` credentials belong in a pipeline's protected secret store, never a developer terminal; never commit, print, or `SETX` secrets (on Linux, nor `export` them in a shell profile such as `~/.bashrc`). Read [references/ci-pipeline.md](references/ci-pipeline.md) before writing a pipeline, configuring CI auth or adding the `--frozenKeys` pre-merge check.
 
 Report each command, target, exit code, final interpreted outcome, and verified version. Terse.

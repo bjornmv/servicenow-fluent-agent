@@ -14,12 +14,15 @@ const { buildIndex } = require(path.join(skill, 'src/build-index'));
 
 async function fixture(fn) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'sn-doc-paths-'));
-  const env = { ...process.env, LOCALAPPDATA: path.join(temp, 'Local AppData') };
+  // Both platform roots point into the fixture so no run touches the real profile.
+  const env = { ...process.env, LOCALAPPDATA: path.join(temp, 'Local AppData'), XDG_DATA_HOME: path.join(temp, 'xdg data') };
   delete env.SN_DOCS_HOME;
   delete env.SN_DOC_MD_INDEX;
   try { return await fn(temp, env); }
   finally { fs.rmSync(temp, { recursive: true, force: true }); }
 }
+// Default data root for the running platform (Windows %LOCALAPPDATA%, elsewhere $XDG_DATA_HOME).
+const dataRoot = env => process.platform === 'win32' ? env.LOCALAPPDATA : env.XDG_DATA_HOME;
 function cli(args, env, file = 'bin/sn-doc-md.js') {
   const result = spawnSync(process.execPath, [path.join(skill, file), ...args], { env, encoding: 'utf8', timeout: 20000 });
   assert.ifError(result.error);
@@ -31,13 +34,33 @@ function seedDocs(docs) {
 }
 
 test('short defaults and paths CLI resolve without creating directories', () => fixture(async (temp, env) => {
-  const expected = { docs: path.join(env.LOCALAPPDATA, 'SNDocs/repo'), index: path.join(env.LOCALAPPDATA, 'SNDocs/index') };
+  const expected = { docs: path.join(dataRoot(env), 'SNDocs/repo'), index: path.join(dataRoot(env), 'SNDocs/index') };
   assert.equal(resolveDocs(undefined, env), expected.docs);
   assert.equal(resolveIndex(undefined, env), expected.index);
   const result = cli(['paths'], env);
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout), expected);
-  assert.equal(fs.existsSync(env.LOCALAPPDATA), false);
+  assert.deepEqual(JSON.parse(result.stdout), { ...expected, docsExists: false, indexExists: false, manifestExists: false });
+  assert.equal(fs.existsSync(dataRoot(env)), false);
+}));
+
+test('paths reports docs, index and manifest existence without changing anything', () => fixture(async (temp, env) => {
+  const docs = path.join(temp, 'docs repo'), index = path.join(temp, 'idx dir');
+  fs.mkdirSync(docs);
+  fs.mkdirSync(index);
+  let out = JSON.parse(cli(['paths', '--docs', docs, '--index', index], env).stdout);
+  assert.deepEqual(out, { docs, index, docsExists: true, indexExists: true, manifestExists: false });
+  fs.writeFileSync(path.join(index, 'manifest.json'), '{}');
+  out = JSON.parse(cli(['paths', '--docs', docs, '--index', index], env).stdout);
+  assert.equal(out.manifestExists, true);
+  assert.deepEqual(fs.readdirSync(index), ['manifest.json']);
+  const file = path.join(temp, 'plain file');
+  fs.writeFileSync(file, '');
+  out = JSON.parse(cli(['paths', '--docs', file, '--index', file], env).stdout);
+  assert.deepEqual(out, { docs: file, index: file, docsExists: false, indexExists: false, manifestExists: false }, 'a file is not a checkout or index directory');
+  fs.rmSync(path.join(index, 'manifest.json'));
+  fs.mkdirSync(path.join(index, 'manifest.json'));
+  out = JSON.parse(cli(['paths', '--docs', docs, '--index', index], env).stdout);
+  assert.equal(out.manifestExists, false, 'a manifest.json directory is not a manifest');
 }));
 
 test('explicit paths override env, which overrides defaults, independently', () => fixture(async (temp, env) => {
@@ -48,22 +71,36 @@ test('explicit paths override env, which overrides defaults, independently', () 
   assert.equal(resolveDocs(path.join(temp, 'explicit repo'), env), path.join(temp, 'explicit repo'));
   assert.equal(resolveIndex(path.join(temp, 'explicit index'), env), path.join(temp, 'explicit index'));
   delete env.LOCALAPPDATA;
+  delete env.XDG_DATA_HOME;
   assert.equal(resolveDocs(undefined, env), env.SN_DOCS_HOME);
   assert.equal(resolveIndex(undefined, env), env.SN_DOC_MD_INDEX);
 }));
 
 test('missing LOCALAPPDATA fails closed without hardcoded or cwd fallback', () => {
-  assert.throws(() => resolveDocs(undefined, {}), /LOCALAPPDATA/);
-  assert.throws(() => resolveIndex(undefined, {}), /LOCALAPPDATA/);
-  assert.throws(() => resolveDocs(undefined, { LOCALAPPDATA: 'relative' }), /absolute/);
+  assert.throws(() => resolveDocs(undefined, {}, 'win32'), /LOCALAPPDATA/);
+  assert.throws(() => resolveIndex(undefined, {}, 'win32'), /LOCALAPPDATA/);
+  assert.throws(() => resolveDocs(undefined, { LOCALAPPDATA: 'relative' }, 'win32'), /absolute/);
   assert.throws(() => resolveIndex(true, {}), /Invalid path/);
+});
+
+test('Linux/macOS default is XDG_DATA_HOME/SNDocs, else ~/.local/share/SNDocs, never LOCALAPPDATA or cwd', () => {
+  const xdg = path.resolve('/xdg/data'), home = path.resolve('/home/user');
+  for (const platform of ['linux', 'darwin']) {
+    assert.equal(resolveDocs(undefined, { XDG_DATA_HOME: xdg, HOME: home, LOCALAPPDATA: path.resolve('/win') }, platform), path.join(xdg, 'SNDocs', 'repo'));
+    assert.equal(resolveIndex(undefined, { XDG_DATA_HOME: xdg, HOME: home }, platform), path.join(xdg, 'SNDocs', 'index'));
+    assert.equal(resolveDocs(undefined, { HOME: home }, platform), path.join(home, '.local', 'share', 'SNDocs', 'repo'));
+    assert.equal(resolveIndex(undefined, { XDG_DATA_HOME: 'relative', HOME: home }, platform), path.join(home, '.local', 'share', 'SNDocs', 'index'));
+    assert.equal(resolveIndex(undefined, { SN_DOC_MD_INDEX: path.join(home, 'idx'), XDG_DATA_HOME: xdg }, platform), path.join(home, 'idx'));
+    assert.equal(resolveDocs(path.join(home, 'explicit'), { SN_DOCS_HOME: path.join(home, 'env'), XDG_DATA_HOME: xdg }, platform), path.join(home, 'explicit'));
+    assert.ok(path.isAbsolute(resolveDocs(undefined, {}, platform)), 'falls back to os.homedir(), not cwd');
+  }
 });
 
 test('missing source/index never triggers download, migration or directory creation', () => fixture(async (temp, env) => {
   for (const args of [['build'], ['search', '--query', 'GlideRecord'], ['read', '--id', '0'], ['test']]) {
     const result = cli(args, env);
     assert.equal(result.status, 1, result.stdout);
-    assert.equal(fs.existsSync(env.LOCALAPPDATA), false);
+    assert.equal(fs.existsSync(dataRoot(env)), false);
   }
 }));
 
@@ -100,7 +137,7 @@ test('escaped UI Builder roles are found/read via defaults despite a legacy cach
   const raw = '# UI Builder overview\n\nThe ui\\_builder\\_admin role is required to complete tasks in UI Builder.\n' + 'Create pages and configure components for workspace experiences. '.repeat(4);
   fs.writeFileSync(file, raw);
   assert.equal(raw.includes('ui_builder_admin'), false, 'literal grep misses the escaped source');
-  const legacy = path.join(env.LOCALAPPDATA, 'sn-docs/index');
+  const legacy = path.join(dataRoot(env), 'sn-docs/index');
   fs.mkdirSync(legacy, { recursive: true });
   fs.writeFileSync(path.join(legacy, 'manifest.json'), 'historical cache - do not open');
   assert.equal(cli(['build'], env).status, 0);
@@ -127,7 +164,7 @@ test('lookup routes to owning skills which retain path/advisor/evidence safeguar
   assert.match(agent, /\| Official product documentation \| `sn-doc-lookup`/);
   assert.match(agent, /sn-update-advisor/);
   assert.doesNotMatch(agent, /## Quiet Update Advisory|## Documentation Lookup|ui\\_builder/);
-  assert.match(advisor, /--docs "<resolved-docs-checkout>"/);
+  assert.match(advisor, /^sn-skill update check --only docs --docs "<resolved-docs-checkout>"$/m);
   assert.match(advisor, /`--docs` requires a value/);
   assert.match(agent, /actual excerpts and completion evidence/);
   const skillText = read('payload/.agents/skills/sn-doc-lookup/SKILL.md');
@@ -154,7 +191,7 @@ test('overrides build outside defaults and explicit flags win', () => fixture(as
   const result = cli(['build', '--docs', docs, '--out', other], env);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(cli(['read', '--index', other, '--id', '0'], env).status, 0);
-  assert.equal(fs.existsSync(env.LOCALAPPDATA), false);
+  assert.equal(fs.existsSync(dataRoot(env)), false);
 }));
 
 test('force refuses source/ancestor and unrecognized output without deleting data', () => fixture(async temp => {

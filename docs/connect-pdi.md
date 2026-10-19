@@ -57,6 +57,7 @@ When the SDK confirms that credentials have been saved, you can start using the 
 | Browser does not open | Open the authorization URL printed by the waiting SDK command yourself. Keep it private. |
 | Wrong instance/account or expired code | Cancel the pending sign-in, log in to the correct PDI, then start a new attempt. Do not reuse an old code. |
 | Invalid OAuth client or missing SDK callback page | Ask the instance administrator to check the supported IDE/SDK OAuth prerequisites. Do not create secrets or disable security controls as a workaround. |
+| `Platform secure storage failure` or credentials gone after restart (Linux, VS Code server, containers) | The machine has no OS credential store. Start a D-Bus session with an unlocked gnome-keyring before VS Code, then add the alias again. See [Linux and VS Code server](linux-vscode-server.md). |
 | Command output is blank or interrupted | Check whether the original command is waiting for input or still running before retrying. Blank output is not success. |
 
 ## About this guide

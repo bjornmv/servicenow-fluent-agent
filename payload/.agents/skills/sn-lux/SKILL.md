@@ -2,7 +2,7 @@
 name: sn-lux
 description: Creates and extends Lux (AIUX, AI Experience) apps from the javascript.aiux templates. Use when creating an app or extending or reviewing its pages and widgets; not build or deploy issues (sn-lux-build).
 argument-hint: "<Lux/AIUX experience, page, widget or extension request>"
-compatibility: AIUX project with matching official project-local reference packs and the Node/package-manager versions its package.json declares; npm registry access to scaffold; authorized instance for runtime work.
+compatibility: AIUX project with matching official project-local reference packs and the Node/package-manager versions its package.json declares; npm registry access to scaffold; authorized instance for runtime work; sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs").
 metadata:
   version: '1'
 ---
@@ -37,17 +37,17 @@ Run before a new scaffold, dependency/toolchain changes, instance build/deploy/r
 
 ## 3. Scaffold only when requested
 
-`init` writes into the current directory. Create and enter an empty project folder and list it (`Get-ChildItem -Force -Name`). Stop and ask in any non-empty directory.
+`init` writes into the current directory. Create and enter an empty project folder and list it with `Get-ChildItem -Force -Name` (PowerShell) / `ls -A` (bash). Stop and ask in any non-empty directory.
 
 Resolve the instance-bound vendor prefix with an authenticated, read-only `sn-rest` request:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/appcreator/app/vendorprefix"
+```
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/appcreator/app/vendorprefix'
 ```
 
-The prefix is `result.result` in the `--agent` envelope, including `x_` and the trailing underscore. Validate the scope against it and the SDK naming rules (max 18 characters); never reuse a sample prefix. `init` is local-only and succeeds with a missing or wrong alias, so a generated scope ID is not evidence of reservation or installation. Before deployment, run the [collision check](references/preflight.md#scope-and-route-collisions).
+The prefix is `result.result` in the `--agent` envelope, including `x_` and the trailing underscore; without a final `sn-skill: rest exit=0` stderr line it is UNKNOWN. Validate the scope against it and the SDK naming rules (max 18 characters); never reuse a sample prefix. `init` is local-only and succeeds with a missing or wrong alias, so a generated scope ID is not evidence of reservation or installation. Before deployment, run the [collision check](references/preflight.md#scope-and-route-collisions).
 
-Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print the command. Standalone experience:
+Use `now-sdk` directly in the VS Code terminal (PowerShell with now-sdk on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md) and its [bash notes](../../reference/sdk-commands.md#linux-and-vs-code-server-bash). Print the command. Both `init` commands run unchanged in bash. Standalone experience:
 
 ```powershell
 now-sdk init --template javascript.aiux --auth <confirmed-alias> --appName "<app name>" --packageName <package-name> --scopeName <validated-scope> --noUpdate

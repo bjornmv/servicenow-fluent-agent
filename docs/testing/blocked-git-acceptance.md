@@ -13,7 +13,7 @@ https://raw.githubusercontent.com/bjornmv/servicenow-fluent-agent/fix/blocked-gi
 
 This test is authorized to: download the branch ZIP, run the repository tests, install the pinned per-user MinGit **2.54.0.windows.1** if no usable Git exists, register it in Windows user PATH, and change VS Code user settings through the repository's own `configure-git` command (with its automatic backup).
 
-Not authorized: changing, repairing, uninstalling or re-running the blocked Git; elevation; execution-policy changes, `Unblock-File` or `-ExecutionPolicy`; CMD/`.cmd`/`.bat` launchers (including `npm.cmd`); editing repository files; any ServiceNow authentication or deployment. If a step is blocked by policy, record the exact error and continue with the next step that does not depend on it. Never dump whole settings files or environment values into chat.
+Not authorized: changing, repairing, uninstalling or re-running the blocked Git; elevation; execution-policy changes, `Unblock-File` or `-ExecutionPolicy`; CMD/`.cmd`/`.bat` launchers (including `npm.cmd`); editing repository files; any ServiceNow authentication or deployment. If a step is blocked by policy, record the exact error and continue with the next step that does not depend on it. Never dump whole settings files or environment values into chat. Exception: when this repository itself was installed from a downloaded ZIP, the user (not the agent) may run `Unblock-File` on that ZIP and extract it again, as the installer error says. Never unblock individual scripts, and never do it for a policy or application-control block.
 
 Record every command's actual output and native exit code. A step not run is **NOT RUN** with the reason, never assumed passed.
 
@@ -97,11 +97,11 @@ Create a **new** terminal with the **PowerShell with now-sdk** profile (not a re
 
 ```powershell
 $ExecutionContext.SessionState.LanguageMode
-Get-Command git | Select-Object CommandType, Source
+Get-Command git -CommandType Function,Application | Select-Object -First 1 CommandType, Source
 (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
 git --version; Write-Output "EXIT=$LASTEXITCODE"
 node.exe -e "console.log(require('node:child_process').execFileSync('git', ['--version'], {encoding: 'utf8'}).trim())"
-Get-Command now-sdk | Select-Object CommandType, Name
+Get-Command now-sdk -CommandType Function | Select-Object CommandType, Name
 ```
 
 Expect with a blocked system Git: `git` is a `Function`; the Application line shows the selected path (PATH prefix); `git version 2.54.0.windows.1` (or the selected version) with `EXIT=0`; the Node line prints the same version; `now-sdk` is a `Function`.

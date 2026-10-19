@@ -2,18 +2,18 @@
 name: sn-new-app
 description: Scaffolds a new scoped Fluent app with now-sdk init. Use when starting an app in an empty folder; not Lux or AIUX apps (sn-lux) or adopting an instance app (sn-download).
 argument-hint: <app name, scope feature suffix, template, confirmed instance and alias>
-compatibility: Installed now-sdk and a Node version that satisfies its engine; empty target directory; authorized ServiceNow instance and OAuth alias.
+compatibility: Installed now-sdk and a Node version that satisfies its engine; empty target directory; authorized ServiceNow instance and OAuth alias; sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs").
 metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.13.6 and 4.11.2 `init`, run locally; wrong-prefix install outcome not re-verified.
 
-Scaffold a new scoped ServiceNow Fluent app. Use `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
+Scaffold a new scoped ServiceNow Fluent app. Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`). See the [SDK command policy](../../reference/sdk-commands.md).
 
 Collect, asking for anything missing: app name; npm package name (lowercase, hyphens; propose one from the app name); scope feature suffix; template; the confirmed instance and its auth alias. `init` takes no description (it writes an empty one) — do not collect one.
 
 ## Prereqs
-- **Empty target directory — check, do not assume:** `Get-ChildItem -Force -Name`.
+- **Empty target directory — check, do not assume:** `Get-ChildItem -Force -Name` (PowerShell) / `ls -A` (bash).
   - `now.config.json` exists → stop: this is not a new app.
   - `package.json` exists → stop and ask: `init` replaces it.
   - Anything else → ask before continuing. Read [references/non-empty-directory.md](references/non-empty-directory.md) when the directory is not empty.
@@ -22,14 +22,18 @@ Collect, asking for anything missing: app name; npm package name (lowercase, hyp
 
 ## Steps
 1. **Resolve the vendor prefix first.** Scope is `x_<vendor_prefix>_<feature>`: lowercase letters, digits, underscores. **The prefix is instance-bound, NOT freely chosen** (numeric on a personal developer instance). A wrong prefix scaffolds and builds, then may fail at install (observed: "application was null"). Read it via the **sn-rest** helper (read-only):
-   ```powershell
-   node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<alias>" --instance "https://<instance>.service-now.com" "/api/now/appcreator/app/vendorprefix"
+   ```
+   sn-skill rest --agent --alias '<alias>' --instance 'https://<instance>.service-now.com' '/api/now/appcreator/app/vendorprefix'
    ```
    - The prefix is `result.result` in the `--agent` envelope, with `x_` and the trailing underscore; the scope MUST start with it exactly.
-   - Request fails or value empty → stop and ask for the prefix. Never guess or reuse a sample prefix (`x_acme_*` below is illustrative).
+   - Request fails, value empty or no final `sn-skill: rest exit=0` stderr line (the native exit evidence) → stop and ask for the prefix. Never guess or reuse a sample prefix (`x_acme_*` below is illustrative).
    - **Scope max 18 characters** including the prefix. Count before `init`; if over, ask for a shorter suffix — do not truncate.
 2. **Run `init` non-interactively** — all four of `--template`, `--appName`, `--packageName` and `--scopeName` are required to skip the prompts. Print the command first:
    ```powershell
+   now-sdk init --template typescript.basic --auth <alias> --appName "My App" --packageName my-app --scopeName x_acme_my_app --noUpdate
+   ```
+   bash (Linux, VS Code server):
+   ```bash
    now-sdk init --template typescript.basic --auth <alias> --appName "My App" --packageName my-app --scopeName x_acme_my_app --noUpdate
    ```
    - `--template` — ask if not stated: `typescript.basic` / `javascript.basic` (Fluent-only), `javascript.react` / `typescript.react` / `typescript.vue` (adds a sample full-stack UI page) or `base` (config files only). Read [references/templates.md](references/templates.md) when the user is unsure which to choose. `javascript.aiux` / `javascript.aiux-extension` → stop and use **sn-lux** for scaffold AND install.
@@ -41,11 +45,15 @@ Collect, asking for anything missing: app name; npm package name (lowercase, hyp
    - **If any prompt appears, do not answer it** (Enter on `Select a template:` picks `base`). Cancel, fix the flags, re-run in a still-empty directory.
 3. **Confirm success — exit code 0 is not enough.** A rejected input prints an `ERROR:` line (e.g. `scopeName Invalid scope: must be less than 19 characters`), writes nothing and exits 0. Success requires `Application created successfully.` AND a new `now.config.json`. On `ERROR:`, fix the input and re-run; do not install dependencies without `package.json`.
    - A warning that the scope "does not start with your instance's vendor prefix" is a STOP: correct the scope before any build or install (with user approval, re-scaffold in a clean folder or edit `scope` in `now.config.json`; react/vue samples also embed it). No warning is NOT proof — it needs a resolving alias; step 1 is the check.
-4. **Install dependencies with the project's package manager** (`init` does not). Honor `packageManager` and the lockfile; review installs and lifecycle scripts through the normal approval workflow. For npm, resolve its JavaScript CLI per the command policy; use `ci` with a valid npm lockfile, `install` for a new manifest without one:
+4. **Install dependencies with the project's package manager** (`init` does not). Honor `packageManager` and the lockfile; review installs and lifecycle scripts through the normal approval workflow. For npm, resolve its JavaScript CLI per the command policy (on Linux run `npm` directly); use `ci` with a valid npm lockfile, `install` for a new manifest without one:
    ```powershell
    node "<resolved-npm-cli.js>" install
    ```
-   `now-sdk` then prefers the project's `node_modules/@servicenow/sdk` over the global SDK. Do not replace a pnpm lockfile with an npm lockfile.
+   bash (Linux, VS Code server):
+   ```bash
+   npm install
+   ```
+   The `now-sdk` function (PowerShell or bash) then prefers the project's `node_modules/@servicenow/sdk` over the global SDK. Do not replace a pnpm lockfile with an npm lockfile.
 5. **Verify (done criteria):**
    - `now.config.json` `scope` and `name` match the chosen values (`scopeId` is generated locally, not by the instance).
    - The layout matches the template: `*.basic` → `src/fluent/` + `src/server/`; `*.react`/`*.vue` → `src/client/` + `src/fluent/ui-pages/`; `base` → no `src/`. A mismatch means the wrong template was applied — stop. Missing `src/scripts/` and `src/ui/` is normal.

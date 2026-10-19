@@ -5,7 +5,7 @@ permalink: /setup/
 # Agent-Assisted Installation
 
 ```text
-SETUP_PROTOCOL_VERSION=0.3.15
+SETUP_PROTOCOL_VERSION=0.4.0
 ```
 
 Give a new agent session this prompt to install this agent:
@@ -113,7 +113,7 @@ node bin/sn-fluent-agent.cjs install --git-exe "$GitExe"
 if ($LASTEXITCODE -ne 0) { throw 'Agent installation failed; stop setup.' }
 ```
 
-**Expect:** Payload installed, Git registered (selected for VS Code when shadowed), **PowerShell with now-sdk** profile with its `now-sdk` function. The Function uses Node with project-local SDK when present, otherwise global SDK; Git is profile-independent.
+**Expect:** Payload installed, Git registered (selected for VS Code when shadowed), **PowerShell with now-sdk** profile with its `now-sdk` and `sn-skill` functions (Git Bash: `~/bin/sn-skill` shim). `now-sdk` prefers project-local SDK, then global; Git is profile-independent.
 
 **If–then:** Incomplete command → recover it; confirmed failure → report it. Preserve custom settings. Opening this folder in VS Code is optional. Maintenance-only commands are in [F](#rationale).
 
@@ -123,7 +123,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Agent installation failed; stop setup.' }
 
 <!-- setup-block:index-inspect -->
 ```powershell
-$Skill = Join-Path $env:USERPROFILE '.agents\skills\sn-doc-lookup'
+$SnSkill = Join-Path $env:USERPROFILE '.agents\tools\sn-skill.cjs'
 $IndexManifestPath = Join-Path $Index 'manifest.json'
 if (Test-Path -LiteralPath $Index) {
     Get-Content -LiteralPath $IndexManifestPath -Raw -ErrorAction Stop
@@ -143,19 +143,19 @@ Identity requires `schema_version: 1`, `generator` starting `sn-doc-md@`, matchi
 
 <!-- setup-block:index-build -->
 ```powershell
-node "$Skill\bin\sn-doc-md.js" build --docs "$Docs" --out "$Index" --family "$Family"
+node "$SnSkill" docs build --docs "$Docs" --out "$Index" --family "$Family"
 if ($LASTEXITCODE -ne 0) { throw 'Documentation indexing failed; stop setup.' }
 ```
 
 <!-- setup-block:index-benchmark -->
 ```powershell
-node "$Skill\test\run-tests.js" --index "$Index"
+node "$SnSkill" docs test --index "$Index"
 if ($LASTEXITCODE -ne 0) { throw 'Documentation lookup verification failed; stop setup.' }
 ```
 
 **Expect:** Native exit 0 and all benchmark cases pass; report the actual revision/provenance limitation.
 
-**If–then:** Failure → report it; no automatic rebuild or alternate corpus. Read-only `node "$Skill\bin\sn-doc-md.js" paths` diagnoses path selection without changing the index.
+**If–then:** Failure → report it; no automatic rebuild or alternate corpus. Read-only `node "$SnSkill" docs paths` diagnoses path selection without changing the index.
 
 ### 7. Open a fresh agent terminal and verify (final step)
 
@@ -239,7 +239,7 @@ Download without executing; read the saved script with bounded file tools. A rev
 <!-- setup-block:sdk-download -->
 ```powershell
 $ErrorActionPreference = 'Stop'
-$ExpectedSdkSetupSha256 = 'CB488694EB764055B8464497E030AE2815E852CA57D33C1EBB07F18CAD13A579'
+$ExpectedSdkSetupSha256 = '77B3F5916F93DC6FC428C9A4EEA66A0520C28DC937AAEA3EA6C29DF7AD4313E0'
 # Restore the recorded absolute manifest path if the shell context changed.
 $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 if ($Manifest.sdkWorker.file -ne 'downloads/Invoke-SdkSetup.ps1' -or $Manifest.sdkWorker.sha256 -ne $ExpectedSdkSetupSha256) { throw 'SDK worker manifest/guide mismatch; stop.' }
@@ -354,7 +354,7 @@ For either evidence path, reject malformed/conflicting records. The expected glo
 | Path | Required evidence |
 | --- | --- |
 | Original durable result | `npm.exit-code.txt` exactly `0`; both install logs; valid `sdk.result.json`: `schemaVersion: 1`, `state: package-verified`, `npmExitCode: 0`, expected worker version, exact recorded `runDirectory`, expected `packagePath`. Current metadata name `@servicenow/sdk`, version equal to `packageVersion`, and `bin/index.js` exists. |
-| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.3.15`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
+| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.4.0`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
 
 For both: scan **complete stderr** for `EBADENGINE`, not only the tail; engine warnings require compatibility review even with npm exit 0. Report deprecations/optional-add-on failures separately; they do not themselves prove npm failed or affected features work. Further diagnosis may use saved npm debug logs, not automatic build-tool installation or Node changes.
 
@@ -488,7 +488,7 @@ Set cwd with `Set-Location -LiteralPath` and the recorded agent-repo absolute pa
 <!-- setup-block:terminal-verify -->
 ```powershell
 $ErrorActionPreference = 'Stop'
-$GitCommand = Get-Command git -ErrorAction Stop
+$GitCommand = Get-Command git -CommandType Function,Application -ErrorAction Stop | Select-Object -First 1
 $GitCommand | Select-Object CommandType, Source
 if ($GitCommand.CommandType -notin @('Application', 'Function')) { throw 'Expected Git to resolve to an application, or to the profile git function when shadowed.' }
 (Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
@@ -496,11 +496,14 @@ git --version
 if ($LASTEXITCODE -ne 0) { throw 'Git terminal verification failed.' }
 node.exe -e "console.log(require('node:child_process').execFileSync('git', ['--version'], {encoding: 'utf8'}).trim())"
 if ($LASTEXITCODE -ne 0) { throw 'Git from a Node child failed.' }
-$SdkCommand = Get-Command now-sdk -ErrorAction Stop
+$SdkCommand = Get-Command now-sdk -CommandType Function -ErrorAction Stop
 $SdkCommand | Select-Object CommandType, Name
 if ($SdkCommand.CommandType -ne 'Function') { throw 'Expected the SDK profile function. Check the selected profile/new terminal; do not run a shim or reinstall the package.' }
 now-sdk --version
 if ($LASTEXITCODE -ne 0) { throw 'SDK function verification failed; report the actual error and stop.' }
+if ((Get-Command sn-skill -CommandType Function -ErrorAction Stop).CommandType -ne 'Function') { throw 'Expected the profile sn-skill function.' }
+sn-skill list
+if ($LASTEXITCODE -ne 0) { throw 'sn-skill function verification failed.' }
 node bin/sn-fluent-agent.cjs verify
 if ($LASTEXITCODE -ne 0) { throw 'Agent payload verification failed.' }
 ```
@@ -548,5 +551,5 @@ NEXT_STEP=
 ```
 
 ```text
-SETUP_GUIDE_END=0.3.15
+SETUP_GUIDE_END=0.4.0
 ```

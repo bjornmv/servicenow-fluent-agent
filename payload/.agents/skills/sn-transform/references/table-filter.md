@@ -12,7 +12,13 @@ now-sdk transform --from metadata --table sys_script
 now-sdk transform --from metadata --table 'sys_script,sys_ui_policy'
 now-sdk transform --auth <alias> --table sys_script --id <sys_id>
 ```
-Quote a comma-separated list: PowerShell turns an unquoted `a,b` into an array and passes two arguments.
+bash (Linux, VS Code server):
+```bash
+now-sdk transform --from metadata --table sys_script
+now-sdk transform --from metadata --table 'sys_script,sys_ui_policy'
+now-sdk transform --auth <alias> --table sys_script --id <sys_id>
+```
+Quote a comma-separated list: PowerShell turns an unquoted `a,b` into an array and passes two arguments. Quoting is harmless in bash.
 
 ## `--force` detail
 - Valid only with `--table`; it affects only the local filter and is ignored with `--id`.

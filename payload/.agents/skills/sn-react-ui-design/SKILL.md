@@ -43,7 +43,13 @@ For rendered checks only. Use the project's existing dev script (`now.dev.mjs`, 
 now-sdk run dev --auth <alias>
 ```
 
-It does not exit by itself. Open the `http://localhost:<port>` URL from its log, send nothing else to that terminal, stop it with Ctrl+C.
+bash (Linux, VS Code server):
+
+```bash
+now-sdk run dev --auth <alias>
+```
+
+It does not exit by itself. Open the `http://localhost:<port>` URL from its log, send nothing else to that terminal, stop it with Ctrl+C. On a remote server that URL is server-local: use a browser tool on the server, or forward the port for the user's browser ([bash notes](../../reference/sdk-commands.md#linux-and-vs-code-server-bash)).
 
 - **The local page is the live instance, not a fixture**: it acts as the alias user, so local evidence covers only that user; other roles, the scoped `.do` endpoint and the embedded shell stay **not tested**. Classify controls from source before activating them; stop before any commit step unless a write on named records is approved. Treat screenshots as instance data.
 - Stop it before `now-sdk build` when it watch-builds into the static output directory (the SDK React templates' does), or restart it afterwards.

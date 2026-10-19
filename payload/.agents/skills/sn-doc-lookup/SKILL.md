@@ -2,7 +2,7 @@
 name: sn-doc-lookup
 description: Searches official ServiceNow product documentation offline, with citations. Use when answering product documentation questions or when the local docs search fails; not Fluent syntax (sn-explain).
 argument-hint: <ServiceNow docs question or search terms>
-compatibility: Node.js and an existing ServiceNowDocs corpus/index; explicit paths required outside the Windows default layout.
+compatibility: Node.js, sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs") and an existing ServiceNowDocs corpus/index in the default per-user data layout or explicit paths.
 metadata:
   version: '1'
 ---
@@ -13,13 +13,13 @@ Preferred lookup for official ServiceNow product docs, from the GitHub markdown 
 
 ## Commands
 
-Three read-only commands. Give the full CLI path in every command and print the exit status in the same call, not a variable from a previous terminal call.
+Three read-only commands, each starting with `sn-skill docs`, not a variable from a previous terminal call. The final stderr line `sn-skill: docs exit=<N>` is the native exit evidence; without it the lookup is UNKNOWN. Single-quote query text and leave out any `'` or `"`.
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" search --query "..." --keywords "..." --json
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --id <chunk-id> --json
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --path <source_rel> --json
+```
+sn-skill docs paths
+sn-skill docs search --query '...' --keywords '...' --json
+sn-skill docs read --id '<chunk-id>' --json
+sn-skill docs read --path "<source_rel>" --json
 ```
 
 ## Paths
@@ -29,8 +29,10 @@ Docs:  %LOCALAPPDATA%\SNDocs\repo
 Index: %LOCALAPPDATA%\SNDocs\index
 ```
 
-- Precedence: explicit `--docs` / `--out` / `--index`, then `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then these defaults (other platforms need one of the first two). No legacy-location discovery or migration.
-- `paths` prints the resolved `docs` and `index` as JSON; it creates, downloads and checks nothing. Its output beats legacy cache/MCP memories; `%LOCALAPPDATA%\sn-docs` is NOT `%LOCALAPPDATA%\SNDocs`.
+Linux/macOS: `$XDG_DATA_HOME/SNDocs/{repo,index}`, or `~/.local/share/SNDocs/{repo,index}` when `XDG_DATA_HOME` is unset or relative. `SN_DOCS_HOME` names the checkout root (the directory containing `markdown/`).
+
+- Precedence: explicit `--docs` / `--out` / `--index`, then `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then these defaults. No legacy-location discovery or migration.
+- `paths` prints the resolved `docs` and `index` as JSON, plus `docsExists`, `indexExists` and `manifestExists`; it creates, downloads and changes nothing. Its output beats legacy cache/MCP memories; `%LOCALAPPDATA%\sn-docs` is NOT `%LOCALAPPDATA%\SNDocs`.
 - Prefer omitting `--index` for search/read; use an explicit path only when intentionally selected and verified.
 - Search directly; a usable index needs no pre-check. On ENOENT, run `paths` and compare the failed path with its output before declaring documentation unavailable. Do not silently fall back to a bare Git cache, guess another path, migrate, download or rebuild. If a selected override is genuinely missing, report that exact path and stop for review.
 - If ENOENT persists on the resolved path (checkout, index or its `manifest.json` missing), read [references/missing-docs-or-index.md](references/missing-docs-or-index.md) before acting. Building needs a setup run that includes it or explicit user approval; replacing an index needs separate approval plus `--force`. Never delete an unexpected directory.
@@ -44,11 +46,9 @@ Outside the agent's shared session-start gate, documentation-only questions skip
 3. Read only the few chunks you will cite: `read --id <id>` with each result's numeric `id`.
 4. Answer with a concise synthesis, `source_rel` and `canonical_url`, naming the release the index covers (`index.family`). If the user's instance is on another release, say the corpus covers only that family.
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" search --query "How do I reduce the size of the audit logs?" --keywords "audit retention purge sys_audit no_audit audit_type whitelist audited fields" --limit 8 --json
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" read --id <chunk-id> --json
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
+```
+sn-skill docs search --query 'How do I reduce the size of the audit logs?' --keywords 'audit retention purge sys_audit no_audit audit_type whitelist audited fields' --limit 8 --json
+sn-skill docs read --id '<chunk-id>' --json
 ```
 
 ### Results

@@ -2,13 +2,13 @@
 name: sn-fix-build
 description: Maps now-sdk build diagnostics to causes and fixes. Use when a build fails with TS or Fluent compile errors in a .now.ts file; not install failures (sn-build-install) or Vite bundling (sn-ui-page-vite).
 argument-hint: <paste the full now-sdk build output, or leave blank to run the build>
-compatibility: ServiceNow Fluent project (now.config.json); project-compatible now-sdk and Node; VS Code PowerShell with the now-sdk function.
+compatibility: ServiceNow Fluent project (now.config.json); project-compatible now-sdk and Node; VS Code terminal with the now-sdk function (PowerShell on Windows, bash on Linux).
 metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.13.6 build output, every table row reproduced; on another SDK version match the quoted message text, not the number.
 
-Fix a Fluent build failure. Run `now-sdk` directly in VS Code PowerShell from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it. Terse output, no emojis.
+Fix a Fluent build failure. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it. Terse output, no emojis.
 
 Use pasted output only if it is the complete output of a build of the current source; otherwise run `now-sdk build` first and keep its full output and native exit status.
 

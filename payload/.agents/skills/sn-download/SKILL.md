@@ -2,13 +2,13 @@
 name: sn-download
 description: Pulls a whole existing instance app into a now-sdk project. Use when adopting an instance-built app or resyncing it; not single records such as one flow or playbook (sn-transform).
 argument-hint: <app name, scope or 32-character sys_id — leave blank to list and pick>
-compatibility: Project-compatible now-sdk and Node; authorized instance and OAuth alias; empty folder for adoption.
+compatibility: Project-compatible now-sdk and Node; sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs"); authorized instance and OAuth alias; empty folder for adoption.
 metadata:
   version: '1'
 ---
 Verified against: now-sdk 4.13.6 `init`, `download` and `transform` help; confirm flags against the project's SDK help.
 
-Bring an existing instance app into a local now-sdk Fluent project, or refresh one. Run `now-sdk` in VS Code PowerShell from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md).
+Bring an existing instance app into a local now-sdk Fluent project, or refresh one. Run `now-sdk` in the VS Code terminal (PowerShell on Windows; bash with the `now-sdk` function on Linux) from the confirmed project directory (project `cwd`), per the [SDK command policy](../../reference/sdk-commands.md). The `now-sdk` blocks below run unchanged in bash.
 
 - Use the user-confirmed instance and OAuth alias. Do not run `auth --list` as a probe; the step-1 read is the connection evidence. On an authentication error, stop and use **sn-auth** in the interactive parent.
 - This skill ends at a local project. Do NOT run `now-sdk install`; installing is a separate, approved **sn-build-install** task.
@@ -16,10 +16,10 @@ Bring an existing instance app into a local now-sdk Fluent project, or refresh o
 
 ## 1. Resolve the app's sys_id
 Skip if you have the 32-character sys_id. `init --from` accepts only that; a scope or name is treated as a local path and fails with `Failed to find a sys app xml file`. now-sdk has **no list-apps command**, so filter `sys_app` by `scope=<scope>` or `nameLIKE<text>` with the **sn-rest** helper (its bounds and pagination rules apply):
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<alias>" --instance "https://<instance>.service-now.com" "/api/now/table/sys_app?sysparm_fields=sys_id,name,scope,version&sysparm_query=scope=<scope>&sysparm_limit=10&sysparm_no_count=true"
 ```
-Read [references/find-app.md](references/find-app.md) when there is nothing to filter on or the app is not in `sys_app`.
+sn-skill rest --agent --alias '<alias>' --instance 'https://<instance>.service-now.com' '/api/now/table/sys_app?sysparm_fields=sys_id,name,scope,version&sysparm_query=scope=<scope>&sysparm_limit=10&sysparm_no_count=true'
+```
+No final `sn-skill: rest exit=<N>` stderr line (native exit) → UNKNOWN. Read [references/find-app.md](references/find-app.md) when there is nothing to filter on or the app is not in `sys_app`.
 
 ## 2a. Adopt into a new local project
 Confirm the absolute target folder with the user; `init` writes into the current directory, not a subfolder. The folder must be EMPTY. STOP if it contains `now.config.json` (`init` then ignores `--from`) or `package.json` (its `name` overrides `--packageName`).

@@ -2,7 +2,7 @@
 
 ## What the worker does
 
-[`scripts/update-project-sdk.cjs`](../scripts/update-project-sdk.cjs) is a small **npm-only** worker, not an SDK launcher. It:
+[`scripts/update-project-sdk.cjs`](../scripts/update-project-sdk.cjs) (run as `sn-skill project-sdk`) is a small **npm-only** worker, not an SDK launcher. It:
 
 - uses Node argument arrays with explicit cwd **and** npm `--prefix`;
 - disables lifecycle scripts and enforces npm engines;
@@ -29,9 +29,8 @@ It is not a package-manager sandbox. Its lock only coordinates this worker; do n
 
 Read-only recovery of the original run; prefer file tools if the original terminal remains busy:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-update-advisor\scripts\update-project-sdk.cjs" status --run-dir "<original-evidence-directory>"
-Write-Output "sdk-update-exit=$LASTEXITCODE"
+```
+sn-skill project-sdk status --run-dir "<original-evidence-directory>"
 ```
 
 `status` never installs, unlocks or rewrites results. Missing, malformed or mismatched evidence is inconclusive, not permission to retry.
@@ -42,7 +41,7 @@ Failure recovery or lock removal requires review of the original operation and e
 
 - `result.json` `state`: `failed` = npm exited non-zero; `verification-failed` = npm exited 0 but the four values or the manifest do not match; `unknown` = no trustworthy completion. Read both logs.
 - Whether the project's `package.json` and `package-lock.json` still equal the run directory's `package.json.before` / `package-lock.json.before`.
-- Whether the installed `node_modules\@servicenow\sdk\package.json` version is still the approved current one.
+- Whether the installed `node_modules/@servicenow/sdk/package.json` version is still the approved current one.
 
 Each of these is a separate mutation needing explicit approval of that exact step:
 

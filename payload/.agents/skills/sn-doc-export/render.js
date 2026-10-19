@@ -1,41 +1,32 @@
 #!/usr/bin/env node
-// sn-doc-export render shim — Node backend (default).
+// sn-doc-export renderer: Markdown to PDF, DOCX or HTML, in Node.
 //
-// Usage (PowerShell, from the confirmed project directory; each command is self-contained):
-//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --check
-//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --in docs/body.md --format pdf,docx --out docs/dist/
-//   node "$env:USERPROFILE\.agents\skills\sn-doc-export\render.js" --in docs/body.md --backend python --archetype runbook --out docs/dist/
+// Usage (same line in PowerShell and bash, from the confirmed project directory):
+//   sn-skill doc-render --check --format 'pdf,docx' --archetype runbook
+//   sn-skill doc-render --in "docs/runbook.md" --archetype runbook --format 'pdf,docx' --out "docs/dist/"
 //
-// Backends:
-//   node    (default) — md-to-pdf (PDF/HTML) + @adobe/helix-md2docx (DOCX). Plain archetype only.
-//   python  — calls render.py against explicitly configured SN_AGENT_HOME libs.
+// PDF/HTML: md-to-pdf with an installed Chrome/Edge. DOCX: @adobe/helix-md2docx,
+// then docx-frame.cjs adds the archetype frame. Archetypes live in frames.cjs.
+// Metadata comes from flat front matter in the Markdown, overridden by --meta.
 //
 // Preflight is mandatory before render. Missing deps point to install.md; this
 // tool never installs anything and never spawns a package-manager launcher.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, basename, extname, isAbsolute } from 'node:path';
+import { accessSync, constants as fsConstants, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve, basename, extname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const require = createRequire(import.meta.url);
+const frames = require('./frames.cjs');
+const { frameDocx, readZip, writeZip } = require('./docx-frame.cjs');
 
 const NODE_MIN = 18;
-const SN_AGENT_HOME = process.env.SN_AGENT_HOME || '';
-const PY_SHIM = process.env.SN_DOC_PY_BIN || join(__dirname, 'render.py');
-
-// Archetypes the Python backend supports (mirrors SNagent registry).
-const PYTHON_ARCHETYPES = [
-  'plain', 'knowledge_article', 'runbook', 'compliance_report',
-  'release_notes', 'architecture', 'customer_deliverable', 'letter',
-];
-// Node backend currently only renders 'plain'. Asking for others routes to Python automatically.
-const NODE_ARCHETYPES = new Set(['plain']);
+const ARCHETYPE_NAMES = Object.keys(frames.ARCHETYPES);
 const VALID_FORMATS = ['pdf', 'docx', 'html'];
-const VALID_BACKENDS = ['auto', 'node', 'python'];
 
 // ---------------------------------------------------------------------------
 // arg parsing — minimal, no external deps
@@ -47,12 +38,14 @@ function parseArgs(argv) {
     in: null,
     out: 'docs/dist',
     format: 'pdf,docx',
-    backend: 'auto',
+    backend: null,
     archetype: 'plain',
     imageMap: [],
     meta: {},
     referenceDocx: null,
     stylesheet: null,
+    browser: null,
+    nodePath: null,
     force: false,
     explicit: new Set(),
   };
@@ -74,6 +67,24 @@ function parseArgs(argv) {
       case '--archetype': args.archetype = next(); args.explicit.add('archetype'); break;
       case '--reference-docx': args.referenceDocx = next(); break;
       case '--stylesheet': args.stylesheet = next(); break;
+      case '--browser': {
+        const v = next();
+        if (!v || v.startsWith('--')) {
+          console.error('Missing value for --browser');
+          process.exit(2);
+        }
+        args.browser = v;
+        break;
+      }
+      case '--node-path': {
+        const v = next();
+        if (!v || v.startsWith('--')) {
+          console.error('Missing value for --node-path');
+          process.exit(2);
+        }
+        args.nodePath = v;
+        break;
+      }
       case '--force': args.force = true; break;
       case '--image-map': {
         const v = next();
@@ -85,7 +96,7 @@ function parseArgs(argv) {
       case '--meta': {
         const v = next();
         const eq = v.indexOf('=');
-        if (eq > 0) args.meta[v.slice(0, eq)] = v.slice(eq + 1);
+        if (eq > 0) args.meta[frames.metaKey(v.slice(0, eq))] = v.slice(eq + 1);
         else console.error(`  warn: --meta ignored (no '='): ${v}`);
         break;
       }
@@ -96,7 +107,7 @@ function parseArgs(argv) {
       default:
         if (a.startsWith('--meta-')) {
           // Compatibility: --meta-title "x" same as --meta title=x
-          args.meta[a.slice(7)] = next();
+          args.meta[frames.metaKey(a.slice(7))] = next();
         } else {
           console.error(`Unknown flag: ${a}`);
           process.exit(2);
@@ -107,40 +118,50 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`sn-doc-export — render MyST/Markdown to PDF, DOCX or HTML
+  console.log(`sn-doc-export — render Markdown to PDF, DOCX or HTML
 
 Usage:
-  node render.js --check [--format pdf,docx,html] [--archetype <name>] [--backend node|python|auto]
-  node render.js --in body.md [--out docs/dist] [--format pdf,docx,html] [--force]
-                 [--backend node|python|auto] [--archetype <name>]
-                 [--image-map name.png=C:\\path\\file.png ...]
-                 [--meta title=Foo --meta author=Bar ...]
-                 [--reference-docx template.docx] [--stylesheet extra.css]
+  sn-skill doc-render --check [--format 'pdf,docx,html'] [--archetype <name>]
+                      [--browser <chrome/edge executable>] [--node-path <global node_modules>]
+  sn-skill doc-render --in body.md [--out docs/dist] [--format 'pdf,docx,html'] [--force]
+                      [--archetype <name>] [--meta 'key=value' ...]
+                      [--image-map name.png=${process.platform === 'win32' ? 'C:\\path\\file.png' : '/abs/path/file.png'} ...]
+                      [--reference-docx template.docx] [--stylesheet extra.css]
+                      [--browser <chrome/edge executable>] [--node-path <global node_modules>]
 
 Formats: pdf, docx, html (default pdf,docx). An unknown format is an error.
-Output:  <out>/<slug of --meta title, else of the input file name>.<format>
+Output:  <out>/<slug of the title from front matter or --meta, else of the input file name>.<format>
 
-Backends:
-  node    md-to-pdf + @adobe/helix-md2docx. Fast, no Python.
-          Supports archetype: plain only. Uses --meta title for the file
-          name and HTML/PDF document title only; other --meta values are
-          not rendered. A leading YAML front-matter block is ignored.
-          --reference-docx (DOCX styles, headers, footers) and --stylesheet
-          (extra PDF CSS) apply to this backend only.
-  python  SNagent libs at explicit absolute SN_AGENT_HOME (no default).
-          Supports all archetypes incl. runbook/compliance_report.
-  auto    (default) picks node for plain and python for framed archetypes.
-          Missing dependencies fail fast instead of switching backends.
+Archetypes (cover, contents, running header, footer with Page N of M):
+${ARCHETYPE_NAMES.map((n) => {
+    const a = frames.ARCHETYPES[n];
+    return `  ${n.padEnd(21)} ${a.cover.padEnd(8)} required: ${a.required.join(', ') || '-'}`;
+  }).join('\n')}
+  'compliance' is accepted for compliance_report.
+
+Metadata: a leading front-matter block of flat 'key: value' lines in the
+Markdown; --meta 'key=value' overrides it. The title falls back to the first
+'# ' heading (moved onto the cover). Missing required keys exit 2 and are listed.
+
+Options:
+  --reference-docx  DOCX styles from a template; its headers/footers replace the archetype ones.
+  --stylesheet      extra CSS for PDF/HTML, applied after the archetype CSS.
+  --browser         Chrome/Edge executable for PDF/HTML (overrides SN_DOC_BROWSER).
+  --node-path       a node_modules folder (for example the global npm root) searched after the
+                    project and before the standard global folders.
+
+PDF page header/footer use CSS page margin boxes (Chromium 131+, clean
+cover page). Older browsers fall back to header/footer templates, which also
+print on the cover; the run warns. --check reports the browser version.
 
 Preflight:
-  --check inspects both backends and reports [OK ] / [BAD] lines (the
-  indented Python sub-report also uses [MISSING]). Alone it exits 0 when
-  any output is possible. With --format/--archetype/--backend it exits 0
-  only when that selection is ready. It never installs anything.
+  --check reports [OK ] / [BAD] / [WARN] lines. Alone it exits 0 when any
+  output is possible. With --format/--archetype it exits 0 only when that
+  selection is ready. It never installs anything.
 
 Exit codes:
-  0 all requested formats written   2 bad arguments, missing input/image,
-  1 unexpected error                  existing output or backend not ready
+  0 all requested formats written   2 bad arguments, missing metadata, input or
+  1 unexpected error                  image, existing output or not ready
   3 a format failed to render (earlier formats may already be written)
 
 Safety:
@@ -155,11 +176,14 @@ Safety:
 // Global node_modules candidates, found without spawning a package-manager
 // launcher (batch shims are blocked by the command policy). NODE_PATH is
 // honoured by require.resolve itself, so it covers a redirected npm prefix.
+// --node-path (one run) is searched before the standard global folders.
+let nodePathOverride = null;
 let _globalRootsCache;
 function globalNodeModulesRoots() {
   if (_globalRootsCache) return _globalRootsCache;
   const roots = [];
   const add = (p) => { if (p && !roots.includes(p) && existsSync(p)) roots.push(p); };
+  if (nodePathOverride !== null) roots.push(nodePathOverride);
   const prefix = process.env.npm_config_prefix;
   const nodeDir = dirname(process.execPath);
   if (process.platform === 'win32') {
@@ -220,11 +244,17 @@ async function importPackage(name) {
   return import(pathToFileURL(abs).href);
 }
 
-/** Find an installed Chromium-family browser. Prefers SN_DOC_BROWSER env var,
- *  then PUPPETEER_EXECUTABLE_PATH, then standard Chrome/Edge install paths.
+// Set from --browser for this run; it wins over the environment and has no fallback.
+let browserOverride = null;
+
+/** Find an installed Chromium-family browser. Prefers --browser, then the
+ *  SN_DOC_BROWSER env var, then PUPPETEER_EXECUTABLE_PATH, then standard
+ *  Chrome/Edge install paths. A --browser path that is not an executable file
+ *  returns null.
  *  Returning null makes PDF/HTML not ready: the puppeteer-bundled Chromium is
  *  deliberately never used (it is commonly blocked on locked-down machines). */
 function findBrowser() {
+  if (browserOverride !== null) return overrideUsable(browserOverride) ? browserOverride : null;
   const explicit = process.env.SN_DOC_BROWSER || process.env.PUPPETEER_EXECUTABLE_PATH;
   if (explicit && existsSync(explicit)) return explicit;
   const candidates = process.platform === 'win32' ? [
@@ -241,21 +271,129 @@ function findBrowser() {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   ];
+  if (process.platform === 'win32') {
+    for (const p of candidates) {
+      if (p && existsSync(p)) return p;
+    }
+    return null;
+  }
+  // Linux/macOS: also search PATH and vendor install folders; skip non-executables
+  // and Ubuntu's snap transition shim when the snap is not installed.
+  const names = ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser', 'microsoft-edge-stable', 'microsoft-edge'];
+  const dirs = (process.env.PATH || '').split(':').filter(Boolean);
+  for (const d of ['/usr/bin', '/usr/local/bin', '/snap/bin']) if (!dirs.includes(d)) dirs.push(d);
+  for (const n of names) for (const d of dirs) candidates.push(join(d, n));
+  candidates.push('/opt/google/chrome/chrome', '/opt/microsoft/msedge/msedge', '/opt/chromium/chrome');
   for (const p of candidates) {
-    if (p && existsSync(p)) return p;
+    if (p && usableBrowser(p)) return p;
   }
   return null;
 }
 
-function which(cmd) {
-  const probe = process.platform === 'win32' ? 'where' : 'which';
-  const r = spawnSync(probe, [cmd], { encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.split(/\r?\n/)[0].trim() : null;
+/** The --browser path must be a file (and executable outside Windows). */
+function overrideUsable(p) {
+  if (process.platform !== 'win32') return usableBrowser(p);
+  try { return statSync(p).isFile(); } catch { return false; }
 }
 
-function preflightNode() {
+function usableBrowser(p) {
+  try {
+    const st = statSync(p);
+    if (!st.isFile()) return false;
+    accessSync(p, fsConstants.X_OK);
+    if (/^chromium/.test(basename(p)) && st.size < 65536 && !existsSync('/snap/bin/chromium')) {
+      const head = readFileSync(p, 'latin1');
+      if (head.startsWith('#!') && /snap/.test(head)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Chrome launch args. Containers often have a 64 MB /dev/shm, so Linux adds
+ *  --disable-dev-shm-usage; Windows/macOS args are unchanged. */
+function browserArgs() {
+  return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : ['--no-sandbox'];
+}
+
+/** Platform-specific browser remediation text for preflight. */
+function browserFixHint() {
+  if (browserOverride !== null) return 'Check the --browser path, or omit it to use SN_DOC_BROWSER and the standard install paths.';
+  return process.platform === 'win32'
+    ? 'Install Chrome or Edge, or pass its chrome.exe / msedge.exe path: sn-skill doc-render --check --browser "<browser-path>"'
+    : 'Install Chrome/Chromium (approval required), or pass its path: sn-skill doc-render --check --browser "<browser-path>"';
+}
+
+// Browser version without launching it where possible: Chrome/Edge on
+// Windows keep a "<version>" folder beside the executable, macOS bundles a
+// Framework "Versions/<version>" folder, elsewhere `--version` prints it.
+function browserVersionStatic(p) {
+  const pick = (names) => names.filter((n) => /^\d+\.\d+\.\d+\.\d+$/.test(n))
+    .sort((a, b) => parseInt(b, 10) - parseInt(a, 10))[0] || null;
+  try {
+    if (process.platform === 'win32') return pick(readdirSync(dirname(p)));
+    const app = p.match(/^(.*\.app)\/Contents\/MacOS\//);
+    if (app) {
+      const fw = join(app[1], 'Contents', 'Frameworks');
+      for (const f of readdirSync(fw).filter((n) => n.endsWith('.framework'))) {
+        const v = pick(readdirSync(join(fw, f, 'Versions')));
+        if (v) return v;
+      }
+      return null;
+    }
+    const r = spawnSync(p, ['--version'], { encoding: 'utf8', timeout: 15000 });
+    return (String(r.stdout || '').match(/(\d+\.\d+\.\d+(?:\.\d+)?)/) || [])[1] || null;
+  } catch {
+    return null;
+  }
+}
+
+// Fallback: launch it through md-to-pdf's puppeteer and ask (same launch as a render).
+async function browserVersionProbe(p) {
+  const mdToPdf = tryRequire('md-to-pdf');
+  if (!mdToPdf.ok) return null;
+  let browser;
+  try {
+    const mod = require(require.resolve('puppeteer', { paths: [dirname(mdToPdf.pkgJsonPath)] }));
+    const puppeteer = mod.default || mod;
+    browser = await puppeteer.launch({ executablePath: p, args: browserArgs(), headless: true, timeout: 30000 });
+    return (String(await browser.version()).match(/(\d+\.\d+\.\d+(?:\.\d+)?)/) || [])[1] || null;
+  } catch {
+    return null;
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
+let _versionCache;
+async function browserVersion(p) {
+  if (_versionCache && _versionCache.path === p) return _versionCache.version;
+  const version = browserVersionStatic(p) || await browserVersionProbe(p);
+  _versionCache = { path: p, version };
+  return version;
+}
+
+// How PDF page headers/footers are drawn: 'boxes' (CSS margin boxes, clean
+// cover page) or 'templates' (puppeteer header/footer templates, fallback for
+// browsers before Chromium 131). SN_DOC_MARGIN_BOXES=off forces the fallback.
+function pageMode(version) {
+  const major = version ? parseInt(version, 10) : NaN;
+  const min = frames.MARGIN_BOX_MIN_CHROMIUM;
+  if (/^(off|0|false|no)$/i.test(process.env.SN_DOC_MARGIN_BOXES || '')) {
+    return { mode: 'templates', ok: null, note: `SN_DOC_MARGIN_BOXES=off — page header/footer use templates, which also print on the cover page` };
+  }
+  if (Number.isNaN(major)) {
+    return { mode: 'boxes', ok: null, note: `browser version unknown — assuming Chromium ${min}+ (CSS page margin boxes); header/footer may be missing on an older browser` };
+  }
+  if (major >= min) {
+    return { mode: 'boxes', ok: true, note: `browser version ${version} — page header/footer via CSS page margin boxes (Chromium ${min}+)` };
+  }
+  return { mode: 'templates', ok: null, note: `browser version ${version} is older than Chromium ${min} — page header/footer use templates, which also print on the cover page` };
+}
+
+async function preflightNode() {
   const out = {
-    backend: 'node',
     ok: false,
     nodeOk: false,
     pdfPackageOk: false,
@@ -287,9 +425,17 @@ function preflightNode() {
   if (browser) {
     out.pdfOk = nodeOk && out.pdfPackageOk;
     out.htmlOk = out.pdfOk;
-    out.lines.push([true, `browser: ${browser}`]);
+    out.lines.push([true, `browser: ${browser}${browserOverride !== null ? '  (--browser)' : ''}`]);
+    out.page = pageMode(await browserVersion(browser));
+    out.lines.push([out.page.ok, out.page.note]);
+  } else if (browserOverride !== null) {
+    out.lines.push([false, existsSync(browserOverride)
+      ? `browser: --browser path is not an executable file: ${browserOverride} — PDF/HTML render is not ready.`
+      : `browser: --browser path not found: ${browserOverride} — PDF/HTML render is not ready.`]);
   } else {
-    out.lines.push([false, 'no installed browser found — PDF/HTML render is not ready on locked-down systems. Set $env:SN_DOC_BROWSER to chrome.exe / msedge.exe path to override.']);
+    out.lines.push([false, process.platform === 'win32'
+      ? 'no installed browser found — PDF/HTML render is not ready on locked-down systems. Pass --browser with a chrome.exe / msedge.exe path, or set SN_DOC_BROWSER, to override.'
+      : 'no installed browser found — PDF/HTML render is not ready. Pass --browser with a Chrome/Chromium/Edge executable, or set SN_DOC_BROWSER, to override.']);
     // Not fatal for DOCX-only renders, but PDF/HTML renders are not ready on
     // locked-down systems until an installed browser is configured.
   }
@@ -305,60 +451,15 @@ function nodeReadyForFormats(status, formats) {
     (!formats.includes('docx') || status.docxOk);
 }
 
-function pythonHomeIssue() {
-  if (!SN_AGENT_HOME.trim()) return 'Set SN_AGENT_HOME to the explicit absolute path of your SNagent checkout; no default is used.';
-  if (!isAbsolute(SN_AGENT_HOME)) return 'SN_AGENT_HOME must be an explicit absolute path; relative paths are not accepted.';
-  try {
-    for (const dir of [SN_AGENT_HOME, join(SN_AGENT_HOME, 'tools'), join(SN_AGENT_HOME, 'tools', '_doc_lib')]) {
-      if (!statSync(dir).isDirectory()) return `SNagent backend directory not found: ${dir}`;
-    }
-  } catch {
-    return `SN_AGENT_HOME must contain a readable tools/_doc_lib directory: ${SN_AGENT_HOME}`;
-  }
-  return null;
-}
+const tag = (ok) => (ok === true ? '[OK ]' : ok === false ? '[BAD]' : '[WARN]');
 
-function preflightPython() {
-  const out = { backend: 'python', ok: true, lines: [], available: false };
-  const homeIssue = pythonHomeIssue();
-  if (homeIssue) {
-    out.lines.push([false, homeIssue]);
-    out.ok = false;
-    return out;
-  }
-  const py = which('python') || which('python3');
-  if (!py) {
-    out.lines.push([false, 'python not on PATH']);
-    out.ok = false;
-    return out;
-  }
-  out.lines.push([true, `python found: ${py}`]);
-  if (!existsSync(PY_SHIM)) {
-    out.lines.push([false, `render.py missing: ${PY_SHIM}`]);
-    out.ok = false;
-    return out;
-  }
-  out.available = true;
-  // Delegate to the Python shim's --check for the real report.
-  const r = spawnSync(py, [PY_SHIM, '--check'], {
-    encoding: 'utf8',
-    env: { ...process.env, SN_AGENT_HOME },
-  });
-  out.subreport = (r.stdout || '').trimEnd();
-  out.substderr = (r.stderr || '').trimEnd();
-  out.ok = r.status === 0;
-  return out;
-}
-
-function preflight(selection = null) {
+async function preflight(selection = null) {
   console.log('sn-doc-export preflight');
   console.log('='.repeat(60));
 
-  const n = preflightNode();
-  const nodeState = n.nodeOk && n.pdfOk && n.docxOk ? '(READY)' : n.ok ? '(PARTIAL)' : '(NOT READY)';
-  console.log(`Backend: node ${nodeState}`);
-  for (const [ok, msg] of n.lines) console.log(`  [${ok ? 'OK ' : 'BAD'}] ${msg}`);
-  const installHint = 'needs explicit approval; follow install.md section 2 (no install is run by this tool).';
+  const n = await preflightNode();
+  for (const [ok, msg] of n.lines) console.log(`  ${tag(ok)} ${msg}`);
+  const installHint = 'needs explicit approval; follow install.md (no install is run by this tool).';
   if (!n.nodeOk) {
     console.log('');
     console.log(`  Fix: use Node ${NODE_MIN} or newer.`);
@@ -375,48 +476,32 @@ function preflight(selection = null) {
   if (n.pdfPackageOk && !n.pdfOk) {
     console.log('');
     console.log('  Fix for PDF/HTML:');
-    console.log('    Install Chrome or Edge, or set $env:SN_DOC_BROWSER to chrome.exe / msedge.exe.');
-  }
-  console.log('');
-
-  const p = preflightPython();
-  console.log(`Backend: python ${p.ok ? '(READY)' : '(NOT READY, optional)'}`);
-  for (const [ok, msg] of p.lines) console.log(`  [${ok ? 'OK ' : 'BAD'}] ${msg}`);
-  if (p.subreport) {
-    for (const line of p.subreport.split('\n')) console.log(`    | ${line}`);
-  }
-  if (p.substderr) {
-    for (const line of p.substderr.split('\n')) console.log(`    | ${line}`);
+    console.log(`    ${browserFixHint()}`);
   }
 
   console.log('='.repeat(60));
   if (selection) {
-    // Scoped check: the exit status answers "is THIS backend/format selection ready?".
-    const ready = selection.backend === 'python' ? p.ok : nodeReadyForFormats(n, selection.formats);
-    console.log(`Selected: backend=${selection.backend} archetype=${selection.archetype} formats=${selection.formats.join(',')}`);
+    // Scoped check: the exit status answers "can THIS archetype and format selection render?".
+    const ready = nodeReadyForFormats(n, selection.formats);
+    const cfg = frames.getArchetype(selection.archetype);
+    console.log(`Selected: archetype=${cfg.name} formats=${selection.formats.join(',')} required metadata: ${cfg.required.join(', ') || '(none)'}`);
     console.log(ready
-      ? 'READY — the selected backend and formats can render.'
-      : 'NOT READY — the selected backend or a selected format cannot render. See the [BAD] lines above and install.md.');
+      ? 'READY — the selected archetype and formats can render.'
+      : 'NOT READY — a selected format cannot render. See the [BAD] lines above and install.md.');
     return ready;
   }
   if (n.nodeOk && n.pdfOk && n.docxOk) {
-    console.log('READY — node backend available for PDF/DOCX.');
-    if (!p.ok) console.log('Note: python backend not ready. Framed archetypes (runbook, compliance_report, etc.) need it. See install.md.');
+    console.log('READY — PDF, HTML and DOCX can render, every archetype.');
     return true;
   }
   if (n.ok) {
     const ready = [];
     if (n.pdfOk) ready.push('PDF/HTML');
     if (n.docxOk) ready.push('DOCX');
-    console.log(`PARTIAL — node backend can render ${ready.join(' and ')}.`);
-    if (p.ok) console.log('READY — python backend available for PDF/DOCX framed output.');
+    console.log(`PARTIAL — only ${ready.join(' and ')} can render.`);
     return true;
   }
-  if (p.ok) {
-    console.log('READY — python backend available (node backend not installed).');
-    return true;
-  }
-  console.log('NOT READY — neither backend can render. See install.md.');
+  console.log('NOT READY — nothing can render. See install.md.');
   return false;
 }
 
@@ -428,9 +513,19 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// File-name slug: Norwegian/German letters transliterated, accents dropped,
+// other characters to '-', cut at a word boundary within 80 characters.
 function slugify(s) {
-  return (s || 'document').toString().toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'document';
+  let slug = (s || 'document').toString().toLowerCase()
+    .replace(/æ/g, 'ae').replace(/ø/g, 'o').replace(/å/g, 'a').replace(/ß/g, 'ss')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  if (slug.length > 80) {
+    slug = slug.slice(0, 81);
+    const cut = slug.lastIndexOf('-');
+    slug = (cut > 40 ? slug.slice(0, cut) : slug.slice(0, 80)).replace(/-+$/, '');
+  }
+  return slug || 'document';
 }
 
 const IMG_MIME = {
@@ -481,14 +576,6 @@ function mapOutsideCode(md, fn) {
   return splitCode(md).map(([isCode, text]) => (isCode ? text : fn(text))).join('');
 }
 
-// A leading YAML front-matter block is not metadata on the Node backend:
-// md-to-pdf would merge its keys into its own render configuration (including
-// the output path) and the DOCX renderer would print it as text. Drop it.
-function stripFrontMatter(md) {
-  const m = md.match(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/);
-  return m ? { md: md.slice(m[0].length), stripped: true } : { md, stripped: false };
-}
-
 const IMG_RE = /!\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)/g;
 
 function rewriteImageSources(md, imageMap, problems = []) {
@@ -519,28 +606,54 @@ function rewriteImageSources(md, imageMap, problems = []) {
 
 // MyST :::{kind} title? / body / ::: → callout HTML md-to-pdf can render.
 // The title is whatever follows the directive ON THE SAME LINE; without one
-// the kind label ("Note", "Warning", ...) is used.
-function expandAdmonitions(md) {
+// the kind label ("Note", "Warning", ...) is used. With a `boxes` array (DOCX)
+// the callout becomes ⟦sn-box:N⟧ ... ⟦/sn-box⟧ marker paragraphs instead, and
+// docx-frame.cjs turns them into a shaded, bordered box.
+function expandAdmonitions(md, boxes = null) {
   const kinds = ['note', 'tip', 'important', 'warning', 'caution', 'danger'];
   const colors = {
     note: '#2563eb', tip: '#10b981', important: '#7c3aed',
     warning: '#f59e0b', caution: '#f97316', danger: '#dc2626',
   };
-  const re = /^:::[ \t]*\{(\w+)\}[ \t]*([^\r\n]*)\r?\n([\s\S]*?)^:::[ \t]*\r?$/gm;
-  return splitFences(md).map(([isCode, text]) => {
-    if (isCode) return text;
-    return text.replace(re, (m, kind, title, body) => {
-      const k = kinds.includes(kind.toLowerCase()) ? kind.toLowerCase() : 'note';
-      const c = colors[k];
-      const head = (title || '').trim() || k[0].toUpperCase() + k.slice(1);
-      return `\n<div style="border-left:4px solid ${c};background:${c}10;padding:8px 12px;margin:8px 0;">\n<strong style="color:${c}">${head}</strong>\n\n${body.trim()}\n\n</div>\n`;
-    });
-  }).join('');
+  const expand = (kind, title, body) => {
+    const k = kinds.includes(kind.toLowerCase()) ? kind.toLowerCase() : 'note';
+    const c = colors[k];
+    const head = (title || '').trim() || k[0].toUpperCase() + k.slice(1);
+    if (boxes) {
+      boxes.push({ kind: k, title: head, color: c });
+      return `\n⟦sn-box:${boxes.length - 1}⟧\n\n${body.trim()}\n\n⟦/sn-box⟧\n`;
+    }
+    return `\n<div style="border-left:4px solid ${c};background:${c}10;padding:8px 12px;margin:8px 0;">\n<strong style="color:${c}">${head}</strong>\n\n${body.trim()}\n\n</div>\n`;
+  };
+  // Line scan: a `:::{kind}` line outside a fence opens a callout, the next
+  // bare `:::` outside a fence closes it; fenced code inside stays in the body.
+  // An unclosed callout is left as written.
+  const out = [];
+  let fence = null;
+  let open = null;
+  for (const line of md.match(/[^\n]*\n|[^\n]+$/g) || []) {
+    const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && /^\s*$/.test(line.slice(line.indexOf(f[1]) + f[1].length))) fence = null;
+    } else if (f) {
+      fence = f[1];
+    } else if (!open) {
+      const m = line.match(/^:::[ \t]*\{(\w+)\}[ \t]*([^\r\n]*)/);
+      if (m) { open = { kind: m[1], title: m[2], first: line, body: [] }; continue; }
+    } else if (/^:::[ \t]*\r?\n?$/.test(line)) {
+      out.push(expand(open.kind, open.title, open.body.join('')), line.endsWith('\n') ? '\n' : '');
+      open = null;
+      continue;
+    }
+    (open ? open.body : out).push(line);
+  }
+  if (open) out.push(open.first, ...open.body);
+  return out.join('');
 }
 
-function preprocessMd(md, imageMap, problems = []) {
+function preprocessMd(md, imageMap, problems = [], boxes = null) {
   let out = md;
-  out = expandAdmonitions(out);
+  out = expandAdmonitions(out, boxes);
   out = rewriteImageSources(out, imageMap, problems);
   return out;
 }
@@ -571,33 +684,26 @@ function resolveRelativeImages(md, baseDir, problems = []) {
   }));
 }
 
-async function loadJSZip() {
-  const searchBases = [process.cwd()];
-  const helix = tryRequire('@adobe/helix-md2docx');
-  if (helix.ok) searchBases.unshift(dirname(helix.pkgJsonPath));
-  for (const gRoot of globalNodeModulesRoots()) searchBases.push(dirname(gRoot));
-
-  for (const base of searchBases) {
-    try {
-      const resolved = require.resolve('jszip', { paths: [base] });
-      const mod = require(resolved);
-      return mod.default || mod;
-    } catch { /* try next */ }
-  }
-  throw new Error('Cannot load jszip. Install @adobe/helix-md2docx or jszip where Node can resolve it.');
+// A --reference-docx template: its styles, and whether it brings headers/footers.
+function readReferenceDocx(referenceDocx) {
+  if (!existsSync(referenceDocx)) throw new Error(`--reference-docx not found: ${referenceDocx}`);
+  const zip = readZip(readFileSync(referenceDocx));
+  const styles = zip.get('word/styles.xml');
+  if (!styles) throw new Error(`reference docx has no word/styles.xml: ${referenceDocx}`);
+  const rels = zip.get('word/_rels/document.xml.rels')?.toString('utf8') || '';
+  return { zip, stylesXML: styles.toString('utf8'), hasChrome: /Type="[^"]*\/(?:header|footer)"/.test(rels) };
 }
 
 // Copy headers/footers (and their referenced media) from a reference .docx into
 // a generated docx buffer. Inherits page geometry only via the existing sectPr;
 // header/footer references are injected so Word renders the corporate chrome.
-async function mergeReferenceChrome(generatedBuf, referenceDocx) {
-  const JSZip = await loadJSZip();
-  const out = await JSZip.loadAsync(generatedBuf);
-  const tpl = await JSZip.loadAsync(readFileSync(referenceDocx));
+function mergeReferenceChrome(generatedBuf, tpl) {
+  const out = readZip(generatedBuf);
+  const text = (zip, name) => zip.get(name)?.toString('utf8');
 
-  const tplDocRels = await tpl.file('word/_rels/document.xml.rels')?.async('string');
+  const tplDocRels = text(tpl, 'word/_rels/document.xml.rels');
   if (!tplDocRels) return generatedBuf;
-  const tplDocXml = await tpl.file('word/document.xml')?.async('string') || '';
+  const tplDocXml = text(tpl, 'word/document.xml') || '';
 
   // Find header/footer relationships in template's document.xml.rels.
   const relRe = /<Relationship\s+([^>]*?)\/>/g;
@@ -616,9 +722,9 @@ async function mergeReferenceChrome(generatedBuf, referenceDocx) {
 
   // Read target's existing rels + content types.
   const outRelsPath = 'word/_rels/document.xml.rels';
-  let outRels = await out.file(outRelsPath).async('string');
+  let outRels = text(out, outRelsPath);
   const ctPath = '[Content_Types].xml';
-  let ctXml = await out.file(ctPath).async('string');
+  let ctXml = text(out, ctPath);
 
   // Highest existing rId in target.
   let maxRid = 0;
@@ -638,25 +744,24 @@ async function mergeReferenceChrome(generatedBuf, referenceDocx) {
 
   for (const ch of tplChrome) {
     const partName = `word/${ch.target}`;
-    const partXml = await tpl.file(partName)?.async('string');
+    const partXml = text(tpl, partName);
     if (!partXml) continue;
 
     // Copy part rels file (if any) — and rewrite media targets to prefixed names
     // to avoid collisions with helix-generated hashed media filenames.
     const partRelsPath = `word/_rels/${ch.target}.rels`;
-    const partRelsXml = await tpl.file(partRelsPath)?.async('string');
+    const partRelsXml = text(tpl, partRelsPath);
     let newPartRelsXml = partRelsXml;
     if (partRelsXml) {
       // For every relationship targeting media/, copy that media file under a
       // tpl_-prefixed name and rewrite the target.
       const mediaTargets = [...partRelsXml.matchAll(/Target="(media\/[^"]+)"/g)].map(m => m[1]);
       for (const t of mediaTargets) {
-        const tplMediaPath = `word/${t}`;
-        const data = await tpl.file(tplMediaPath)?.async('uint8array');
+        const data = tpl.get(`word/${t}`);
         if (!data) continue;
         const base = t.replace(/^media\//, '');
         const newName = `media/tpl_${base}`;
-        out.file(`word/${newName}`, data);
+        out.set(`word/${newName}`, data);
         newPartRelsXml = newPartRelsXml.split(`Target="${t}"`).join(`Target="${newName}"`);
         // Ensure CT has Default for this extension.
         const ext = (base.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
@@ -671,11 +776,11 @@ async function mergeReferenceChrome(generatedBuf, referenceDocx) {
           ctXml = ctXml.replace('</Types>', `<Default Extension="${ext}" ContentType="${mime}"/></Types>`);
         }
       }
-      out.file(partRelsPath, newPartRelsXml);
+      out.set(partRelsPath, newPartRelsXml);
     }
 
     // Write the part itself.
-    out.file(partName, partXml);
+    out.set(partName, partXml);
 
     // Add Override for this part to content types.
     const ctType = ch.kind === 'header'
@@ -712,37 +817,45 @@ async function mergeReferenceChrome(generatedBuf, referenceDocx) {
       newRefs.push(`<w:${ch.kind}Reference w:type="default" r:id="${oldToNewRid[ch.oldRid]}"/>`);
     }
   }
+  // A template with a distinct first-page header keeps it distinct.
+  const titlePg = /<w:titlePg\b(?![^>]*w:val="(?:0|false)")/.test(tplDocXml);
 
-  let docXml = await out.file('word/document.xml').async('string');
-  if (/<w:sectPr\b[^>]*\/>/.test(docXml)) {
-    docXml = docXml.replace(/<w:sectPr\b([^>]*)\/>/, `<w:sectPr$1>${newRefs.join('')}</w:sectPr>`);
-  } else if (/<w:sectPr\b[^>]*>/.test(docXml)) {
-    // Insert references at the start of the existing sectPr's body.
-    docXml = docXml.replace(/<w:sectPr\b[^>]*>/, (match) => `${match}${newRefs.join('')}`);
+  let docXml = text(out, 'word/document.xml');
+  const sectAt = docXml.lastIndexOf('<w:sectPr');
+  let tail = docXml.slice(sectAt).replace(/^<w:sectPr\b([^>]*?)\/>/, '<w:sectPr$1></w:sectPr>');
+  tail = tail.replace(/<w:(header|footer)Reference\b[^>]*\/>/g, '');
+  tail = tail.replace(/^<w:sectPr\b[^>]*>/, (match) => `${match}${newRefs.join('')}`);
+  if (titlePg && !/<w:titlePg/.test(tail)) {
+    tail = /<w:(?:textDirection|bidi|rtlGutter|docGrid|printerSettings)\b/.test(tail)
+      ? tail.replace(/<w:(textDirection|bidi|rtlGutter|docGrid|printerSettings)\b/, '<w:titlePg/><w:$1')
+      : tail.replace('</w:sectPr>', '<w:titlePg/></w:sectPr>');
   }
-  out.file('word/document.xml', docXml);
-  out.file(outRelsPath, outRels);
-  out.file(ctPath, ctXml);
+  docXml = docXml.slice(0, sectAt) + tail;
+  out.set('word/document.xml', docXml);
+  out.set(outRelsPath, outRels);
+  out.set(ctPath, ctXml);
 
-  return await out.generateAsync({ type: 'nodebuffer' });
+  return writeZip(out);
 }
 
-async function renderNode({ inPath, outDir, formats, title, processedMd, referenceDocx, stylesheet, force }) {
-  const results = [];
-  const slug = slugify(title);
+function launchOptions() {
+  const browser = findBrowser();
+  const opts = { args: browserArgs() };
+  if (browser) opts.executablePath = browser;
+  return opts;
+}
 
-  // Extract word/styles.xml from a reference .docx so generated DOCX inherits
-  // its paragraph/character styles (corporate template support).
-  let stylesXML = null;
-  if (referenceDocx) {
-    if (!existsSync(referenceDocx)) {
-      throw new Error(`--reference-docx not found: ${referenceDocx}`);
-    }
-    const JSZip = await loadJSZip();
-    const zip = await JSZip.loadAsync(readFileSync(referenceDocx));
-    const entry = zip.file('word/styles.xml');
-    if (!entry) throw new Error(`reference docx has no word/styles.xml: ${referenceDocx}`);
-    stylesXML = await entry.async('string');
+// doc: { cfg, meta, title, htmlMd, docxMd, boxes, pageMode }
+async function renderNode({ outDir, formats, doc, referenceDocx, stylesheet, force }) {
+  const results = [];
+  const slug = slugify(doc.title);
+  const { cfg, meta } = doc;
+  const extraCss = stylesheet ? `\n/* --stylesheet */\n${readFileSync(stylesheet, 'utf8')}` : '';
+
+  // A reference .docx lends its styles (and headers/footers, when it has them).
+  const reference = referenceDocx ? readReferenceDocx(referenceDocx) : null;
+  if (reference?.hasChrome && formats.includes('docx')) {
+    console.log('  note: --reference-docx headers/footers replace the archetype header/footer in DOCX.');
   }
 
   for (const fmt of formats) {
@@ -753,23 +866,24 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
       }
       if (fmt === 'pdf') {
         const { mdToPdf } = await importPackage('md-to-pdf');
-        const browser = findBrowser();
-        const launchOptions = { args: ['--no-sandbox'] };
-        if (browser) launchOptions.executablePath = browser;
-        const pdfOpts = {
-          dest: outPath,
-          document_title: escapeHtml(title),
-          stylesheet_encoding: 'utf-8',
-          pdf_options: { format: 'A4', margin: '20mm', printBackground: true },
-          launch_options: launchOptions,
-        };
-        if (stylesheet) {
-          if (!existsSync(stylesheet)) throw new Error(`--stylesheet not found: ${stylesheet}`);
-          pdfOpts.stylesheet = [stylesheet];
-        }
+        const boxes = doc.pageMode === 'boxes';
         const pdf = await mdToPdf(
-          { content: processedMd },
-          pdfOpts,
+          { content: frames.framedMarkdown(cfg, meta, doc.htmlMd) },
+          {
+            dest: outPath,
+            document_title: escapeHtml(doc.title),
+            stylesheet_encoding: 'utf-8',
+            css: frames.frameCss(cfg, meta, boxes ? 'boxes' : 'templates') + extraCss,
+            marked_options: { headerIds: true, headerPrefix: '' },
+            pdf_options: {
+              format: 'A4',
+              printBackground: true,
+              outline: true,
+              margin: { top: '24mm', bottom: '22mm', left: '20mm', right: '20mm' },
+              ...(boxes ? { displayHeaderFooter: false } : frames.pdfTemplates(cfg, meta)),
+            },
+            launch_options: launchOptions(),
+          },
         );
         if (!pdf) throw new Error('md-to-pdf returned no content');
       } else if (fmt === 'docx') {
@@ -779,25 +893,31 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
           throw new Error(`@adobe/helix-md2docx export shape unexpected: ${Object.keys(mod).join(', ')}`);
         }
         const docxOpts = {};
-        if (stylesXML) docxOpts.stylesXML = stylesXML;
+        if (reference) docxOpts.stylesXML = reference.stylesXML;
         // The DOCX renderer drops task-list checkbox state; keep it as text.
-        const docxMd = mapOutsideCode(processedMd, (text) => text.replace(
+        const docxMd = mapOutsideCode(doc.docxMd, (text) => text.replace(
           /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[([ xX])\][ \t]+/gm,
-          (m, lead, mark) => `${lead}${mark === ' ' ? '\u2610' : '\u2611'} `,
+          (m, lead, mark) => `${lead}${mark === ' ' ? '☐' : '☑'} `,
         ));
-        let buf = await md2docx(docxMd, docxOpts);
-        if (referenceDocx) {
-          buf = await mergeReferenceChrome(buf, referenceDocx);
-        }
+        let buf = Buffer.from(await md2docx(docxMd, docxOpts));
+        buf = frameDocx(buf, cfg, meta, doc.docxMd, {
+          chrome: !reference?.hasChrome,
+          styles: !reference,
+          boxes: doc.boxes,
+        });
+        if (reference?.hasChrome) buf = mergeReferenceChrome(buf, reference.zip);
         writeFileSync(outPath, buf);
       } else if (fmt === 'html') {
         const { mdToPdf } = await importPackage('md-to-pdf');
-        const browser = findBrowser();
-        const launchOptions = { args: ['--no-sandbox'] };
-        if (browser) launchOptions.executablePath = browser;
         const html = await mdToPdf(
-          { content: processedMd },
-          { as_html: true, document_title: escapeHtml(title), launch_options: launchOptions },
+          { content: frames.framedMarkdown(cfg, meta, doc.htmlMd) },
+          {
+            as_html: true,
+            document_title: escapeHtml(doc.title),
+            css: frames.frameCss(cfg, meta, 'screen') + extraCss,
+            marked_options: { headerIds: true, headerPrefix: '' },
+            launch_options: launchOptions(),
+          },
         );
         writeFileSync(outPath, html.content, 'utf8');
       } else {
@@ -816,34 +936,6 @@ async function renderNode({ inPath, outDir, formats, title, processedMd, referen
 }
 
 // ---------------------------------------------------------------------------
-// render — python backend (delegates)
-// ---------------------------------------------------------------------------
-
-function renderPython(args) {
-  const homeIssue = pythonHomeIssue();
-  if (homeIssue) { console.error(homeIssue); return 2; }
-  const py = which('python') || which('python3');
-  if (!py) { console.error('python not on PATH'); return 2; }
-  const passthrough = [
-    PY_SHIM,
-    '--in', args.in,
-    '--out', args.out,
-    '--archetype', args.archetype,
-    '--format', args.format,
-  ];
-  for (const [k, v] of args.imageMap) passthrough.push('--image-map', `${k}=${v}`);
-  // Python shim uses --meta-<key> flags individually; bridge here.
-  for (const [k, v] of Object.entries(args.meta)) passthrough.push(`--meta-${k}`, v);
-  if (args.force) passthrough.push('--force');
-
-  const r = spawnSync(py, passthrough, {
-    stdio: 'inherit',
-    env: { ...process.env, SN_AGENT_HOME },
-  });
-  return r.status ?? 1;
-}
-
-// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -856,35 +948,66 @@ function parseFormats(value) {
   return { formats };
 }
 
-// Validate names BEFORE routing, so a typo is reported as a typo and never as
-// a missing-backend problem.
-function resolveBackend(backend, archetype) {
-  if (!VALID_BACKENDS.includes(backend)) {
-    return { error: `Unknown backend: ${backend}. Valid values: ${VALID_BACKENDS.join(', ')}.` };
+// Validate names before anything is read or written, so a typo is reported as
+// a typo. --backend is retired: node/auto are accepted with a note.
+function resolveArchetype(name, backend) {
+  if (backend === 'python') {
+    return { error: 'The python backend was removed; all archetypes render in Node. Drop --backend.' };
   }
-  if (!PYTHON_ARCHETYPES.includes(archetype)) {
-    return { error: `Unknown archetype: ${archetype}. Valid values: ${PYTHON_ARCHETYPES.join(', ')}.` };
+  if (backend !== null && backend !== 'node' && backend !== 'auto') {
+    return { error: `Unknown backend: ${backend}. --backend is no longer needed; drop it.` };
   }
-  if (backend === 'auto') return { backend: NODE_ARCHETYPES.has(archetype) ? 'node' : 'python' };
-  if (backend === 'node' && !NODE_ARCHETYPES.has(archetype)) {
-    return { error: `Node backend supports archetype 'plain' only (asked: '${archetype}'). Use --backend python or --backend auto.` };
+  const cfg = frames.getArchetype(name);
+  if (!cfg) {
+    return { error: `Unknown archetype: ${name}. Valid values: ${ARCHETYPE_NAMES.join(', ')}.` };
   }
-  return { backend };
+  return { cfg, note: backend !== null ? '--backend is no longer needed (every archetype renders in Node); ignored.' : null };
+}
+
+// Front matter + --meta -> metadata; required keys checked. Returns
+// { doc } or { error } (exit 2, nothing written).
+function prepareDocument(raw, cfg, cliMeta, inPath) {
+  const front = frames.parseFrontMatter(raw);
+  const { meta, body, titleFrom } = frames.resolveMetadata(cfg, front.meta, cliMeta, front.md);
+  const warnings = front.ignored.map((l) => `front matter line ignored (only flat 'key: value' lines are read): ${l}`);
+  for (const k of front.comments) warnings.push(`front matter ${k}: text after ' #' was read as a comment and dropped; quote the value to keep it`);
+  const unused = frames.unusedMetadata(cfg, meta);
+  if (unused.length) warnings.push(`metadata not used by archetype ${cfg.name}: ${unused.join(', ')}`);
+  const missing = frames.missingMetadata(cfg, meta);
+  if (missing.length) {
+    return {
+      warnings,
+      error: `Archetype ${cfg.name}: missing required metadata: ${missing.join(', ')}. `
+        + `Add them to the front matter ('key: value' lines between --- markers) or pass --meta 'key=value'. No output written.`,
+    };
+  }
+  const title = titleFrom === 'meta' ? meta.title : basename(inPath, extname(inPath));
+  if (!meta.title) meta.title = title;
+  return { warnings, doc: { cfg, meta, title, body } };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.browser !== null) browserOverride = resolve(args.browser);
+  if (args.nodePath !== null) {
+    nodePathOverride = resolve(args.nodePath);
+    if (!existsSync(nodePathOverride) || !statSync(nodePathOverride).isDirectory()) {
+      console.error(`--node-path is not a directory: ${nodePathOverride}`);
+      process.exit(2);
+    }
+  }
 
   const parsed = parseFormats(args.format);
   if (parsed.error) { console.error(parsed.error); process.exit(2); }
   const formats = parsed.formats;
-  const routed = resolveBackend(args.backend, args.archetype);
+  const routed = resolveArchetype(args.archetype, args.backend);
   if (routed.error) { console.error(routed.error); process.exit(2); }
-  const backend = routed.backend;
+  if (routed.note) console.error(`  note: ${routed.note}`);
+  const cfg = routed.cfg;
 
   if (args.check) {
-    const scoped = args.explicit.size > 0;
-    const ok = preflight(scoped ? { backend, archetype: args.archetype, formats } : null);
+    const scoped = args.explicit.has('format') || args.explicit.has('archetype');
+    const ok = await preflight(scoped ? { archetype: cfg.name, formats } : null);
     process.exit(ok ? 0 : 2);
   }
   if (!args.in) {
@@ -896,40 +1019,44 @@ async function main() {
     console.error(`Input not found: ${args.in}`);
     process.exit(2);
   }
-  console.log(`Backend: ${backend}`);
-
-  if (backend === 'python') {
-    // render.py validates its backend home and creates the output directory itself.
-    process.exit(renderPython(args));
+  if (args.stylesheet && !existsSync(args.stylesheet)) {
+    console.error(`--stylesheet not found: ${args.stylesheet}`);
+    process.exit(2);
   }
-
-  // Node path
-  const np = preflightNode();
-  if (!nodeReadyForFormats(np, formats)) {
-    console.error('Node backend not ready for the requested format(s). Run --check.');
+  if (args.referenceDocx && !existsSync(args.referenceDocx)) {
+    console.error(`--reference-docx not found: ${args.referenceDocx}`);
     process.exit(2);
   }
 
   const raw = readFileSync(args.in, 'utf8');
-  const front = stripFrontMatter(raw);
-  if (front.stripped) {
-    console.error('  warn: YAML front matter is ignored on the Node backend (not rendered, not used as metadata). Put title/author/version in the document body.');
+  const prepared = prepareDocument(raw, cfg, args.meta, args.in);
+  for (const w of prepared.warnings) console.error(`  warn: ${w}`);
+  if (prepared.error) { console.error(prepared.error); process.exit(2); }
+  const doc = prepared.doc;
+  console.log(`Archetype: ${cfg.name}${cfg.name !== args.archetype ? ` (from '${args.archetype}')` : ''}`);
+
+  const np = await preflightNode();
+  if (!nodeReadyForFormats(np, formats)) {
+    console.error('Not ready for the requested format(s). Run --check.');
+    process.exit(2);
   }
+  if (np.page && (formats.includes('pdf'))) {
+    doc.pageMode = np.page.mode;
+    if (np.page.ok !== true) console.error(`  warn: ${np.page.note}`);
+  }
+
   const problems = [];
-  let processedMd = preprocessMd(front.md, args.imageMap, problems);
-  processedMd = resolveRelativeImages(processedMd, dirname(resolve(args.in)), problems);
+  const baseDir = dirname(resolve(args.in));
+  doc.htmlMd = resolveRelativeImages(preprocessMd(doc.body, args.imageMap, problems), baseDir, problems);
+  doc.boxes = [];
+  doc.docxMd = resolveRelativeImages(preprocessMd(doc.body, args.imageMap, [], doc.boxes), baseDir, []);
   if (problems.length) {
     for (const problem of problems) console.error(`  [FAIL] ${problem}`);
     console.error('No output written. Fix the image paths or --image-map entries and re-run.');
     process.exit(2);
   }
-  const title = args.meta.title || basename(args.in, extname(args.in));
-  const ignoredMeta = Object.keys(args.meta).filter(k => k !== 'title');
-  if (ignoredMeta.length) {
-    console.error(`  warn: --meta ${ignoredMeta.join(', ')} not rendered by the Node backend (title only names the output and document title).`);
-  }
   // Refuse an overwrite before anything is written, so no partial set is produced.
-  const existing = formats.map(f => resolve(args.out, `${slugify(title)}.${f}`)).filter(f => existsSync(f));
+  const existing = formats.map(f => resolve(args.out, `${slugify(doc.title)}.${f}`)).filter(f => existsSync(f));
   if (existing.length && !args.force) {
     for (const file of existing) console.error(`  [FAIL] Output exists: ${file}`);
     console.error('No output written. Re-run with --force only after confirming overwrite.');
@@ -938,11 +1065,9 @@ async function main() {
   console.log(`Parsing ${args.in} (${raw.length.toLocaleString()} bytes) …`);
   mkdirSync(resolve(args.out), { recursive: true });
   const code = await renderNode({
-    inPath: args.in,
     outDir: resolve(args.out),
     formats,
-    title,
-    processedMd,
+    doc,
     referenceDocx: args.referenceDocx,
     stylesheet: args.stylesheet,
     force: args.force,

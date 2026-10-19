@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Markdown to PDF/DOCX renderer for sn-doc-export. Peer dependencies require separately approved installation through a permitted package-manager launcher.",
+  "description": "Markdown to PDF/DOCX/HTML renderer for sn-doc-export. Peer dependencies require separately approved installation through a permitted package-manager launcher.",
   "bin": {
     "sn-doc-export": "./render.js"
   },

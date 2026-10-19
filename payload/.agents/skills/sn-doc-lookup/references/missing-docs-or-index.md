@@ -1,23 +1,21 @@
 # Missing docs checkout or index
 
-Only after search/read fails with ENOENT and `paths` confirms the failed path is the resolved one. Check what exists (one terminal call):
+Only after search/read fails with ENOENT and `paths` confirms the failed path is the resolved one. Check what exists:
 
-```powershell
-$P = node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" paths | Out-String | ConvertFrom-Json
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
-if ($P) {
-    Write-Output "docs=$($P.docs) exists=$(Test-Path -LiteralPath $P.docs)"
-    Write-Output "index=$($P.index) exists=$(Test-Path -LiteralPath $P.index) manifest=$(Test-Path -LiteralPath (Join-Path $P.index 'manifest.json'))"
-}
 ```
+sn-skill docs paths
+```
+
+`docsExists` and `indexExists` are true only when the resolved `docs` and `index` paths are directories, and `manifestExists` only when `manifest.json` inside `index` is a file; a plain file at either path counts as missing.
 
 - **Docs checkout missing:** report that documentation installation is pending. Do not silently use an older checkout or download/move docs outside an authorized installation.
 - **Checkout present, index directory absent:** building is authorized only by a full setup run that includes it or by the user's explicit approval. Otherwise ask first and state the cost: the build prints nothing until it finishes, takes minutes for the full corpus, and writes several hundred MB under the index path. Then:
 
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-doc-lookup\bin\sn-doc-md.js" build --family australia
-Write-Output "doc-lookup-exit=$LASTEXITCODE"
 ```
+sn-skill docs build --family australia
+```
+
+On Linux the index lands in the `paths` index location (XDG data dir by default); keep it on persistent storage, not `/tmp`.
 
 - **Index directory present without `manifest.json`:** an incomplete or foreign build. Search, read and build (with or without `--force`) all refuse it. Report the exact path and stop for review.
 

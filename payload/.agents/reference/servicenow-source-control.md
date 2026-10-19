@@ -2,7 +2,7 @@
 
 ## Recommended model: local Git is the source of truth
 ServiceNow's SDK SDLC guide (`now-sdk explain sdlc-guide`) makes Git the source of truth for app state; update sets only group work on the dev instance.
-- The project folder is a Git working tree. The developer branches, commits, pushes and opens pull requests with their own Git tooling (VS Code Source Control or the terminal). The agent never commits, pushes or opens PRs.
+- The project folder is a Git working tree. The developer branches, commits, pushes and opens pull requests with their own Git tooling (VS Code Source Control or the terminal). The agent commits only when the user explicitly asks it to, never on its own initiative. It cannot push until a GitHub connection has been configured; if asked to push without one, say so instead of trying workarounds.
 - Commit Fluent and module source, `src/fluent/generated/keys.ts` and `@types/servicenow`. Never commit credentials.
 - Other developers clone the project from Git instead of downloading and transforming it from the instance.
 - Changes made on the instance with platform builders come back through **sn-transform**, then get reviewed and committed like any other change.
@@ -27,13 +27,14 @@ If the project is a local Git repository **and** the app is SC-bound, two writer
 
 ## Detect SC binding for the current app
 Two REST calls through the **sn-rest** helper, each run as its own command — the first resolves the `sys_app` sys_id from the project scope in `now.config.json`, the second queries the binding with that sys_id:
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/table/sys_app?sysparm_query=scope=<scope>&sysparm_fields=sys_id,name&sysparm_limit=1&sysparm_no_count=true"
+
 ```
-```powershell
-node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js" --agent --alias "<confirmed-alias>" --instance "https://<confirmed-host>" "/api/now/table/sys_repo_config?sysparm_query=sys_app=<sys_app_sys_id>&sysparm_fields=url,current_branch,current_ref&sysparm_limit=1&sysparm_no_count=true"
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/table/sys_app?sysparm_query=scope=<scope>&sysparm_fields=sys_id,name&sysparm_limit=1&sysparm_no_count=true'
 ```
-Second call `ok` true with `count` 0 = no binding visible to this user (no commit step needed). Row present = bound (mention the commit step after install). A failed read is UNKNOWN, not unbound.
+```
+sn-skill rest --agent --alias '<confirmed-alias>' --instance 'https://<confirmed-host>' '/api/now/table/sys_repo_config?sysparm_query=sys_app=<sys_app_sys_id>&sysparm_fields=url,current_branch,current_ref&sysparm_limit=1&sysparm_no_count=true'
+```
+Second call `ok` true with `count` 0 = no binding visible to this user (no commit step needed). Row present = bound (mention the commit step after install). A failed read, or one without its final `sn-skill: rest exit=<N>` stderr line, is UNKNOWN, not unbound.
 
 ## Common misdiagnosis to avoid
 SC binding is NOT a cause of `now-sdk install` returning HTTP 200 with empty body / no `executionTracker` / no `sys_upgrade_history` row. The Fluent install endpoint accepts uploads on SC-bound apps the same as on unbound apps. If install symptoms appear, look elsewhere (auth scope, version match, processor state) — not at the SC binding.

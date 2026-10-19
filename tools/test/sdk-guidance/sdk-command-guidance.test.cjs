@@ -146,7 +146,7 @@ test('canonical guidance retains completion and OAuth safety', () => {
   assert.match(agent, /original run's evidence/);
   assert.match(agent, /rather than exposing tokens or inspecting credential storage/);
   assert.match(agent, /\| Schema, records, aggregates or REST verification \| `sn-rest`/);
-  assert.match(skill('sn-rest'), /invoke the bundled `sn-rest.js` CLI/);
+  assert.match(skill('sn-rest'), /run `sn-skill rest` in the approved VS Code terminal/);
   assert.match(policy, /Authentication\/confirmation belongs in the interactive parent/);
 });
 

@@ -105,6 +105,39 @@ test('CLI rejects unknown flags, missing values and bad dimensions', () => {
   assert.throws(() => capture.parseArgs(['--url', '/sp', '--out', 'a.png', '--width', 'wide']), /positive integers/);
   const ok = capture.parseArgs(['--url', '/sp', '--out', 'a.png', '--selector', '.x', '--full-page', '--force']);
   assert.deepEqual([ok.url, ok.out, ok.selector, ok.fullPage, ok.force, ok.headless], ['/sp', 'a.png', '.x', true, true, true]);
+  const picked = capture.parseArgs(['--url', '/sp', '--out', 'a.png', '--browser', 'C:/x/chrome.exe', '--node-path', '/g/node_modules']);
+  assert.deepEqual([picked.browser, picked.nodePath], ['C:/x/chrome.exe', '/g/node_modules']);
+  for (const flag of ['--browser', '--node-path']) {
+    assert.throws(() => capture.parseArgs(['--url', '/sp', '--out', 'a.png', flag]), new RegExp(`${flag} needs a value`));
+    assert.throws(() => capture.parseArgs(['--url', '/sp', '--out', 'a.png', flag, '']), new RegExp(`${flag} needs a value`));
+    assert.throws(() => capture.parseArgs(['--url', '/sp', '--out', 'a.png', flag, '--force']), new RegExp(`${flag} needs a value`));
+  }
+});
+
+test('a --browser override must be an executable file and has no fallback', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sn-doc-capture-browser-'));
+  const saved = process.env.SN_DOC_BROWSER;
+  try {
+    const exe = path.join(dir, 'chosen browser');
+    fs.writeFileSync(exe, '', { mode: 0o755 });
+    process.env.SN_DOC_BROWSER = exe;
+    assert.equal(capture.findBrowser(exe), exe);
+    assert.equal(capture.findBrowser(dir), null, 'a directory is not a browser');
+    assert.equal(capture.findBrowser(path.join(dir, 'missing')), null, 'no fallback to SN_DOC_BROWSER');
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home);
+    const env = { ...process.env, USERPROFILE: home, HOME: home };
+    let r = spawnSync(process.execPath, [helperPath, '--url', '/sp', '--out', path.join(home, 'a.png'), '--instance', ORIGIN, '--browser', path.join(dir, 'missing')], { encoding: 'utf8', env, cwd: home });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /--browser path is not an executable file: .*missing/);
+    assert.doesNotMatch(r.stderr, /sn-rest not found/, 'browser is checked before any token read');
+    r = spawnSync(process.execPath, [helperPath, '--url', '/sp', '--out', path.join(home, 'a.png'), '--instance', ORIGIN, '--node-path', path.join(dir, 'missing')], { encoding: 'utf8', env, cwd: home });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--node-path is not a directory/);
+  } finally {
+    if (saved === undefined) delete process.env.SN_DOC_BROWSER; else process.env.SN_DOC_BROWSER = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('CLI refuses a foreign host, a non-https instance and an existing output before reading any token', () => {
@@ -130,7 +163,7 @@ test('CLI refuses a foreign host, a non-https instance and an existing output be
     assert.equal(fs.existsSync(path.join(home, 'a.png')), false);
     r = run('--url', '/sp', '--out', path.join(home, 'a.png'), '--bogus');
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /Unknown argument: --bogus[\s\S]*Usage: node capture\.cjs/);
+    assert.match(r.stderr, /Unknown argument: --bogus[\s\S]*Usage: sn-skill doc-capture/);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
