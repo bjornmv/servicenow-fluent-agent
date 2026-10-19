@@ -119,3 +119,54 @@ test('registry PATH parsing keeps the raw value and expands references case-inse
   assert.throws(() => readRegistryPath('machine', env, () => ({ status: 1, stdout: '' })), /Cannot read machine PATH/);
   assert.throws(() => readRegistryPath('machine', env, () => ({ error: new Error('EPERM') })), /Cannot read machine PATH: EPERM/);
 });
+
+test('download-marked checkout gives a short Unblock-File/clone fix and keeps the PowerShell first line', () => {
+  const { environmentUpdateError } = require('../../lib/windows-git-environment.cjs');
+  const stderr = 'File C:\\Users\\me\\Downloads\\agent-main\\tools\\win-git-bootstrap\\scripts\\Ensure-MinGit254.ps1 cannot be loaded. The file is not digitally signed. You cannot run this script on the current system.\r\n'
+    + '    + CategoryInfo          : SecurityError: (:) [], PSSecurityException\r\n    + FullyQualifiedErrorId : UnauthorizedAccess\r\n';
+  const checked = [];
+  const marked = (file) => { checked.push(file); return true; };
+  const error = environmentUpdateError({ status: 1, stdout: '', stderr }, 'C:\\agent\\Ensure-MinGit254.ps1', marked);
+  assert.deepEqual(checked, ['C:\\agent\\Ensure-MinGit254.ps1'], 'the mark is checked on the worker script itself');
+  assert.equal(error.expected, true);
+  assert.match(error.message, /this checkout's files carry the download mark/);
+  assert.match(error.message, /Git clone has no such mark/);
+  assert.match(error.message, /Unblock-File on the downloaded ZIP, extract it again/);
+  assert.match(error.message, /Do not change the execution policy/);
+  assert.match(error.message, /PowerShell said: File C:\\Users\\me\\Downloads\\agent-main\\.*is not digitally signed\. You cannot run this script on the current system\.$/m);
+  assert.doesNotMatch(error.message, /CategoryInfo|FullyQualifiedErrorId|Set-ExecutionPolicy|-ExecutionPolicy/);
+  assert.match(environmentUpdateError({ status: 1, stdout: 'x is not digitally signed', stderr: '' }, 'x.ps1', () => true).message, /download mark/);
+});
+
+test('Restricted, AllSigned on a clone and application control are policy blocks, not the download mark', () => {
+  const { environmentUpdateError } = require('../../lib/windows-git-environment.cjs');
+  const restricted = 'File C:\\agent\\tools\\win-git-bootstrap\\scripts\\Ensure-MinGit254.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.\r\n'
+    + '    + CategoryInfo          : SecurityError: (:) [], PSSecurityException\r\n    + FullyQualifiedErrorId : UnauthorizedAccess\r\n';
+  const allSigned = 'File C:\\src\\agent\\tools\\win-git-bootstrap\\scripts\\Ensure-MinGit254.ps1 cannot be loaded. The file is not digitally signed. You cannot run this script on the current system.\r\n'
+    + '    + CategoryInfo          : SecurityError: (:) [], PSSecurityException\r\n    + FullyQualifiedErrorId : UnauthorizedAccess\r\n';
+  const appControl = 'Ensure-MinGit254.ps1 : This program is blocked by group policy.\r\n    + FullyQualifiedErrorId : UnauthorizedAccess\r\n';
+  const noMark = () => false;
+  for (const [name, stderr, mark] of [['Restricted', restricted, () => true], ['AllSigned on a clone', allSigned, noMark], ['application control', appControl, noMark]]) {
+    const error = environmentUpdateError({ status: 1, stdout: '', stderr }, 'C:\\agent\\Ensure-MinGit254.ps1', mark);
+    assert.equal(error.expected, true, name);
+    assert.match(error.message, /^PowerShell execution policy or application control refused the unsigned Git setup script; the worker did not run\. Ask your organization for approval or signing; do not change the execution policy\./, name);
+    assert.match(error.message, /\nPowerShell said: \S/, name);
+    assert.doesNotMatch(error.message, /Unblock-File|download mark|ZIP|Set-ExecutionPolicy|-ExecutionPolicy|CategoryInfo/, name);
+  }
+});
+
+test('other environment update failures keep the raw output; success returns null', () => {
+  const { environmentUpdateError } = require('../../lib/windows-git-environment.cjs');
+  assert.equal(environmentUpdateError({ status: 0, stdout: 'ENVIRONMENT UPDATED for C:\\Git\\cmd\r\n', stderr: '' }), null);
+  const failed = environmentUpdateError({ status: 11, stdout: 'FAILED: Publisher unavailable', stderr: '' }, 'x.ps1', () => true);
+  assert.equal(failed.expected, true);
+  assert.match(failed.message, /update incomplete; do not reinstall Git or bypass policy\. FAILED: Publisher unavailable/);
+  assert.doesNotMatch(failed.message, /download mark/);
+  assert.match(environmentUpdateError({ error: new Error('spawn EACCES'), stdout: '', stderr: '' }).message, /spawn EACCES/);
+  assert.match(environmentUpdateError({ status: 0, stdout: 'done', stderr: '' }).message, /incomplete/);
+});
+
+test('CLI prints expected configuration errors without the Node stack', () => {
+  const cli = fs.readFileSync(path.join(root, 'bin/sn-fluent-agent.cjs'), 'utf8');
+  assert.match(cli, /main\(\)\.catch\(\(error\) => fail\(error && error\.expected \? error\.message : /);
+});

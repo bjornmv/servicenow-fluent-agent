@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { parseJsonc } = require('../../lib/jsonc-settings.cjs');
-const { profileName, profilesKey, terminalEnvKey, sdkCommand, defaultProfile, approvedGitBlock, gitFunctionBlock, ensureProfileFunctions, planTerminalSettings, removeLegacyGitOverrides, writeTerminalSettings, findGit, verifyGit, gitCandidates, findPathShadow, applyGitSelection } = require('../../lib/vscode-terminal.cjs');
+const { profileName, profilesKey, terminalEnvKey, sdkCommand, nowSdkFunction, skillFunction, defaultProfile, approvedGitBlock, gitFunctionBlock, ensureProfileFunctions, planTerminalSettings, removeLegacyGitOverrides, writeTerminalSettings, findGit, verifyGit, gitCandidates, findPathShadow, applyGitSelection } = require('../../lib/vscode-terminal.cjs');
 const gitExe = 'C:\\Users\\Example\\Programs\\Git\\cmd\\git.exe';
 const directory = path.win32.dirname(gitExe);
 const legacy = `# sn-fluent-agent:git-path:start\n$env:Path = '${directory};' + (($env:Path -split ';' | Where-Object { $_ -ine '${directory}' }) -join ';');\n# sn-fluent-agent:git-path:end\n`;
@@ -207,6 +207,27 @@ test('now-sdk function is always ensured in the SDK profile; custom content is k
   assert.equal(planTerminalSettings(customSdk, managedExe).text.includes(sdkCommand), false, 'an existing now-sdk function is not replaced');
 });
 
+test('0.3.x profiles gain the sn-skill function beside now-sdk; custom content is kept', () => {
+  const legacy = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs(`${nowSdkFunction}\nWrite-Host custom`) } } });
+  assert.equal(profileOf(planTerminalSettings(legacy, managedExe).text).args.at(-1), `${nowSdkFunction}\n${skillFunction}\nWrite-Host custom`);
+  const customSdk = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs('function global:now-sdk { & node.exe custom.js @args }') } } });
+  assert.equal(profileOf(planTerminalSettings(customSdk, managedExe).text).args.at(-1), `${skillFunction}\nfunction global:now-sdk { & node.exe custom.js @args }`);
+  const customSkill = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs('function global:sn-skill { custom }') } } });
+  assert.equal(profileOf(planTerminalSettings(customSkill, managedExe).text).args.at(-1), `${nowSdkFunction}\nfunction global:sn-skill { custom }`, 'an existing sn-skill function is not replaced or duplicated');
+  const current = JSON.stringify({ [profilesKey]: { [profileName]: defaultProfile } });
+  assert.equal(profileOf(planTerminalSettings(current, managedExe).text).args.at(-1), sdkCommand, 'idempotent');
+  assert.match(skillFunction, /\$env:USERPROFILE/, 'USERPROFILE, not the HOMEDRIVE-derived $HOME');
+});
+
+test('legacy cleanup recognizes the SDK profile in its 0.3.x and current forms', () => {
+  for (const command of [nowSdkFunction, sdkCommand]) {
+    const source = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs(command), env: { Path: directory + ';${env:Path}' } } } });
+    assert.deepEqual(profileOf(removeLegacyGitOverrides(source, gitExe)).env, {}, command.slice(0, 40));
+  }
+  const custom = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs('Write-Host custom'), env: { Path: directory + ';${env:Path}' } } } });
+  assert.deepEqual(profileOf(removeLegacyGitOverrides(custom, gitExe)).env, { Path: directory + ';${env:Path}' }, 'not owned: untouched');
+});
+
 test('modified Git block, other profiles and profiles without -Command are not rewritten', () => {
   const modified = sdkCommand + '\n' + approvedGitBlock.replace('& $approvedGit @args', '& C:\\other\\git.exe @args');
   const source = JSON.stringify({ [profilesKey]: { [profileName]: { ...defaultProfile, args: sdkArgs(modified) }, Other: { path: 'x.exe', args: ['-Command', approvedGitBlock] } } });
@@ -215,7 +236,7 @@ test('modified Git block, other profiles and profiles without -Command are not r
   assert.deepEqual(parseJsonc(plan.text)[profilesKey].Other, { path: 'x.exe', args: ['-Command', approvedGitBlock] });
   assert.ok(plan.warnings.some(w => /modified approved-user-git block/.test(w)));
   const noCommand = ensureProfileFunctions(JSON.stringify({ [profilesKey]: { [profileName]: { path: 'custom.exe', args: ['--user-flag'] } } }), managedExe, { gitFunction: true, env });
-  assert.match(noCommand.warnings[0], /no -Command string; the now-sdk and git functions were not added/);
+  assert.match(noCommand.warnings[0], /no -Command string; the now-sdk, sn-skill and git functions were not added/);
 });
 
 test('agent-host terminal tool setting is managed everywhere the installer lists its settings', () => {

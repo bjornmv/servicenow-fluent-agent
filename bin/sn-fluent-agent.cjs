@@ -10,6 +10,7 @@ const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
 const { findGit, prepareTerminalSettings, writeTerminalSettings, terminalEnvKey } = require('../lib/vscode-terminal.cjs');
 const { configureWindowsGit, detectPathShadow } = require('../lib/windows-git-environment.cjs');
 const { payloadFiles } = require('../lib/payload-files.cjs');
+const { ensureShellFunction, removeShellFunction, ensureSkillShim, removeSkillShim, findGitBash } = require('../lib/posix-terminal.cjs');
 const { generate: generateBaseline } = require('../tools/generate-baseline.cjs');
 
 const PACKAGE_NAME = 'servicenow-fluent-agent';
@@ -29,6 +30,8 @@ const flags = new Set(argv.filter((arg) => arg.startsWith('--')));
 const dryRun = flags.has('--dry-run');
 const force = flags.has('--force');
 const noVscodeSettings = flags.has('--no-vscode-settings');
+const noShellFunction = flags.has('--no-shell-function');
+const isWindows = process.platform === 'win32';
 
 function flagValues(flag) {
   const values = [];
@@ -53,14 +56,14 @@ function fail(message) {
 // Options each command accepts. Anything else stops the command before it does any work,
 // so a mistyped option never runs with defaults. `update` is an alias of `install`.
 const COMMAND_OPTIONS = {
-  install: { flags: ['--dry-run', '--force', '--no-vscode-settings'], values: ['--git-exe'] },
+  install: { flags: ['--dry-run', '--force', '--no-vscode-settings', '--no-shell-function'], values: ['--git-exe', '--settings-file'] },
   'configure-git': { flags: ['--dry-run'], values: ['--git-exe'] },
-  'configure-terminal': { flags: ['--dry-run'], values: ['--git-exe'] },
+  'configure-terminal': { flags: ['--dry-run'], values: ['--git-exe', '--settings-file'] },
   verify: { flags: ['--no-vscode-settings'], values: [] },
   status: { flags: [], values: [] },
   'check-updates': { flags: ['--force'], values: ['--only', '--project', '--docs', '--docs-branch'] },
   'update-decision': { flags: [], values: ['--component'], positionals: 1 },
-  uninstall: { flags: ['--dry-run', '--force'], values: [] },
+  uninstall: { flags: ['--dry-run', '--force', '--no-shell-function'], values: [] },
   help: { flags: [], values: [] },
 };
 
@@ -262,10 +265,31 @@ function removeObsoleteFiles(payloadRels, backupRoot, summary) {
   }
 }
 
+// VS Code settings file the installer patches. Windows is unchanged (desktop User
+// settings under %APPDATA%). Elsewhere: --settings-file or SN_FLUENT_VSCODE_SETTINGS
+// wins, e.g. a VS Code server's Machine settings (`code serve-web` keeps User settings
+// in the browser, so <server-data-dir>/data/Machine/settings.json is the file-based
+// target); otherwise the desktop User settings for the platform.
 function settingsPath() {
-  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-  return path.join(appData, 'Code', 'User', 'settings.json');
+  const override = flagValue('--settings-file') || process.env.SN_FLUENT_VSCODE_SETTINGS;
+  if (override) return path.resolve(override);
+  if (isWindows) {
+    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    return path.join(appData, 'Code', 'User', 'settings.json');
+  }
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json');
+  const configHome = process.env.XDG_CONFIG_HOME && path.isAbsolute(process.env.XDG_CONFIG_HOME)
+    ? process.env.XDG_CONFIG_HOME
+    : path.join(home, '.config');
+  return path.join(configHome, 'Code', 'User', 'settings.json');
 }
+
+// Home-relative forms VS Code documents for user-level chat locations (resolved
+// against the remote user's home on VS Code server/serve-web). Written beside the
+// absolute paths that older installs used.
+const TILDE_AGENTS = '~/.copilot/agents';
+const TILDE_INSTRUCTIONS = '~/.agents/instructions';
+const TILDE_SKILLS = '~/.agents/skills';
 
 function ensureObjectSetting(settings, key) {
   if (!settings[key] || typeof settings[key] !== 'object' || Array.isArray(settings[key])) {
@@ -283,11 +307,12 @@ function configureVsCodeSettings(summary) {
   }
 
   const file = settingsPath();
+  summary.vscodeSettingsFile = toSlash(file);
   const original = readTextIfExists(file) ?? '{}\n';
   // SDK profile, plus VS Code Git selection only when another Git shadows the
   // selected one in Windows PATH. Git PATH itself is the Windows user environment.
   const gitExe = summary.windowsGit?.git.executable || flagValue('--git-exe');
-  const terminal = process.platform === 'win32' ? prepareTerminalSettings(file, gitExe, { shadowedBy }) : null;
+  const terminal = isWindows ? prepareTerminalSettings(file, gitExe, { shadowedBy }) : null;
   let updated = terminal ? terminal.text : original;
   if (terminal) {
     summary.vscodeGit = terminal.git;
@@ -337,8 +362,12 @@ function configureVsCodeSettings(summary) {
   // Agent-host terminal tool; avoids Copilot terminal errors with the SDK profile.
   setScalar('chat.agentHost.customTerminalTool.enabled', true);
   setMapValue('chat.agentFilesLocations', agentPath, true);
+  setMapValue('chat.agentFilesLocations', TILDE_AGENTS, true);
   setMapValue('chat.instructionsFilesLocations', instructionsPath, true);
+  setMapValue('chat.instructionsFilesLocations', TILDE_INSTRUCTIONS, true);
   setMapValue('chat.instructionsFilesLocations', '.github/instructions', true);
+  // VS Code 1.142 reads chat.agentSkillsLocations; chat.skillsFilesLocations is the older key.
+  setMapValue('chat.agentSkillsLocations', TILDE_SKILLS, true);
   setMapValue('chat.skillsFilesLocations', skillsPath, true);
 
   if (!changed) {
@@ -359,10 +388,27 @@ function requiredSettingsBlock() {
     'chat.promptFiles': true,
     'github.copilot.chat.codeGeneration.useInstructionFiles': true,
     'chat.agentHost.customTerminalTool.enabled': true,
-    'chat.agentFilesLocations': { [agentPath]: true },
-    'chat.instructionsFilesLocations': { [instructionsPath]: true, '.github/instructions': true },
+    'chat.agentFilesLocations': { [agentPath]: true, [TILDE_AGENTS]: true },
+    'chat.instructionsFilesLocations': { [instructionsPath]: true, [TILDE_INSTRUCTIONS]: true, '.github/instructions': true },
+    'chat.agentSkillsLocations': { [TILDE_SKILLS]: true },
     'chat.skillsFilesLocations': { [skillsPath]: true },
   };
+}
+
+// Linux/macOS: now-sdk shell function plus the acceptance notes printed after install.
+function posixInstallNotes() {
+  const shell = noShellFunction ? { status: 'skipped (--no-shell-function)' } : ensureShellFunction(home, { dryRun });
+  const shim = noShellFunction ? { status: 'skipped (--no-shell-function)' } : ensureSkillShim(home, { dryRun });
+  const notes = [`now-sdk shell function: ${shell.status}${shell.file ? ` (${toSlash(shell.file)})` : ''}`];
+  notes.push(`sn-skill command: ${shim.status}${shim.file ? ` (${toSlash(shim.file)})` : ''}`);
+  notes.push('', 'For SDK acceptance, open a NEW VS Code terminal (bash). `type now-sdk` must report a shell function and `sn-skill list` must print the helper names before running now-sdk --version.');
+  if (!flagValue('--settings-file') && !process.env.SN_FLUENT_VSCODE_SETTINGS) {
+    notes.push('On a VS Code server (`code serve-web`, Remote), User settings live in the browser: point --settings-file / SN_FLUENT_VSCODE_SETTINGS at <server-data-dir>/data/Machine/settings.json.');
+  }
+  if (process.platform === 'linux' && !process.env.DBUS_SESSION_BUS_ADDRESS) {
+    notes.push('WARNING: no D-Bus session. now-sdk stores OAuth credentials in the Secret Service (gnome-keyring); without one they are lost on restart or cannot be stored. Start a session bus and an unlocked gnome-keyring before `now-sdk auth --add`.');
+  }
+  return notes;
 }
 
 function install() {
@@ -394,8 +440,12 @@ function install() {
     backups: [],
   };
 
-  if (process.platform === 'win32') summary.windowsGit = configureWindowsGit({ gitExe: flagValue('--git-exe'), dryRun });
+  if (isWindows) summary.windowsGit = configureWindowsGit({ gitExe: flagValue('--git-exe'), dryRun });
+  // Git Bash only: other agent hosts (Claude Code, pi) run Git Bash on Windows, where the
+  // PowerShell profile function does not exist. VS Code agents use the profile function.
+  if (isWindows && !noShellFunction && findGitBash()) summary.gitBashShim = ensureSkillShim(home, { dryRun, windows: true });
   configureVsCodeSettings(summary);
+  if (!isWindows) summary.posixNotes = posixInstallNotes();
   for (const sourceFile of sourceFiles) {
     const rel = payloadRel(sourceFile);
     copyPayloadFile(sourceFile, targetForRel(rel), backupRoot, rel, summary);
@@ -448,7 +498,14 @@ function printGitSelection(git, shadowedBy, warnings = []) {
 }
 
 function configureTerminal() {
-  if (process.platform !== 'win32') throw new Error('configure-terminal requires Windows.');
+  if (!isWindows) {
+    const result = ensureShellFunction(home, { dryRun });
+    const shim = ensureSkillShim(home, { dryRun });
+    console.log(`now-sdk shell function (${toSlash(result.file)}): ${result.status}`);
+    console.log(`sn-skill command (${toSlash(shim.file)}): ${shim.status}`);
+    console.log('Open a NEW VS Code terminal (bash); `type now-sdk` must report a shell function and `sn-skill list` must print the helper names before running now-sdk --version.');
+    return;
+  }
   const git = findGit(flagValue('--git-exe'));
   // Keeps the profile git function in step with Git shadowing (read-only check).
   const plan = prepareTerminalSettings(settingsPath(), git.executable, { shadowedBy: detectPathShadow(git.executable) });
@@ -457,7 +514,7 @@ function configureTerminal() {
   for (const warning of plan.warnings) console.log(`WARNING: ${warning}`);
   console.log(`Verified Git: ${plan.git.executable} (${plan.git.version})`);
   if (result.backup) console.log(`Settings backup: ${result.backup}`);
-  console.log('SDK profile configuration only. Create a NEW PowerShell with now-sdk terminal; Get-Command now-sdk must resolve to a Function before running now-sdk --version.');
+  console.log('SDK profile configuration only. Create a NEW PowerShell with now-sdk terminal; Get-Command now-sdk -CommandType Function must resolve before running now-sdk --version.');
   console.log('Git PATH is configured by install/configure-git in the Windows user environment.');
 }
 
@@ -564,6 +621,14 @@ function uninstall() {
     console.log('\nSkipped locally modified files. Rerun with --force to remove:');
     for (const rel of skipped) console.log(`  ${rel}`);
   }
+  if (!isWindows && !noShellFunction) {
+    const shell = removeShellFunction(home, { dryRun });
+    console.log(`now-sdk shell function (${toSlash(shell.file)}): ${shell.status}`);
+  }
+  if (!noShellFunction) {
+    const shim = removeSkillShim(home, { dryRun, windows: isWindows });
+    if (shim.status !== 'absent' || !isWindows) console.log(`sn-skill command (${toSlash(shim.file)}): ${shim.status}`);
+  }
   console.log('\nVS Code settings were not removed. Remove chat.* location settings manually if desired.');
 }
 
@@ -623,6 +688,7 @@ function printInstallSummary(summary, receiptCount) {
     if (summary.windowsGit.log) console.log(summary.windowsGit.log);
     printGitSelection(summary.windowsGit.git, summary.windowsGit.shadowedBy, summary.gitSelectionWarnings);
   }
+  if (summary.gitBashShim) console.log(`sn-skill command for Git Bash (${toSlash(summary.gitBashShim.file)}): ${summary.gitBashShim.status}`);
 
   if (summary.skippedConflicts.length) {
     console.log('\nSkipped locally modified files. Review or rerun with --force:');
@@ -639,10 +705,17 @@ function printInstallSummary(summary, receiptCount) {
     console.log(JSON.stringify(summary.vscodeManualSettings, null, 4));
   }
 
-  console.log('\nFor SDK acceptance, create a NEW PowerShell with now-sdk terminal after profile configuration.');
-  console.log('Require Get-Command now-sdk to resolve to a Function before running now-sdk --version; do not probe batch shims or reinstall for an old terminal.');
-  console.log('Restart affected terminal applications from a refreshed launcher if Git PATH remains stale; reload alone may retain old process environments.');
-  console.log('Run bare git --version in actual fresh terminals before reporting setup complete. The profile git function is added only when another Git shadows the selected one.');
+  if (summary.vscodeSettingsFile) console.log(`VS Code settings file: ${summary.vscodeSettingsFile}`);
+
+  if (summary.posixNotes) {
+    // Linux/macOS (set by install); printInstallSummary itself stays platform-free.
+    for (const line of summary.posixNotes) console.log(line);
+  } else {
+    console.log('\nFor SDK acceptance, create a NEW PowerShell with now-sdk terminal after profile configuration.');
+    console.log('Require Get-Command now-sdk -CommandType Function and Get-Command sn-skill -CommandType Function to resolve before running now-sdk --version; do not probe batch shims or reinstall for an old terminal.');
+    console.log('Restart affected terminal applications from a refreshed launcher if Git PATH remains stale; reload alone may retain old process environments.');
+    console.log('Run bare git --version in actual fresh terminals before reporting setup complete. The profile git function is added only when another Git shadows the selected one.');
+  }
 
   if (!summary.dryRun && !summary.skippedConflicts.length && !summary.skippedObsoleteConflicts.length) {
     console.log('\nNext: connect your PDI (if not already connected).');
@@ -657,19 +730,19 @@ function printInstallSummary(summary, receiptCount) {
 
 function help() {
   console.log(`Usage:
-  node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings] [--git-exe <absolute path>]
+  node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings] [--settings-file <path>] [--no-shell-function] [--git-exe <absolute path>]
   node bin/sn-fluent-agent.cjs configure-git [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs configure-terminal [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
   node bin/sn-fluent-agent.cjs check-updates [--only <agent|sdk|docs>] [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
   node bin/sn-fluent-agent.cjs update-decision <update|remind|skip> --component <key> [...]
-  node bin/sn-fluent-agent.cjs uninstall [--dry-run] [--force]
+  node bin/sn-fluent-agent.cjs uninstall [--dry-run] [--force] [--no-shell-function]
 
 Commands:
-  install    Copy payload files into this user's profile and configure VS Code settings.
-  configure-git    Register the selected Git in user PATH, request native Windows environment propagation, select it for VS Code terminals/Source Control when another Git precedes it in Windows PATH, and remove known legacy profile workarounds. No Git/payload reinstall.
-  configure-terminal    Configure the SDK terminal profile: now-sdk function, plus the git function when another Git shadows the selected one. Not Git PATH.
+  install    Copy payload files into this user's profile and configure VS Code settings; on Linux/macOS also add the now-sdk shell function to ~/.bashrc and the sn-skill command to ~/.local/bin (Windows: ~/bin when Git Bash is installed).
+  configure-git    (Windows only) Register the selected Git in user PATH, request native Windows environment propagation, select it for VS Code terminals/Source Control when another Git precedes it in Windows PATH, and remove known legacy profile workarounds. No Git/payload reinstall.
+  configure-terminal    Windows: configure the SDK terminal profile (now-sdk and sn-skill functions, plus the git function when another Git shadows the selected one; not Git PATH). Linux/macOS: ensure the now-sdk function in ~/.bashrc and the sn-skill command.
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
   check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.
@@ -679,8 +752,10 @@ Commands:
 Options:
   --dry-run              Show what would happen without writing files.
   --force                Overwrite/remove locally modified managed files.
-  --no-vscode-settings   Do not patch VS Code User/settings.json.
-  --git-exe <path>        Use the Git executable verified during prerequisites; never install Git here.
+  --no-vscode-settings   Do not patch the VS Code settings file.
+  --settings-file <path> Patch this settings file instead of the desktop User settings (env: SN_FLUENT_VSCODE_SETTINGS), e.g. a VS Code server's <server-data-dir>/data/Machine/settings.json. Not used on Windows unless given.
+  --no-shell-function    Do not add/remove the now-sdk function in ~/.bashrc or the sn-skill shim (Linux/macOS; Git Bash on Windows).
+  --git-exe <path>        (Windows only) Use the Git executable verified during prerequisites; never install Git here.
 `);
 }
 
@@ -699,4 +774,5 @@ async function main() {
   else fail(`Unknown command: ${command}`);
 }
 
-main().catch((error) => fail(error && error.stack ? error.stack : String(error)));
+// Expected configuration errors (error.expected) print their message only; anything else keeps the stack.
+main().catch((error) => fail(error && error.expected ? error.message : error && error.stack ? error.stack : String(error)));

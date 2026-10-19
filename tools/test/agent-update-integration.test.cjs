@@ -85,6 +85,10 @@ async function runInstaller(fixture, command) {
     '../lib/vscode-terminal.cjs': { prepareTerminalSettings: failHostMutation, writeTerminalSettings: failHostMutation },
     '../lib/windows-git-environment.cjs': { configureWindowsGit: failHostMutation },
     '../lib/payload-files.cjs': { payloadFiles: dir => payloadFiles(within(fixture.base, dir)) },
+    // Non-Windows fixture platform: the ~/.bashrc now-sdk function is covered by posix-terminal tests.
+    // The sn-skill shim and Git Bash discovery are covered by posix-terminal and sn-skill tests.
+    '../lib/posix-terminal.cjs': { ensureShellFunction: () => ({ status: 'fixture' }), removeShellFunction: () => ({ status: 'fixture' }),
+      ensureSkillShim: () => ({ status: 'fixture' }), removeSkillShim: () => ({ status: 'fixture' }), findGitBash: () => null },
     '../tools/generate-baseline.cjs': { generate: (repo, check) => {
       assert.equal(check, true, 'baseline generation must remain read-only');
       return generate(within(fixture.base, repo), check);
