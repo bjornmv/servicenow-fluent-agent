@@ -234,6 +234,10 @@ test('checkout identity and index provenance gate reuse, pulls and approved rebu
     /no automatic rebuild or alternate corpus/, /Native exit 0 and all benchmark cases pass/,
   ]);
   assert.doesNotMatch(psBlock('index-build'), /--force/);
+  // Index blocks go through the sn-skill dispatcher (the setup shell predates the profile function).
+  assert.match(psBlock('index-inspect'), /\$SnSkill = Join-Path \$env:USERPROFILE '\.agents\\tools\\sn-skill\.cjs'/);
+  assert.match(psBlock('index-build'), /^node "\$SnSkill" docs build /m);
+  assert.match(psBlock('index-benchmark'), /^node "\$SnSkill" docs test --index "\$Index"/m);
   assert.doesNotMatch(setup, /remote set-branches|git switch|--force.*--family/);
 });
 
@@ -328,10 +332,10 @@ test('fresh-terminal acceptance requires live PID, strict command kinds and matc
     /Create New Terminal \(With Profile\)/, /genuinely new terminal, not a restored\/reconnected one/,
   ]);
   const verify = psBlock('terminal-verify');
-  contract(verify, [/\$GitCommand.CommandType -notin @\('Application', 'Function'\)/, /execFileSync\('git'/, /\$SdkCommand.CommandType -ne 'Function'/, /node bin\/sn-fluent-agent.cjs verify/]);
+  contract(verify, [/\$GitCommand.CommandType -notin @\('Application', 'Function'\)/, /execFileSync\('git'/, /\$SdkCommand.CommandType -ne 'Function'/, /\$GitCommand = Get-Command git -CommandType Function,Application -ErrorAction Stop \| Select-Object -First 1/, /\$SdkCommand = Get-Command now-sdk -CommandType Function -ErrorAction Stop/, /\(Get-Command sn-skill -CommandType Function -ErrorAction Stop\).CommandType -ne 'Function'/, /node bin\/sn-fluent-agent.cjs verify/]);
   assert.ok(verify.indexOf("$GitCommand.CommandType -notin") < verify.indexOf('\ngit --version'));
   assert.ok(verify.indexOf("$SdkCommand.CommandType -ne 'Function'") < verify.indexOf('\nnow-sdk --version'));
-  assert.equal((verify.match(/if \(\$LASTEXITCODE -ne 0\)/g) || []).length, 4, 'Git, Node Git, SDK and payload native exits checked');
+  assert.equal((verify.match(/if \(\$LASTEXITCODE -ne 0\)/g) || []).length, 5, 'Git, Node Git, SDK, sn-skill and payload native exits checked');
   assert.match(appendix('rationale'), /source evidence, not an end-to-end acceptance result/);
   assert.match(setup, /Installation evidence alone is not fresh-terminal acceptance/);
   assert.doesNotMatch(final, /\[pscustomobject\]|ExecutionPolicy\s+Bypass|skipCheck|Stop-Process/i);
@@ -503,14 +507,12 @@ test('Pages rebuilds for docs, canonical worker and staging/test changes', () =>
   for (const entry of ['VERSION', 'tools/setup-guide-metrics.cjs', 'tools/Invoke-SdkSetup.ps1', 'git-setup.md', 'tools/win-git-bootstrap/**', 'tools/stage-setup-pages.cjs', 'tools/test/setup-pages.test.cjs', 'tools/test/mingit-ssh-probe.test.cjs', 'tools/test/jsonc-settings.test.cjs', 'tools/test/vscode-terminal.test.cjs', 'lib/jsonc-settings.cjs', 'lib/vscode-terminal.cjs', 'lib/windows-git-environment.cjs', 'tools/test/windows-git-environment.test.cjs', 'bin/sn-fluent-agent.cjs']) {
     assert.ok(workflow.includes('      - ' + entry), entry);
   }
-  assert.ok(workflow.indexOf('node --test tools/test/setup-pages.test.cjs') < workflow.indexOf('node tools/stage-setup-pages.cjs'));
-  assert.match(workflow, /run: node --test tools\/test\/setup-pages\.test\.cjs tools\/test\/mingit-ssh-probe\.test\.cjs/);
-  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/mingit-ssh-probe\.test\.cjs/);
-  assert.match(workflow, /run: node --test [^\n]*tools\/test\/vscode-terminal\.test\.cjs/);
-  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/vscode-terminal\.test\.cjs/);
-  assert.match(workflow, /run: node --test [^\n]*tools\/test\/windows-git-environment\.test\.cjs/);
-  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/windows-git-environment\.test\.cjs/);
-  assert.match(workflow, /run: node --test [^\n]*tools\/test\/setup-sdk-capture\.test\.cjs/);
-  assert.match(JSON.parse(read('package.json')).scripts['test:setup'], /tools\/test\/setup-sdk-capture\.test\.cjs/);
+  // CI runs the documented release gate itself, so the two lists cannot diverge.
+  assert.ok(workflow.indexOf('run: npm run test:setup') < workflow.indexOf('node tools/stage-setup-pages.cjs'));
+  assert.doesNotMatch(workflow, /run: node --test/);
+  const gate = JSON.parse(read('package.json')).scripts['test:setup'];
+  for (const file of ['setup-pages', 'mingit-ssh-probe', 'vscode-terminal', 'windows-git-environment', 'setup-sdk-capture', 'sn-skill']) {
+    assert.match(gate, new RegExp(`tools/test/${file}\\.test\\.cjs`), file);
+  }
   assert.match(workflow, /source: \.\/_pages/);
 });

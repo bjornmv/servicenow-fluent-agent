@@ -67,6 +67,7 @@ The supported operational baseline is Windows x64 with VS Code Copilot, Node **>
 | [lib/windows-git-environment.cjs](../lib/windows-git-environment.cjs) | Invoke the Windows environment worker and validate its completion. |
 | [lib/update-advisor.cjs](../lib/update-advisor.cjs) | Discovery, component timing, release identities and decisions. |
 | [payload/.agents/tools/sn-update-advisor.cjs](../payload/.agents/tools/sn-update-advisor.cjs) | Installed session gate and receipt-directed forwarding to the checkout CLI. |
+| [payload/.agents/tools/sn-zip.cjs](../payload/.agents/tools/sn-zip.cjs) | Dependency-free `sn-skill zip list/extract` (stored + deflate); refuses zip64, encryption, symlinks and unsafe paths before writing. |
 | [payload/.agents/tools/sn-table-viz.js](../payload/.agents/tools/sn-table-viz.js) | Optional Mermaid table diagrams using live metadata through the REST helper; requires a confirmed instance and alias. |
 | [tools/Invoke-SdkSetup.ps1](../tools/Invoke-SdkSetup.ps1) | Global SDK setup and recovery from saved run evidence. |
 | [tools/stage-setup-pages.cjs](../tools/stage-setup-pages.cjs) | Version/checksum validation and publication artifact generation. |
@@ -132,7 +133,11 @@ The **PowerShell with now-sdk** profile supplies a PowerShell function that invo
 
 It does not search ancestor project directories. Bind execution to the confirmed project root to avoid accidentally using the global SDK. A project-local package can also continue working after the global SDK is removed.
 
-Profile configuration affects new terminals, not already-running ones. Require `Get-Command now-sdk` to identify a **Function** and observe native completion of `now-sdk --version` separately. Follow the [command policy](../payload/.agents/reference/sdk-commands.md); a denied launcher is a stop, not permission to try a batch shim or bypass policy.
+Profile configuration affects new terminals, not already-running ones. Require `Get-Command now-sdk -CommandType Function` to identify the **Function** and observe native completion of `now-sdk --version` separately. Follow the [command policy](../payload/.agents/reference/sdk-commands.md); a denied launcher is a stop, not permission to try a batch shim or bypass policy.
+
+### Linux and VS Code server
+
+On Linux and macOS, `install` (and `configure-terminal`) keep a managed `now-sdk` bash function in `~/.bashrc` (`lib/posix-terminal.cjs`, between `# >>> servicenow-fluent-agent now-sdk >>>` markers). It applies the same precedence as the profile function: `./node_modules/@servicenow/sdk/bin/index.js`, otherwise `$(npm root -g)/@servicenow/sdk/bin/index.js`. Interactive integrated terminals source `~/.bashrc`; `type now-sdk` must report a function. Settings go to `--settings-file` / `SN_FLUENT_VSCODE_SETTINGS` when set, which is required on VS Code server / `code serve-web` (Machine settings, since User settings are stored in the browser), and otherwise to the desktop User settings. Skills give a `bash` twin beside each PowerShell command; see [Linux and VS Code server](linux-vscode-server.md).
 
 ### Global SDK setup versus project updates
 
@@ -226,7 +231,7 @@ Application workflows separately distinguish authoring, build, generated-metadat
 
 Path precedence is **explicit CLI flags > `SN_DOCS_HOME` / `SN_DOC_MD_INDEX` > Windows defaults**. The `paths` command reports locations without creating, cloning or migrating them. Updating skill files does not download the corpus or refresh its index. Index provenance and benchmark evidence must be recorded separately; do not invent an indexed Git revision when unknown.
 
-[sn-doc-export](../payload/.agents/skills/sn-doc-export/SKILL.md) is a different workflow: Markdown to PDF/DOCX or HTML. It also ships `capture.cjs`, an optional screenshot helper that signs in with the SDK OAuth token; the token is sent only to the confirmed https instance origin. Node rendering uses optional renderer packages; PDF/HTML also need a browser. The framed Python backend requires an explicitly selected absolute `SN_AGENT_HOME` and its dependencies. Rendering is not required to maintain Markdown guides in this repository, and missing dependencies do not authorize installing them.
+[sn-doc-export](../payload/.agents/skills/sn-doc-export/SKILL.md) is a different workflow: Markdown to PDF/DOCX or HTML. It also ships `capture.cjs`, an optional screenshot helper that signs in with the SDK OAuth token; the token is sent only to the confirmed https instance origin. Node rendering uses optional renderer packages; PDF/HTML also need a browser. Every archetype (cover, Contents list, header/footer) renders in Node. Rendering is not required to maintain Markdown guides in this repository, and missing dependencies do not authorize installing them.
 
 ## 10. CLI reference
 
@@ -287,11 +292,7 @@ node tools/generate-baseline.cjs --check
 node --test tools/test/skill-payload.test.cjs tools/test/agent-policy.test.cjs
 ```
 
-Before publication, run the full **`test:setup`** script defined in [package.json](../package.json), through the permitted npm JavaScript entry on restricted Windows, plus the optional-backend path tests used by CI:
-
-```text
-python -B -m unittest discover -s tools/test/doc-export -p test_python_home.py
-```
+Before publication, run the full **`test:setup`** script defined in [package.json](../package.json), through the permitted npm JavaScript entry on restricted Windows.
 
 Test coverage includes setup hashes/markers, JSONC preservation, Git/environment behavior, docs paths, SDK capture/recovery, payload/policy budgets, advisor timing, isolated Git upgrades and guarded project-package updates. The [workflow](../.github/workflows/deploy-setup-page.yml) records the CI commands. Windows-specific tests skip on non-Windows hosts; evaluate those gaps separately.
 

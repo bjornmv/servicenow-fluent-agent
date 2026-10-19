@@ -58,6 +58,10 @@ node bin/sn-fluent-agent.cjs install
 
 Then restart VS Code, or reload the VS Code window.
 
+## Linux and VS Code server
+
+The agent also runs in a Linux bash terminal, including VS Code `code serve-web`, Remote-SSH and dev containers. `install` then adds a managed `now-sdk` function to `~/.bashrc`, with the same project-SDK-first precedence as the Windows profile, plus the `sn-skill` command (below). On a VS Code server, pass `--settings-file <server-data-dir>/data/Machine/settings.json` (or set `SN_FLUENT_VSCODE_SETTINGS`), because User settings are stored in the browser there. now-sdk OAuth needs a Secret Service (gnome-keyring). See [Linux and VS Code server](docs/linux-vscode-server.md).
+
 ## Connect your PDI after installation
 
 Log in to your PDI in your browser first. In VS Code, choose **Terminal -> New Terminal**, then run `now-sdk auth --add dev123456`, replacing `dev123456` with your own instance name. Follow the SDK prompts and choose OAuth. See [Connect your Personal Developer Instance (PDI)](docs/connect-pdi.md) for screenshots and details.
@@ -78,13 +82,22 @@ For environment repair only, without Git/payload reinstallation:
 node bin/sn-fluent-agent.cjs configure-git --git-exe "C:\\path\\to\\git.exe"
 ```
 
-Known legacy Git PATH overrides/startup blocks are removed conservatively, with settings backups. The installer always ensures the `now-sdk` function in the SDK profile and never rewrites other profiles or a modified `git` block (it warns instead). `configure-terminal` configures only the SDK profile: its `now-sdk` function, and the `git` function when shadowed. `--no-vscode-settings` does not skip the Windows user environment operation.
+Known legacy Git PATH overrides/startup blocks are removed conservatively, with settings backups. The installer always ensures the `now-sdk` and `sn-skill` functions in the SDK profile and never rewrites other profiles or a modified `git` block (it warns instead). `configure-terminal` configures only the SDK profile: its `now-sdk` and `sn-skill` functions, and the `git` function when shadowed. `--no-vscode-settings` does not skip the Windows user environment operation.
+
+If install stops with "Windows blocked the Git setup script because this checkout's files carry the download mark", PowerShell refused the unsigned setup script from a downloaded ZIP: run `Unblock-File` on the downloaded ZIP, extract it again and rerun install, or clone with Git instead; never change the execution policy. If it stops with "PowerShell execution policy or application control refused the unsigned Git setup script", unblocking does not help: ask your organization for approval or signing.
 
 Save work and restart affected terminal applications from a refreshed launcher, then verify bare `git --version` in the actual hosts/shells you use. Existing processes cannot be forced to adopt new environments by a registry update or broadcast. Do not claim all terminals are verified from a simulated test, absolute-path probe or successful native-update request.
 
 ## Skills are instructions, not registered tools
 
-This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` PowerShell function. The `sn-rest` skill uses `node "$env:USERPROFILE\.agents\skills\sn-rest\sn-rest.js"` with the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration. The helper takes an instance-relative path only, and `--instance` must match the instance stored with the alias.
+This distribution targets VS Code Copilot. A skill supplies instructions and bundled scripts; installing it does not register a same-named VS Code tool or require an additional tool extension. SDK workflows use the configured `now-sdk` function. Skills run their bundled helpers through one OS-neutral command, `sn-skill <name> <arguments>` (for example `sn-skill rest ...`), which dispatches to `~/.agents/tools/sn-skill.cjs`:
+
+- **Windows:** an `sn-skill` PowerShell function beside `now-sdk` in the **PowerShell with now-sdk** profile. When Git for Windows bash is installed, also a `~/bin/sn-skill` shim for Git Bash hosts.
+- **Linux/macOS:** a `~/.local/bin/sn-skill` shim, with a PATH guard for `~/.local/bin` in the managed `~/.bashrc` block.
+
+`uninstall` removes the managed shims and `~/.bashrc` block; the profile function stays with the VS Code settings ([Uninstall](docs/uninstall.md)). `--no-shell-function` skips the shims and `~/.bashrc` block on install and uninstall; `--no-vscode-settings` skips the profile. If `sn-skill` is missing, skills fall back to `node "<user-profile>/.agents/tools/sn-skill.cjs"` with the same arguments.
+
+The `sn-rest` skill uses the confirmed instance/alias and existing SDK OAuth; it does not search for a dedicated native integration. The helper takes an instance-relative path only, and `--instance` must match the instance stored with the alias.
 
 REST guidance includes bounded table reads, schema/inheritance discovery, pagination and contributor aggregates. The CLI does not automatically enforce schema validation, output budgets or interactive write approval: the skill explicitly requires those workflow gates and does not promise protections that only exist in another execution environment. Never expose tokens or reinterpret a missing tool-search result as an authentication failure.
 
@@ -96,7 +109,7 @@ The full setup guide uses the hash-verified `tools/Invoke-SdkSetup.ps1` saved wo
 
 If the runner loses its completion result, do not queue diagnostics into the same busy terminal. Re-read the exact run's result files with file tools, or run the same worker in an idle terminal/direct-process tool with the exact `-RunDirectory -WaitSeconds 180` **without `-Install`**. A missing marker in an early sample is not failure; recheck after bounded waiting. This read-only recovery also supports 0.3.4 logs. A verified result resumes setup at step 3 without reinstalling; missing or failed evidence stops for review. The worker refuses `-Install` against an existing run directory.
 
-After agent installation configures **PowerShell with now-sdk**, create a **new terminal using that profile**. Require `Get-Command now-sdk` to resolve to a **Function**, then run `now-sdk --version`. Old terminals do not gain the function retroactively. Do not probe `now-sdk.cmd`, reinstall the SDK to repair an old shell, or treat package presence as CLI acceptance. Policy blocks require review, not alternative-launcher retries.
+After agent installation configures **PowerShell with now-sdk**, create a **new terminal using that profile**. Require `Get-Command now-sdk -CommandType Function` and `Get-Command sn-skill -CommandType Function` to resolve, then run `now-sdk --version` and `sn-skill list`. Old terminals do not gain the function retroactively. Do not probe `now-sdk.cmd`, reinstall the SDK to repair an old shell, or treat package presence as CLI acceptance. Policy blocks require review, not alternative-launcher retries.
 
 Timeouts and truncated transcripts mean completion is unknown: inspect the existing operation/logs instead of repeating installation. Git remains shell-independent; its PATH update is separate from this SDK-only function.
 
@@ -116,7 +129,7 @@ Explicit CLI paths take precedence over `SN_DOCS_HOME` / `SN_DOC_MD_INDEX`, then
 1. Open this repo folder in VS Code.
 2. Run **Git: Pull**.
 3. Run **Terminal: Run Task** → **Install/Update ServiceNow Fluent Agent**.
-4. Restart/reload VS Code.
+4. Open a **new** **PowerShell with now-sdk** terminal (bash on Linux); a window reload can restore old terminals. Require `Get-Command sn-skill -CommandType Function` (Linux: `sn-skill list`) before using skills.
 
 ## Update with terminal
 
@@ -126,7 +139,7 @@ git pull --ff-only
 node bin/sn-fluent-agent.cjs install
 ```
 
-Restart/reload VS Code after updates.
+After updates, open a **new** **PowerShell with now-sdk** terminal (bash on Linux); a window reload can restore old terminals. Require `Get-Command sn-skill -CommandType Function` (Linux: `sn-skill list`) before using skills.
 
 ## Verify
 
@@ -233,7 +246,7 @@ The agent-file uninstaller preserves local edits and does **not** uninstall thos
 
 - Descriptions are version-neutral, explicit **Use when** triggers. `argument-hint`, `compatibility`, and `metadata.version: '1'` are consistent; the latter identifies the skill format, not the distribution or SDK version. Body **Verified against** lines record historical evidence, not runtime pins or newly tested compatibility. Respect each project's SDK and engines.
 - `sn-add-record` owns ordinary authoring; table and business-rule traps are lazy-loaded references. `sn-explain` owns API discovery and the missing-topic / older-SDK stop branch. GraphQL, Playbook and ATF suites retain specialized security/DSL workflows.
-- `sn-doc-export` creates PDF/DOCX/HTML and can capture Service Portal screenshots from the confirmed instance; `sn-doc-lookup` searches official docs. Optional Python export requires an explicit absolute `SN_AGENT_HOME`, with no personal default. The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
+- `sn-doc-export` creates PDF/DOCX/HTML and can capture Service Portal screenshots from the confirmed instance; `sn-doc-lookup` searches official docs. Every archetype renders in Node (`md-to-pdf`, `@adobe/helix-md2docx`, installed Chrome/Edge for PDF/HTML). The old `sn-doc`, `sn-add-table` and `sn-add-business-rule` skill entries are retired; unchanged receipt-owned files are backed up/removed on update, while local edits remain for review.
 - `win-git-bootstrap` is setup-only and is not installed into the agent profile. Its procedure and pinned worker live in `tools/win-git-bootstrap/`; the installer's `configure-git` runs that worker from the checkout, and the Pages build publishes it with its checksum. An update removes the copy that earlier versions installed under `~/.agents/skills/` (local edits are preserved for review).
 - Development tests live under `tools/test/` and are excluded from installation. Only `sn-doc-lookup/test/` ships, because setup uses its acceptance harness. REST CLI tests use mocked transport and credentials, not live instance access.
 

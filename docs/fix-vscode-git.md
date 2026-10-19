@@ -70,7 +70,7 @@ Work as the intended user, not Administrator or SYSTEM.
 2. Inspect command resolution without launching system Git:
 
    ```powershell
-   Get-Command git, git.exe -All -ErrorAction SilentlyContinue |
+   Get-Command git, git.exe -CommandType Function,Application -All -ErrorAction SilentlyContinue |
        Select-Object CommandType, Name, Source
    ```
 
@@ -166,7 +166,7 @@ Capture actual results and native exit codes. Accepted settings, blank tool outp
 
 If writing a JavaScript validator, run `node --check` before executing it; avoid nesting PowerShell backticks inside JavaScript template literals. For the nonzero-exit test, use two disposable files with different content and `git --no-pager diff --no-index --no-ext-diff --no-textconv --quiet -- <file1> <file2>`: expect exit **1** without error-stream output. Do not use a deliberately fatal Git command whose redirected stderr can trigger PowerShell 5.1 `NativeCommandError`.
 
-1. **Function:** `Get-Command git` must report `Function` with the reviewed definition. `git --version` must return the approved version and immediate `$LASTEXITCODE` 0. Check paths with spaces and nonzero native exit propagation.
+1. **Function:** `Get-Command git -CommandType Function,Application` must report `Function` with the reviewed definition. `git --version` must return the approved version and immediate `$LASTEXITCODE` 0. Check paths with spaces and nonzero native exit propagation.
 2. **Native lookup:** `Get-Command git.exe -CommandType Application` must resolve to the approved absolute path.
 3. **Node child:** after resolving any `GIT_EXEC_PATH` override, run this in the same terminal. It asserts both the version and helper directory, bounds child execution and rejects missing/nonzero Node completion:
 
@@ -179,7 +179,7 @@ If writing a JavaScript validator, run `node --check` before executing it; avoid
    `--exec-path` identifies helpers, not conclusively the launched executable; native lookup can search locations before PATH. Use the verified absolute executable in controlled setup/update helpers where supported.
 4. **Local behavior:** use a new disposable directory for `git init`/`git status`. Review inherited Git overrides first; use an explicitly empty template directory and command-scoped hook/fsmonitor suppression. Do not initialize, commit or change remotes in the user's project. Remove only the verified disposable directory you created.
 5. **Source Control:** read back `git.path` and confirm it points to the verified executable. Check **Git: Show Git Output** if the extension has already adopted it; otherwise state that the saved selection takes effect on the user's final restart. Do not require a restart to finish this job or enable automatic fetch to force a check.
-6. **SDK:** `Get-Command now-sdk` must still identify the intended function; run its existing version command from the intended project. No dependency installation, authentication, build or deployment is needed.
+6. **SDK:** `Get-Command now-sdk -CommandType Function` must still identify the intended function; run its existing version command from the intended project. No dependency installation, authentication, build or deployment is needed.
 
 Record the environment actually tested; a child-process test is not proof about every running extension. Network/private-repository authentication, SSH, signing and LFS are outside this repair.
 
