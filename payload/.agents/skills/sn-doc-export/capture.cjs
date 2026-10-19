@@ -4,9 +4,10 @@
  *
  * Reuses:
  *   - puppeteer (bundled inside md-to-pdf's node_modules)
- *   - the installed Chrome/Edge browser detected by render.js (via SN_DOC_BROWSER
- *     env var or standard install paths) — same reason: locked-down boxes block
- *     the puppeteer-cached Chromium.
+ *   - an installed Chrome/Edge browser, found like render.js does (--browser for
+ *     one run, else SN_DOC_BROWSER / PUPPETEER_EXECUTABLE_PATH, else standard
+ *     install paths; on Linux also PATH and /opt) — same reason: locked-down
+ *     boxes block the puppeteer-cached Chromium.
  *   - the OAuth bearer token now-sdk stored, refreshed through a cheap REST
  *     read, then read from the bundled sn-rest.js in a child process. The token
  *     is never printed or written to disk by this helper.
@@ -18,8 +19,8 @@
  *
  * Two modes:
  *   1. CLI quick-capture:
- *      node capture.cjs --url <path-or-instance-url> --out <png> [--alias <alias>] [--instance https://<host>]
- *   2. Programmatic — `require('./capture.cjs').createSession({alias, instance})`
+ *      sn-skill doc-capture --url <path-or-instance-url> --out <png> [--alias <alias>] [--instance https://<host>] [--browser <exe>]
+ *   2. Programmatic — `require('./capture.cjs').createSession({alias, instance, browserPath})`
  *      returns { browser, page, navigate, shot, close } so recipe scripts can
  *      drive multi-step flows.
  */
@@ -29,13 +30,15 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const USAGE = 'Usage: node capture.cjs --url <path|instance-url> --out <file.png> [--alias <a>] [--instance https://<host>] [--width N] [--height N] [--full-page] [--selector <css>] [--headed] [--force]';
+const USAGE = 'Usage: sn-skill doc-capture --url <path|instance-url> --out <file.png> [--alias <a>] [--instance https://<host>] [--width N] [--height N] [--full-page] [--selector <css>] [--headed] [--force] [--browser <chrome/edge executable>] [--node-path <global node_modules>]';
 
 // Global node_modules candidates, resolved without spawning a package-manager
-// launcher. NODE_PATH is honoured by require.resolve itself.
+// launcher. NODE_PATH is honoured by require.resolve itself; --node-path is searched first.
+let nodePathOverride = null;
 function globalNodeModulesRoots() {
   const roots = [];
   const add = (p) => { if (p && !roots.includes(p) && fs.existsSync(p)) roots.push(p); };
+  if (nodePathOverride !== null) add(nodePathOverride);
   const prefix = process.env.npm_config_prefix;
   const nodeDir = path.dirname(process.execPath);
   if (process.platform === 'win32') {
@@ -69,7 +72,13 @@ function loadPuppeteer() {
   throw new Error('puppeteer not found. It ships with md-to-pdf; see install.md section 2 (installation needs approval).');
 }
 
-function findBrowser() {
+/** A --browser override wins and has no fallback: it must be a file (executable
+ *  outside Windows), else null. */
+function findBrowser(override = null) {
+  if (override !== null) {
+    if (process.platform !== 'win32') return usableBrowser(override) ? override : null;
+    try { return fs.statSync(override).isFile() ? override : null; } catch { return null; }
+  }
   const explicit = process.env.SN_DOC_BROWSER || process.env.PUPPETEER_EXECUTABLE_PATH;
   if (explicit && fs.existsSync(explicit)) return explicit;
   const candidates = process.platform === 'win32' ? [
@@ -84,8 +93,39 @@ function findBrowser() {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   ];
-  for (const p of candidates) if (p && fs.existsSync(p)) return p;
+  if (process.platform === 'win32') {
+    for (const p of candidates) if (p && fs.existsSync(p)) return p;
+    return null;
+  }
+  // Linux/macOS: same extended search as render.js (PATH, vendor folders).
+  const names = ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser', 'microsoft-edge-stable', 'microsoft-edge'];
+  const dirs = (process.env.PATH || '').split(':').filter(Boolean);
+  for (const d of ['/usr/bin', '/usr/local/bin', '/snap/bin']) if (!dirs.includes(d)) dirs.push(d);
+  for (const n of names) for (const d of dirs) candidates.push(path.join(d, n));
+  candidates.push('/opt/google/chrome/chrome', '/opt/microsoft/msedge/msedge', '/opt/chromium/chrome');
+  for (const p of candidates) if (p && usableBrowser(p)) return p;
   return null;
+}
+
+function usableBrowser(p) {
+  try {
+    const st = fs.statSync(p);
+    if (!st.isFile()) return false;
+    fs.accessSync(p, fs.constants.X_OK);
+    // Ubuntu's chromium-browser snap transition shim fails without the snap.
+    if (/^chromium/.test(path.basename(p)) && st.size < 65536 && !fs.existsSync('/snap/bin/chromium')) {
+      const head = fs.readFileSync(p, 'latin1');
+      if (head.startsWith('#!') && /snap/.test(head)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Linux containers often have a 64 MB /dev/shm; other platforms keep --no-sandbox only. */
+function browserArgs() {
+  return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : ['--no-sandbox'];
 }
 
 // ---- credential scope (pure helpers; unit-tested without a browser) ----
@@ -215,12 +255,22 @@ async function createSession({
   height = 900,
   headless = true,
   outDir = process.cwd(),
+  browserPath = null,
 } = {}) {
   // Validate the credential scope before any token is read or browser launched.
   const origin = instanceOrigin(instance || instanceFromAlias(alias));
+  if (!headless && process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    throw new Error('--headed needs a display (DISPLAY/WAYLAND_DISPLAY unset, e.g. VS Code server); run headless and review the PNG instead');
+  }
+  const override = browserPath === null ? null : path.resolve(browserPath);
+  const exe = findBrowser(override);
+  if (!exe) {
+    if (override !== null) throw new Error(`--browser path is not an executable file: ${override}`);
+    throw new Error(process.platform === 'win32'
+      ? 'No installed Chrome/Edge found — pass --browser "<browser-path>" with a chrome.exe / msedge.exe path'
+      : 'No installed Chrome/Chromium/Edge found — pass --browser "<browser-path>" with its executable (e.g. /usr/bin/google-chrome)');
+  }
   const puppeteer = loadPuppeteer();
-  const exe = findBrowser();
-  if (!exe) throw new Error('No installed Chrome/Edge found — set SN_DOC_BROWSER');
   const token = getToken(alias, origin);
 
   fs.mkdirSync(outDir, { recursive: true });
@@ -229,7 +279,7 @@ async function createSession({
     executablePath: exe,
     headless,
     defaultViewport: { width, height },
-    args: ['--no-sandbox', `--window-size=${width},${height}`],
+    args: [...browserArgs(), `--window-size=${width},${height}`],
   });
   const page = (await browser.pages())[0] || await browser.newPage();
   await page.setViewport({ width, height });
@@ -299,6 +349,11 @@ function parseArgs(argv) {
     else if (a === '--headed') out.headless = false;
     else if (a === '--force') out.force = true;
     else if (a === '--selector') out.selector = value(++i, a);
+    else if (a === '--browser' || a === '--node-path') {
+      const v = value(++i, a);
+      if (!v || v.startsWith('--')) throw new Error(`${a} needs a value`);
+      if (a === '--browser') out.browser = v; else out.nodePath = v;
+    }
     else throw new Error(`Unknown argument: ${a}`);
   }
   if (!Number.isInteger(out.width) || out.width <= 0 || !Number.isInteger(out.height) || out.height <= 0) {
@@ -322,6 +377,15 @@ async function cliMain() {
     console.error(`[FAIL] Output exists: ${outFile}. Re-run with --force only after confirming overwrite.`);
     process.exit(2);
   }
+  if (args.nodePath) {
+    nodePathOverride = path.resolve(args.nodePath);
+    let isDir = false;
+    try { isDir = fs.statSync(nodePathOverride).isDirectory(); } catch { /* reported below */ }
+    if (!isDir) {
+      console.error(`[FAIL] --node-path is not a directory: ${nodePathOverride}`);
+      process.exit(2);
+    }
+  }
   // With an explicit --instance, refuse a bad scope before any token is read.
   if (args.instance) resolveTarget(args.url, instanceOrigin(args.instance));
   const session = await createSession({
@@ -331,6 +395,7 @@ async function cliMain() {
     height: args.height,
     headless: args.headless,
     outDir: path.dirname(outFile),
+    browserPath: args.browser ?? null,
   });
   try {
     await session.navigate(args.url);

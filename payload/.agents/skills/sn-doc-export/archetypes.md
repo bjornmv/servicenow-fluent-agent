@@ -1,46 +1,36 @@
-# Archetypes quick reference
+# Archetypes
 
-Each archetype controls the cover page, header, footer, and (eventually) TOC behavior. Pass `--archetype <name>` to `render.js`; every archetype except `plain` routes to the optional Python backend and stops with an `SN_AGENT_HOME` error when that backend is not configured. A misspelled name is rejected as `Unknown archetype` before any backend runs.
+Pass `--archetype <name>` to `sn-skill doc-render`. Each sets the cover, Contents list and the PDF/DOCX running header/footer with `Page N of M` (not on a clean first page). HTML gets the cover and Contents only. Source of truth: `frames.cjs` (`--help` lists names, covers and required keys). A wrong name exits 2 with `Unknown archetype`; `compliance` = `compliance_report`.
 
-Source of truth: `tools/_doc_lib/archetypes/registry.py` under the explicitly configured absolute `SN_AGENT_HOME`. There is no default backend checkout; confirm the selected backend's registry before relying on these archetypes.
+| Archetype | Cover | Required metadata | Optional metadata | Contents | Header / footer |
+|---|---|---|---|---|---|
+| `plain` | none | — | `title`, `subtitle` | — | page numbers only |
+| `knowledge_article` | compact | `title` | `subtitle`, `category`, `audience`, `author`, `last_reviewed` | — | `{title}` |
+| `runbook` | full | `title`, `audience` | `subtitle`, `service`, `version`, `on_call_team`, `last_drilled` | h1-h3 | `Runbook — {title}` / Internal use only |
+| `compliance_report` | full | `title`, `control_id`, `framework` | `subtitle`, `audit_period`, `owner`, `reviewer`, `status` | h1-h4 | `{framework} — {control_id}` / Confidential |
+| `release_notes` | compact | `title`, `version`, `release_date` | `subtitle`, `product`, `channel`, `breaking_changes` | h2-h3 | `{product} {version}` |
+| `architecture` | full | `title`, `version`, `status` | `subtitle`, `owner`, `reviewers`, `decision_log` | h1-h3 | `{title} ({status})` |
+| `customer_deliverable` | full | `title`, `customer`, `date` | `subtitle`, `author`, `contract_id`, `version`, `classification` | h1-h3 | `{customer} — {title}` / Prepared for {customer} |
+| `letter` | letter | `title`, `from_name`, `to_name`, `date` | `from_address`, `to_address`, `subject`, `salutation`, `author` | — | page numbers from page 2 |
 
-Supply every field in the Required metadata column with `--meta "key=value"` and ask the user for missing values; do not invent them. The shipped shim does not validate required metadata, so a clean exit does not prove the cover is complete: check the rendered cover page.
+- A full cover or letter has a clean first page (no header/footer). Full-cover archetypes start each top-level section on a new page.
+- Missing required metadata exits 2 with `missing required metadata:` and the keys; nothing is written. Ask the user; do not invent values. Unused keys only warn.
 
-| Archetype | Cover | Required metadata | Use for |
-|---|---|---|---|
-| `plain` | none | — | Quick reference, ad-hoc notes |
-| `knowledge_article` | compact | `title` | KB articles, FAQs |
-| `runbook` | compact | `title`, `audience` | Ops runbooks, on-call procedures |
-| `compliance_report` | full | `title`, `control_id`, `framework` | Audit / compliance evidence |
-| `release_notes` | compact | `title`, `version`, `date` | Per-release change docs |
-| `architecture` | full | `title`, `version` | Solution architecture / design |
-| `customer_deliverable` | full | `title`, `author` | Client-facing reports |
-| `letter` | letter | `title`, `author`, `date` | Formal letters |
+## Metadata
 
-## Common metadata flags
-
-Python backend only. On the Node backend (`plain`) only `title` is used, for the output file name and the PDF/HTML document title.
+Put metadata in front matter: flat `key: value` lines between `---` lines at the top of the Markdown. Values with apostrophes or quotes belong here, not in `--meta`. Without `title`, the first `# ` heading is the title (moved onto the cover).
 
 ```
---meta "title=Example Case Transfer — Technical Reference"
---meta "subtitle=Example App v0.0.1"
---meta "author=Example Author"
---meta "version=0.0.1"
---meta "date=2026-06-04"
---meta "audience=Platform admins"
---meta "classification=Internal"
---meta "control_id=AC-2"
---meta "framework=NIST 800-53"
---meta "category=How-to"
---meta "last_reviewed=2026-06-04"
---meta "logo_path=C:\path\to\logo.png"
+---
+title: Example Case Transfer Recovery
+audience: Platform admins
+version: 1.2
+---
 ```
 
-## Picking the right archetype
-- **Technical reference for a now-sdk app** → `architecture` (full cover, version-stamped) OR `knowledge_article` (lighter).
-- **End-user how-to** → `knowledge_article`.
-- **Ops procedure** → `runbook`.
-- **Change log** → `release_notes`.
-- **Quick scratch doc** → `plain`.
+## Choosing
 
-When the Python backend is not configured, say so and offer `plain` (no cover or framing) or the install path in [install.md](install.md); never substitute `plain` silently for a requested framed archetype.
+- Ops procedure → `runbook`; how-to or short reference → `knowledge_article`.
+- App design or technical reference → `architecture`; change log → `release_notes`.
+- Audit evidence → `compliance_report`; client report → `customer_deliverable`.
+- Letter → `letter`; scratch doc → `plain`.

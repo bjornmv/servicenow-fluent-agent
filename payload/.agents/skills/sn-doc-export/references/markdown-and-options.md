@@ -1,20 +1,20 @@
 # Markdown support and render options
 
-## Markdown per backend
+## Markdown
 
-- Both backends: headings, tables, fenced code, task lists and admonitions (`:::{note}`, `tip`, `important`, `warning`, `caution`, `danger`; optional title on the directive line, body on the following lines, closing `:::`).
-- Node DOCX keeps admonition text but not its colour or border, and shows task state as ☐/☑.
-- Python only: definition lists, footnotes and math.
+- Headings, tables, fenced code, task lists and callouts: `:::{note}` (also `tip`, `important`, `warning`, `caution`, `danger`), optional title on that line, body below, closing `:::`. Only this form becomes a shaded box.
+- Not supported: definition lists, footnotes, math.
 
-## Metadata on Node
+## Metadata
 
-Only `--meta title` is used (output file name and PDF/HTML document title). Other `--meta` values are not rendered, and a leading YAML front-matter block is dropped with a warning. Write title, author and version into the document body.
+Front matter of flat `key: value` lines (see [archetypes.md](../archetypes.md)); nested lines are ignored with a warning. `--meta 'key=value'` overrides one key; values with apostrophes or quotes stay in front matter.
 
 ## Images
 
-Use `![alt](name.png)` plus `--image-map "name.png=<absolute-image-path>"` (repeatable), or a path relative to the Markdown file. Node embeds data URIs and supports spaces in paths. A missing image is exit 2 with nothing written; fix the path rather than deleting the reference (see [install.md](../install.md#troubleshooting)).
+`![alt](name.png)` with a path relative to the Markdown file, or `--image-map "name.png=<absolute-image-path>"` (repeatable). Images are embedded. A missing image exits 2 with nothing written; fix the path, do not drop the reference.
 
-## Node-only options
+## Options
 
-- `--reference-docx <template.docx>` applies a template's styles, headers and footers to DOCX.
-- `--stylesheet <file.css>` adds CSS to PDF.
+- `--reference-docx "<template.docx>"`: DOCX uses the template's styles; its header/footer, if any, replace the archetype ones.
+- `--stylesheet "<extra.css>"`: extra CSS for PDF and HTML, after the archetype CSS.
+- DOCX Contents page numbers appear after the reader updates fields (F9 in Word).
