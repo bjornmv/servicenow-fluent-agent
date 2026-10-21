@@ -76,8 +76,10 @@ test('skill helper calls use the one OS-neutral sn-skill dispatcher line', () =>
   let lines = 0;
   for (const file of files.filter(f => f.endsWith('.md'))) {
     const text = fs.readFileSync(file, 'utf8');
-    // No per-shell helper paths: the PowerShell and bash twins are retired.
-    assert.doesNotMatch(text, /node "\$env:USERPROFILE\\\.agents|node "\$HOME\/\.agents/, rel(file));
+    // No per-shell helper paths: the PowerShell and bash twins are retired. The agent's
+    // frontmatter hook is host configuration with one command per shell, not guidance.
+    const guidance = rel(file) === '.copilot/agents/ServiceNow Fluent.agent.md' ? text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '') : text;
+    assert.doesNotMatch(guidance, /node "\$env:USERPROFILE\\\.agents|node "\$HOME\/\.agents/, rel(file));
     // `list` is the dispatcher's own built-in (the new-terminal readiness check), not a helper.
     for (const [, name] of text.matchAll(/`sn-skill ([a-z][\w-]*)/g)) assert.ok(name === 'list' || Object.hasOwn(COMMANDS, name), `${rel(file)}: unknown sn-skill ${name}`);
     for (const [line, name] of text.matchAll(/^ *sn-skill ([a-z][\w-]*)(?: .*)?$/gm)) {
@@ -233,9 +235,11 @@ test('baseline is generated, has fewer words and cannot silently drift', () => {
   const agent = read(agentPath), baseline = read(baselinePath);
   assert.equal(baseline, renderBaseline(agent));
   const words = s => s.trim().split(/\s+/).length;
-  assert.ok(words(agent) >= 600 && words(agent) <= 700, 'Agent word budget');
+  // The hooks block is host configuration; VS Code runs it and never shows it to the model.
+  const prompt = agent.replace(/^hooks:\r?\n(?: .*\r?\n)*/m, '');
+  assert.ok(words(prompt) >= 600 && words(prompt) <= 700, 'Agent word budget');
   assert.ok(words(baseline) >= 100 && words(baseline) <= 150, 'Baseline word budget');
-  assert.ok(words(agent) + words(baseline) <= 850, 'Budget includes both co-loaded prompts');
+  assert.ok(words(prompt) + words(baseline) <= 850, 'Budget includes both co-loaded prompts');
   assert.doesNotMatch(baseline, /^## /m, 'No copied workflow sections');
   assert.throws(() => renderBaseline(agent.replace('## Approval gates', '## Changed heading')), /Missing canonical section/);
   assert.match(baseline, /\.\.\/reference\/sdk-commands.md/);

@@ -34,11 +34,13 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
   let stateReads = 0;
   const proc = {
     argv: ['node', 'launcher.cjs', ...args], execPath: 'fixture-node', exitCode: 0,
+    env: options.env || {}, cwd: () => options.cwd || fakeHome,
     exit(code) { if (code !== undefined) this.exitCode = code; throw stop; },
   };
   const mocks = {
     'node:fs': {
       readFileSync(file) {
+        assert.notEqual(file, 0, 'stdin is never read');
         fsReads.push(file);
         if (file === stateFile) {
           const content = states[Math.min(stateReads++, states.length - 1)];
@@ -46,19 +48,23 @@ function runLauncher(args = ['check'], child = { status: 0, stdout: '', stderr: 
           return typeof content === 'string' ? content : JSON.stringify(content);
         }
         assert.equal(file, receiptFile);
-        return options.badReceipt ? '{' : JSON.stringify({ repoRoot: fakeRepo });
+        return options.badReceipt ? '{' : JSON.stringify({ repoRoot: fakeRepo, ...options.receipt });
       },
-      existsSync(file) { assert.equal(file, path.join(fakeRepo, 'bin', 'sn-fluent-agent.cjs')); return !options.missingCli; },
+      existsSync(file) {
+        if (options.exists) return options.exists(file);
+        assert.equal(file, path.join(fakeRepo, 'bin', 'sn-fluent-agent.cjs'));
+        return !options.missingCli;
+      },
       ...options.gateFs,
     },
     'node:os': { homedir: () => fakeHome },
     'node:path': path,
-    'node:child_process': { spawnSync(...call) { calls.push(call); if (options.throwSpawn) throw new Error('launch denied'); return child; } },
+    'node:child_process': { spawnSync(...call) { calls.push(call); if (options.throwSpawn) throw new Error('launch denied'); return typeof child === 'function' ? child(...call) : child; } },
   };
   try {
     vm.runInNewContext(launcher, {
-      require(name) { assert.ok(mocks[name], name); return mocks[name]; },
-      process: proc, Buffer, Date: { now: () => options.now ?? Date.now() },
+      require(name) { assert.ok(mocks[name], name); return mocks[name]; }, __filename: 'launcher-fixture.cjs',
+      process: proc, Buffer, Date: { now: typeof options.now === 'function' ? options.now : () => options.now ?? Date.now() },
       console: { log: value => stdout.push(String(value)), error: value => stderr.push(String(value)) },
     }, { timeout: 1000 });
   } catch (error) { if (error !== stop) throw error; }
@@ -149,6 +155,15 @@ test('a discovery failure recorded by this run is surfaced; an older recorded fa
   assert.equal(withNotice.status, 1);
   assert.deepEqual(withNotice.stdout.map(JSON.parse), [{ updates: [notification] }], 'a valid notice for another component is still shown');
   assert.match(withNotice.stderr.join('\n'), /failed for docs:c:\\docs/);
+  // A concurrent session's failure or block for another component is not this --only run's.
+  const otherBlocked = { label: 'Docs', current: 'a', available: 'b', reason: 'local changes (1): M x', at: '2026-01-03T00:00:00.000Z' };
+  const scoped = runLauncher(['check', '--only', 'agent'], undefined,
+    { states: [undefined, { version: 1, components: { agent: {}, 'docs:c:\\docs': { lastCheckFailedAt: '2026-01-03T00:00:00.000Z', blocked: otherBlocked } } }] });
+  assert.deepEqual([scoped.status, scoped.stderr], [0, []]);
+  const docsScoped = runLauncher(['check', '--only', 'docs', '--docs', 'c:\\docs'], undefined,
+    { states: [undefined, { version: 1, components: { agent: { lastCheckFailedAt: '2026-01-03T00:00:00.000Z' }, 'docs:c:\\docs': { lastCheckFailedAt: '2026-01-03T00:00:00.000Z' } } }] });
+  assert.equal(docsScoped.status, 1);
+  assert.match(docsScoped.stderr.join('\n'), /^Update check failed for docs:c:\\docs: /);
 });
 
 test('malformed decision state stops check, decision and state before anything is launched or written', () => {
@@ -336,6 +351,163 @@ for (const kind of ['directory', 'symlink', 'hardlink']) {
   });
 }
 
+// SessionStart hook (VS Code chat): stdout is hook JSON or nothing, never stderr or a non-zero exit.
+const docsLookup = path.join('.agents', 'skills', 'sn-doc-lookup', 'bin', 'sn-doc-md.js');
+function hookFixture(t, { age = CHECK_INTERVAL_MS + 1000, files = [] } = {}) {
+  const f = gateFixture(t);
+  if (age !== undefined) {
+    fs.writeFileSync(f.stamp, '');
+    fs.utimesSync(f.stamp, (gateNow - age) / 1000, (gateNow - age) / 1000);
+  }
+  const project = path.join(f.home, 'project');
+  fs.mkdirSync(project);
+  for (const name of files) fs.writeFileSync(path.join(project, name), '{}');
+  // children: { agent|sdk|docs: result, paths: result } keyed by the spawned command.
+  const run = (children = {}, options = {}) => {
+    const child = (exe, args) => {
+      if (args[0].endsWith(docsLookup)) return children.paths || { status: 0, stdout: JSON.stringify({ docs: path.join(f.home, 'docs'), docsExists: false }), stderr: '' };
+      const result = children[args[3]] || { status: 0, stdout: '', stderr: '' };
+      return typeof result === 'function' ? result(exe, args) : result;
+    };
+    const r = runLauncher(['session-hook'], child, { home: f.home, now: gateNow, cwd: project, exists: fs.existsSync,
+      gateFs: { lstatSync: fs.lstatSync, mkdirSync: fs.mkdirSync, writeFileSync: fs.writeFileSync, utimesSync: fs.utimesSync }, ...options });
+    assert.equal(r.status, 0, 'a hook never exits non-zero');
+    assert.deepEqual(r.stderr, [], 'VS Code shows hook stderr to the user');
+    assert.ok(r.stdout.length <= 1);
+    const context = r.stdout.length ? JSON.parse(r.stdout[0]) : undefined;
+    if (context) {
+      assert.deepEqual(Object.keys(context), ['hookSpecificOutput']);
+      assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
+      assert.doesNotMatch(r.stdout[0], /[^\x20-\x7e]/, 'ASCII only for Windows PowerShell 5.1');
+    }
+    return { ...r, context: context && context.hookSpecificOutput.additionalContext };
+  };
+  return { ...f, project, run };
+}
+
+test('session hook is silent with a fresh stamp and starts no check', t => {
+  const f = hookFixture(t, { age: 3600000 });
+  const r = f.run();
+  assert.deepEqual(r.stdout, []);
+  assert.deepEqual(r.calls, []);
+  assert.equal(fs.statSync(f.stamp).mtimeMs, gateNow - 3600000, 'a fresh stamp is not touched');
+});
+
+test('a due session hook touches the stamp, checks quietly and stays silent when nothing needs action', t => {
+  const f = hookFixture(t, { age: undefined });
+  const r = f.run({}, { env: { PATH: 'fixture' } });
+  assert.deepEqual(r.stdout, []);
+  assert.equal(fs.statSync(f.stamp).mtimeMs, gateNow, 'the stamp records the attempt before any check');
+  assert.deepEqual(r.calls.map(([exe, args]) => [exe, ...Array.from(args)]), [
+    ['fixture-node', 'launcher-fixture.cjs', 'check', '--only', 'agent'],
+    ['fixture-node', path.join(f.home, docsLookup), 'paths'],
+  ]);
+  const [, , options] = r.calls[0];
+  assert.equal(options.timeout, 23000, 'grace past the deadline: the inner kill of the checkout CLI comes first');
+  assert.equal(options.env.SN_FLUENT_UPDATE_DEADLINE, String(gateNow + 20000), 'absolute, so the check start-up counts');
+  assert.equal(options.env.PATH, 'fixture');
+  for (const [key, value] of Object.entries({ GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' })) assert.equal(options.env[key], value, key);
+  assert.equal(r.calls[1][2].timeout, 5000);
+  assert.equal(f.run().calls.length, 0, 'the next session shares the touched stamp');
+});
+
+test('a due session hook returns notices as model context that points to the advisor skill and approval', t => {
+  const f = hookFixture(t, { files: ['now.config.json'] });
+  const sdk = { component: `sdk:${f.project.toLowerCase()}`, id: '4.13.6', label: 'Project now-sdk (project — x)', current: '4.12.2', available: '4.13.6' };
+  const docs = path.join(f.home, 'docs');
+  const r = f.run({
+    agent: { status: 0, stdout: JSON.stringify({ updates: [notification] }), stderr: '' },
+    sdk: { status: 0, stdout: JSON.stringify({ updates: [sdk] }), stderr: '' },
+    paths: { status: 0, stdout: JSON.stringify({ docs, docsExists: true }), stderr: '' },
+  });
+  assert.deepEqual(r.calls.map(([, args]) => Array.from(args).slice(1)), [
+    ['check', '--only', 'agent'], ['check', '--only', 'sdk', '--project', f.project], ['paths'], ['check', '--only', 'docs', '--docs', docs],
+  ]);
+  assert.ok(r.context.includes(JSON.stringify({ updates: [notification, sdk] })), 'decision keys reach the model unchanged');
+  assert.match(r.context, /do not run it again/);
+  assert.match(r.context, /sn-update-advisor skill/);
+  assert.match(r.context, /needs the user's explicit approval/);
+  assert.doesNotMatch(r.context, /Not checked|withheld for local changes/);
+  assert.ok(r.context.length < 1500, r.context.length);
+});
+
+test('the session hook checks the workspace SDK only when the folder itself is a ServiceNow project', t => {
+  for (const files of [[], ['package.json'], ['now.config.json'], ['aiux.json']]) {
+    const f = hookFixture(t, { files });
+    const only = f.run().calls.filter(([, args]) => args[1] === 'check').map(([, args]) => Array.from(args).slice(3));
+    assert.deepEqual(only, files.some(name => name !== 'package.json') ? [['agent'], ['sdk', '--project', f.project]] : [['agent']], files.join());
+  }
+});
+
+test('withheld updates, failed or timed-out checks and gate errors become context, never a hook failure', t => {
+  const blockedLine = 'Update not offered for agent: ServiceNow Fluent Agent 111111111111 -> 222222222222 is available, but the checkout has local changes (1): M payload/x.md. Commit, stash or remove them, then check again.';
+  const f = hookFixture(t);
+  const blocked = f.run({ agent: { status: 0, stdout: '', stderr: blockedLine } });
+  assert.ok(blocked.context.includes(blockedLine));
+  assert.match(blocked.context, /report these verbatim and ask the user how to handle them/);
+  for (const [agent, reason] of [
+    [{ status: 1, stdout: '', stderr: 'Update check not run: the install receipt x is missing\n' }, 'agent: Update check not run: the install receipt x is missing'],
+    [{ status: null, signal: 'SIGTERM', error: Object.assign(new Error('spawnSync fixture-node ETIMEDOUT'), { code: 'ETIMEDOUT' }), stdout: '', stderr: '' }, 'agent: spawnSync fixture-node ETIMEDOUT'],
+    [() => { throw new Error('launch denied'); }, 'agent: launch denied'],
+  ]) {
+    const g = hookFixture(t);
+    const r = g.run({ agent, paths: { status: 2, stdout: '', stderr: 'lookup broke' } });
+    assert.ok(r.context.includes(`Not checked (${reason}; docs: checkout lookup failed (lookup broke))`), r.context);
+    assert.match(r.context, /Tell the user once; do not retry, force or reset update state/);
+  }
+  const g = hookFixture(t);
+  const gate = g.run({}, { gateFs: { lstatSync: () => { throw Object.assign(new Error('fixture permission denial'), { code: 'EACCES' }); } } });
+  assert.deepEqual(gate.calls, []);
+  assert.match(gate.context, /Not checked \(fixture permission denial\)/);
+  // A notice printed by a check that also failed was recorded as shown, so it still reaches the agent.
+  const both = hookFixture(t).run({ agent: { status: 1, stdout: JSON.stringify({ updates: [notification] }), stderr: 'Update check failed for agent: x.' } });
+  assert.ok(both.context.includes(JSON.stringify({ updates: [notification] })), both.context);
+  assert.match(both.context, /Not checked \(agent: Update check failed for agent: x\)/);
+  // Withheld lines stay whole for verbatim reporting.
+  const long = `${blockedLine.slice(0, -1)} ${'x'.repeat(400)}.`;
+  assert.ok(hookFixture(t).run({ agent: { status: 0, stdout: '', stderr: long } }).context.includes(long));
+});
+
+test('a stamp created by a concurrent session at the same moment means not due, not a failure', t => {
+  const f = hookFixture(t);
+  fs.rmSync(f.stamp);
+  const r = f.run({}, { gateFs: { lstatSync: fs.lstatSync, mkdirSync: fs.mkdirSync, utimesSync: fs.utimesSync,
+    writeFileSync: () => { throw Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' }); } } });
+  assert.deepEqual([r.stdout, r.calls], [[], []]);
+});
+
+test('the session hook puts the Git selected at install first in the checks\' PATH', t => {
+  const f = hookFixture(t);
+  const gitExe = path.join(f.home, 'Git', 'cmd', 'git.exe');
+  fs.mkdirSync(path.dirname(gitExe), { recursive: true });
+  fs.writeFileSync(gitExe, '');
+  const r = f.run({}, { env: { Path: 'machine-git' }, receipt: { gitExe } });
+  assert.deepEqual(Object.keys(r.calls[0][2].env).filter(key => key.toUpperCase() === 'PATH'), ['Path'], 'one PATH key, in its existing case');
+  assert.equal(r.calls[0][2].env.Path, `${path.dirname(gitExe)}${path.delimiter}machine-git`);
+  const gone = hookFixture(t).run({}, { env: { Path: 'machine-git' }, receipt: { gitExe: path.join(f.home, 'gone.exe') } });
+  assert.equal(gone.calls[0][2].env.Path, 'machine-git');
+});
+
+test('the session hook stops starting checks once its 20-second budget is spent', t => {
+  const f = hookFixture(t);
+  let now = gateNow;
+  const r = f.run({ agent: () => { now += 19000; return { status: 0, stdout: '', stderr: '' }; } }, { now: () => now });
+  assert.equal(r.calls.length, 1, 'no docs lookup with under 2 s left');
+  assert.match(r.context, /Not checked \(docs: checkout lookup failed \(time budget used up\)\)/);
+});
+
+test('a check started by the hook passes its time limit to the checkout CLI and reports a timeout', () => {
+  const timedOut = { status: null, signal: 'SIGTERM', error: Object.assign(new Error('spawnSync fixture-node ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+  const r = runLauncher(['check', '--only', 'agent'], timedOut, { now: 1000, env: { SN_FLUENT_UPDATE_DEADLINE: '8000' } });
+  assert.equal(r.status, 1);
+  assert.equal(r.calls[0][2].timeout, 7000, 'the deadline less this process\'s own start-up');
+  assert.deepEqual(r.stderr, ['Update check failed: checkout CLI timed out after 7 s.']);
+  const late = runLauncher(['check', '--only', 'agent'], timedOut, { now: 7500, env: { SN_FLUENT_UPDATE_DEADLINE: '8000' } });
+  assert.deepEqual([late.status, late.calls.length], [1, 0]);
+  assert.match(late.stderr[0], /time budget was used up before the checkout CLI started/);
+  assert.equal(runLauncher(['check']).calls[0][2].timeout, undefined, 'manual checks keep no time limit');
+});
+
 test('SDK notice names the absolute project and declaration source; SDK-only checks never invoke Git', async t => {
   const root = temporaryPath(t);
   const projectPath = path.join(root, 'lux-samples');
@@ -393,13 +565,13 @@ test('routing and owning skill preserve update scope and UNKNOWN without mirrore
   const load = rel => fs.readFileSync(path.join(__dirname, '../../', rel), 'utf8');
   const agent = load('payload/.copilot/agents/ServiceNow Fluent.agent.md');
   const baseline = load('payload/.agents/instructions/now-sdk-baseline.instructions.md');
-  assert.match(agent, /session-start gate authorizes advisory checks only, not maintenance/);
+  assert.match(agent, /session update hook authorizes advisory checks only, not maintenance/);
   assert.match(agent, /`sn-update-advisor`/);
   assert.doesNotMatch(agent + baseline, /## Quiet Update Advisory|## Documentation Lookup|Sync commands return when/);
   assert.match(agent, /completion is \*\*UNKNOWN\*\*/);
   assert.match(baseline, /UNKNOWN completion/);
   const skill = load('payload/.agents/skills/sn-update-advisor/SKILL.md');
-  assert.match(skill, /Outside the session gate, documentation-only questions skip update checks and maintenance/);
+  assert.match(skill, /Outside the session hook, documentation-only questions skip update checks and maintenance/);
   assert.match(skill, /Run the checks below once for each resolved component, without `--force`/);
   for (const target of ['**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**']) assert.ok(skill.includes(target));
   assert.match(skill, /--only sdk --project "<absolute-project-root>"/);

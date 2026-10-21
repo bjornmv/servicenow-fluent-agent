@@ -31,21 +31,31 @@ test('runtime agent has one host declaration and explicit safety-first precedenc
   assert.match(priority, /instructions still conflict.*stop and ask/);
 });
 
-test('first-session instruction gates the skill on the shared stamp rather than task type', () => {
+test('session start relies on the agent-scoped SessionStart hook, with no per-session command', () => {
   const startup = section(agent, 'Session start');
   assert.ok(agent.indexOf('## Session start') < agent.indexOf('## Routing'));
-  assert.match(startup, /Before task work in every new session/);
-  assert.match(startup, /^sn-skill update session-start$/m);
-  assert.match(startup, /only when missing or older than 48 hours/);
-  assert.match(startup, /If `due: true`, follow `sn-update-advisor` for all applicable components/);
-  assert.match(startup, /Otherwise continue/);
-  assert.match(startup, /attempt, not success/);
+  assert.match(startup, /session hook runs the 48-hour update check before your first turn/);
+  assert.match(startup, /update notices, withheld updates or an incomplete check, follow `sn-update-advisor` before task work/);
+  assert.match(startup, /Otherwise skip update checks unless asked/);
   assert.match(startup, /Updates still require approval/);
+  assert.doesNotMatch(body(agent), /sn-skill update session-start|session-hook/, 'the hook replaces the per-session tool call');
+  // VS Code reads agent hooks from the frontmatter; YAML scalars arrive as strings, so a timeout key would be ignored.
+  const front = agent.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1];
+  assert.equal(front.split('\n').slice(2).join('\n'), [
+    'hooks:',
+    '  SessionStart:',
+    '    - type: command',
+    // Kept modified by uninstall, the agent file outlives the launcher: then the hook does nothing.
+    `      command: 'f="$HOME/.agents/tools/sn-update-advisor.cjs"; [ ! -f "$f" ] || node "$f" session-hook'`,
+    `      windows: "$f = Join-Path $env:USERPROFILE '.agents/tools/sn-update-advisor.cjs'; if (Test-Path -LiteralPath $f) { & node.exe $f session-hook }"`,
+  ].join('\n'));
+  // Double-quoted YAML processes backslash escapes; the PowerShell line must have none.
+  assert.doesNotMatch(front, /\\|timeout/);
   const owner = skill('sn-update-advisor');
-  for (const term of ['.servicenow-fluent-agent-update-check.stamp', '**before** invoking this skill', 'Do not touch a fresh stamp', 'one shared gate across projects', 'reminder/skip decisions', '**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**', 'without `--force`', 'lastCheckFailedAt']) assert.ok(owner.includes(term), term);
+  for (const term of ['.servicenow-fluent-agent-update-check.stamp', '`SessionStart` hook', '**before** running the checks', 'do not re-run the checks', 'Do not touch a fresh stamp', 'one shared gate across projects', 'reminder/skip decisions', '**Agent:**', '**now-sdk:**', '**ServiceNowDocs:**', 'without `--force`', 'lastCheckFailedAt']) assert.ok(owner.includes(term), term);
   assert.match(owner, /No ancestor guessing or global-SDK substitution/);
   assert.match(owner, /report a missing checkout without cloning or rebuilding/);
-  assert.match(skill('sn-doc-lookup'), /Outside the agent's shared session-start gate/);
+  assert.match(skill('sn-doc-lookup'), /Outside the agent's session update hook/);
 });
 
 test('invariants and approval gates are short individual bullets, not semicolon-packed prose', () => {
@@ -63,9 +73,11 @@ test('invariants and approval gates are short individual bullets, not semicolon-
 });
 
 test('co-loaded word budgets count both complete files, including frontmatter and routing', () => {
-  assert.ok(words(agent) >= 600 && words(agent) <= 700, `Agent: ${words(agent)}`);
+  // The hooks block is host configuration; VS Code runs it and never shows it to the model.
+  const prompt = agent.replace(/^hooks:\r?\n(?: .*\r?\n)*/m, '');
+  assert.ok(words(prompt) >= 600 && words(prompt) <= 700, `Agent: ${words(prompt)}`);
   assert.ok(words(baseline) >= 100 && words(baseline) <= 150, `Baseline: ${words(baseline)}`);
-  assert.ok(words(agent) + words(baseline) <= 850);
+  assert.ok(words(prompt) + words(baseline) <= 850);
   assert.match(baseline, /load alongside the ServiceNow Fluent agent/);
   assert.doesNotMatch(baseline, /non-agent chats|^## /m);
 });
@@ -161,7 +173,7 @@ test('automation guardrail is independently usable from skills and file instruct
 test('approval categories, UNKNOWN recovery and evidence boundaries survive shortening', () => {
   const gates = section(agent, 'Approval gates');
   for (const phrase of ['explicit approval', 'exact target and change', 'headless delegate cannot grant', 'Installing or deploying', 'Destructive reinstalls', 'legacy choice replacement', 'descendant table', 'Deleting source or live records', 'reassigning records', 'authentication alias', 'access permissions', 'Running ATF', 'execution target confirmed', 'App Repository version', 'tool/dependency versions']) assert.ok(gates.includes(phrase), phrase);
-  for (const phrase of ['absolute project directory', 'native completion', '**UNKNOWN**', "original run's evidence", 'package, build, installation, content and rendered-runtime', 'one execution owner', 'actual excerpts and completion evidence', 'session-start gate authorizes advisory checks only, not maintenance']) assert.ok(agent.includes(phrase), phrase);
+  for (const phrase of ['absolute project directory', 'native completion', '**UNKNOWN**', "original run's evidence", 'package, build, installation, content and rendered-runtime', 'one execution owner', 'actual excerpts and completion evidence', 'session update hook authorizes advisory checks only, not maintenance']) assert.ok(agent.includes(phrase), phrase);
   assert.match(baseline, /required approval before mutations/);
   assert.match(baseline, /operation-specific target/);
   assert.doesNotMatch(baseline, /Confirm the project, instance.*before mutations/);
