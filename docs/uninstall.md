@@ -67,6 +67,7 @@ node bin/sn-fluent-agent.cjs uninstall
 The uninstaller:
 
 - Backs up and removes files that still match their install-receipt hashes.
+- Removes the session update hook with the agent file that declares it (`.copilot/agents/ServiceNow Fluent.agent.md`); no separate hook file or setting is installed. A modified agent file that is kept still declares the hook, which then finds no launcher and does nothing.
 - Preserves locally modified files and reports them as **skipped modified**.
 - Removes the install receipt only when no modified files were skipped.
 - Removes the managed `sn-skill` shim (`~/.local/bin/sn-skill` on Linux/macOS; `~/bin/sn-skill` on Windows when Git Bash was found) and, on Linux/macOS, the managed `now-sdk` block in `~/.bashrc`. Files it did not create are left unchanged; `--no-shell-function` keeps both.
@@ -159,7 +160,7 @@ Only after reviewing the uninstall results, you may remove these exact items if 
 | Item | Purpose / caution |
 | --- | --- |
 | `%USERPROFILE%\.agents\.servicenow-fluent-agent-update.json` | Update decisions, skipped releases and reminder dates. Deleting it loses those choices. |
-| `%USERPROFILE%\.agents\.servicenow-fluent-agent-update-check.stamp` | Shared startup-check timestamp. Removing just this file is not an uninstall. |
+| `%USERPROFILE%\.agents\.servicenow-fluent-agent-update-check.stamp` | Shared session-hook timestamp (last due update-check attempt). Removing just this file is not an uninstall. |
 | `%USERPROFILE%\.agents\_backups\servicenow-fluent-agent` | Backups of changed/removed agent files. Keep until recovery is no longer needed. |
 | `%LOCALAPPDATA%\SNSetup` | SDK/setup run evidence. Preserve logs for incomplete or disputed operations. |
 | `%LOCALAPPDATA%\Git254Bootstrap` | Git setup cache/logs. Do not remove during an active setup operation. |

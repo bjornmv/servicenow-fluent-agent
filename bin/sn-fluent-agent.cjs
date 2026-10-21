@@ -460,6 +460,8 @@ function install() {
     installedAt: new Date().toISOString(),
     repoRoot: toSlash(repoRoot),
     payloadRoot: toSlash(payloadRoot),
+    // Windows: the session hook puts this Git first, as VS Code terminals do.
+    ...(summary.windowsGit ? { gitExe: summary.windowsGit.git.executable } : {}),
     files: summary.nextFiles,
   };
 

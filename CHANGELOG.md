@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Update check as a VS Code SessionStart hook
+
+The agent no longer spends its first tool call of every session on `sn-skill update session-start`. A VS Code chat `SessionStart` hook declared in the agent file runs the 48-hour gate and, when due, the quiet checks before the first reply. The agent hears about updates only when there is something to act on.
+
+### Upgrade notes
+
+- **Re-run install after pulling.** The hook ships inside `.copilot/agents/ServiceNow Fluent.agent.md` (frontmatter `hooks:`), so install and uninstall add and remove it with that file; no new file or VS Code setting. A locally modified agent file is skipped as before and keeps the old per-session instruction until resolved. If uninstall keeps a modified agent file, its hook finds no launcher and does nothing.
+- **Hooks must be allowed:** `chat.useHooks` (default on; policy `ChatHooks`) and a trusted workspace. Where hooks do not run, nothing is checked automatically; run **Check ServiceNow Fluent Agent Updates** or `sn-skill update check --only agent`. The **GitHub Copilot Chat Hooks** output channel shows each run.
+- `node` must be on VS Code's PATH (Windows: `node.exe`, run through `powershell.exe -NoProfile`, so profile functions do not apply).
+
+### Behavior changes
+
+- **New launcher command `session-hook`** (`~/.agents/tools/sn-update-advisor.cjs`): runs the shared stamp gate (the workspace folder is its working directory; stdin is not read), and when due runs its own `check` for the agent, the workspace folder's SDK (only when the folder itself holds `now.config.json` or `aiux.json`) and an existing docs checkout (`sn-doc-md paths`). It always exits 0 with nothing on stderr. stdout is empty unless there are notices, withheld (`Update not offered`) updates or failed checks; then one ASCII-escaped `hookSpecificOutput.additionalContext` line tells the agent which components, that updates need approval, and to follow `sn-update-advisor`.
+- **Time limit:** the hook starts no check after 20 seconds (VS Code kills hooks at 30; a frontmatter `timeout` is ignored) and hands each run its absolute end as `SN_FLUENT_UPDATE_DEADLINE`; `check` then times the checkout CLI out (`Update check failed: checkout CLI timed out after N s.`) before the hook's own 3-second-later kill. A notice printed by a check that also failed is still passed on. On Windows the checks put the Git selected at install (new receipt field `gitExe`) first in PATH, as VS Code terminals do. Git runs with `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`. Manual checks keep no limit.
+- **Agent:** `## Session start` now says to act on hook context with `sn-update-advisor` and otherwise run no update checks; there is no per-session fallback command. `sn-skill update session-start` stays for manual use.
+- Docs: README Update Advisor, technical guide (gate, hook contract, no-fallback reason), uninstall, `sn-update-advisor` and `sn-doc-lookup` skills.
+
 ## 0.4.0 — One sn-skill command, Linux and VS Code server, Node-only documents
 
 Skill helpers now run through one OS-neutral command, `sn-skill <name> ...`, that works the same in the **PowerShell with now-sdk** terminal and in bash. The agent also runs on Linux (desktop VS Code, Remote-SSH, dev containers, `code serve-web`). `sn-doc-export` renders every archetype in Node; the Python backend is gone.

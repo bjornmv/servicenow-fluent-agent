@@ -172,10 +172,14 @@ The receipt's `repoRoot` matters operationally: the installed advisor forwards t
 
 ### Two independent gates
 
-1. **Session gate:** custom-agent instructions invoke `session-start`. Missing or **strictly older than 48 hours** means create/touch the shared stamp before following the advisor skill. Exactly 48 hours remains fresh. This branch does not access the receipt, network or component-state file.
+1. **Session gate:** the agent file's VS Code chat `SessionStart` hook runs the launcher's `session-hook` before the first reply of each new agent session. Missing or **strictly older than 48 hours** means create/touch the shared stamp, then run the launcher's quiet `check` for the agent, the workspace folder's SDK (only when that folder holds `now.config.json` or `aiux.json`) and an existing docs checkout. Exactly 48 hours remains fresh: no receipt, network or component-state access. `session-start` is the same gate without the checks, for manual use.
 2. **Component gate:** the advisor uses each component's `lastCheckedAt` (48 hours or more), snooze and notification state. A due session stamp does not override these gates.
 
-This is instruction-driven, not a background scheduler or guaranteed VS Code lifecycle hook. The stamp records an **attempt**, not successful discovery. Checks can change local timestamps/state without applying any update.
+The hook needs `chat.useHooks` (default on, policy `ChatHooks`) and a trusted workspace; `chat.hooks.allowManagedOnly` or `chat.customizations.strictPluginOnlyCustomization` also disable it. It fires only when ServiceNow Fluent is the selected agent for the conversation's first request. VS Code runs the `windows` command through `powershell.exe -ExecutionPolicy Bypass -NoProfile -Command` (so no profile functions) and `command` through `/bin/sh -c`, both with the first workspace folder as cwd. The frontmatter `timeout` would arrive as a string and be ignored, so VS Code's 30-second default applies; the hook stops starting checks after 20 seconds and passes that deadline to each checkout CLI run, which `check` times out 3 seconds before the hook would kill `check` itself. VS Code's stdin JSON is not read. On Windows the checks put the receipt's `gitExe` (the Git selected at install) first in PATH, matching the VS Code terminal prefix the hook does not get. Git runs with `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`.
+
+Hook output contract: exit 0 and no stderr always (VS Code shows stderr as a warning). stdout is empty unless there are notices, `Update not offered` lines or failed checks; then it is one ASCII-escaped line `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}`, which VS Code adds to the first request for the model only. A notice is recorded as shown when the check prints it, so this context is its only delivery for seven days.
+
+The hook is a chat lifecycle event, not a background scheduler: nothing runs between agent sessions. There is no per-session agent fallback: when the host does not run hooks, nothing is checked until the user asks. A quiet hook and a missing hook look the same to the agent, and a fallback command would bring back the per-session tool call the hook removes. The stamp records an **attempt**, not successful discovery. Checks can change local timestamps/state without applying any update.
 
 ### Targets and state
 
@@ -255,7 +259,7 @@ node bin/sn-fluent-agent.cjs help
 | `update-decision` | Record selected component decisions; does not apply updates. |
 | `uninstall` | Remove unchanged receipt-owned files with backups; preserve local modifications by default. |
 
-The installed advisor uses different entry names: `session-start`, `check` and `decision`. It forwards check/decision to the receipt-owned repository. These are CLI commands, not host-registered tools. For mutation flags and approved execution, follow the linked setup/update/uninstall procedures rather than treating this table as authorization.
+The installed advisor uses different entry names: `session-hook`, `session-start`, `check`, `decision` and `state`. It forwards check/decision to the receipt-owned repository. These are CLI commands, not host-registered tools. For mutation flags and approved execution, follow the linked setup/update/uninstall procedures rather than treating this table as authorization.
 
 ## 11. Verification and troubleshooting
 

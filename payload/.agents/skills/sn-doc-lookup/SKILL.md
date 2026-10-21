@@ -39,7 +39,7 @@ Linux/macOS: `$XDG_DATA_HOME/SNDocs/{repo,index}`, or `~/.local/share/SNDocs/{re
 
 ## Search workflow
 
-Outside the agent's shared session-start gate, documentation-only questions skip update-advisor checks. A startup notice or lookup never authorizes SDK upgrades, builds or documentation maintenance.
+Outside the agent's session update hook, documentation-only questions skip update-advisor checks. A hook notice or lookup never authorizes SDK upgrades, builds or documentation maintenance.
 
 1. Search with the user's natural question in `--query` and high-signal terms in `--keywords`.
 2. If results are broad or noisy, run a second search with better keywords.

@@ -1,6 +1,6 @@
 ---
 name: sn-update-advisor
-description: Checks and applies updates to this agent, the project SDK and local docs. Use when the session-start update check is due or the user asks about updates.
+description: Checks and applies updates to this agent, the project SDK and local docs. Use when the session hook reports update notices or a failed check, or the user asks about updates.
 argument-hint: <component, absolute project/checkout path, and check or approved update intent>
 compatibility: Node.js and sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs"); approved package-manager/Git tooling only for the requested component; interactive parent owns mutations.
 metadata:
@@ -9,23 +9,24 @@ metadata:
 
 # Quiet Update Advisor
 
-Use after a due session-start stamp, for explicit update requests, or for approved advisor choices. The gate is independent of task type; ordinary task work outside it triggers no extra checks. A docs question never authorizes a pull, SDK upgrade, build or index refresh. Outside the session gate, documentation-only questions skip update checks and maintenance.
+Use when the session hook reports notices, withheld updates or a failed check, for explicit update requests, or for approved advisor choices. The gate is independent of task type; ordinary task work outside it triggers no extra checks. A docs question never authorizes a pull, SDK upgrade, build or index refresh. Outside the session hook, documentation-only questions skip update checks and maintenance.
 
-## Session-start check
+## Session hook
 
-The agent runs `sn-skill update session-start` once per new session. It checks `<user-profile>/.agents/.servicenow-fluent-agent-update-check.stamp` by modified time; when missing or **older than 48 hours**, it touches the stamp and prints `due: true` **before** invoking this skill. `due: false` → continue without this workflow.
+The agent file declares a VS Code chat `SessionStart` hook that runs `<user-profile>/.agents/tools/sn-update-advisor.cjs session-hook` before the first turn of each new agent session (needs `chat.useHooks` and a trusted workspace). It checks `<user-profile>/.agents/.servicenow-fluent-agent-update-check.stamp` by modified time; when missing or **older than 48 hours**, it touches the stamp **before** running the checks below for the receipt's agent checkout, the workspace folder when it is a ServiceNow project root (`now.config.json` or `aiux.json`), and the docs checkout from `sn-skill docs paths`. Otherwise, and when nothing needs action, it adds nothing.
 
+- Its context lists the notices as `{"updates":[...]}`, `Update not offered for` lines and components not checked. Those notices are already recorded and are not returned again for seven days: present them (see Present and record choices); do not re-run the checks or `sn-skill update session-start`.
 - Do not touch a fresh stamp or write the stamp by hand. It is one shared gate across projects; a later project waits for the next due session unless the user asks.
 - The stamp records an attempt, not a successful check. Preserve the reminder/skip decisions in `.servicenow-fluent-agent-update.json`. Never delete or reset either file to force a notice.
-- Gate errors or missing/malformed gate output are not a fresh-stamp result: report the limitation and continue unrelated work.
+- A component reported as not checked: tell the user once and continue unrelated work. `sn-skill update session-start` remains for a manual gate (prints `due`).
 
-When due, resolve these targets without mutations:
+For an explicit request, resolve these targets without mutations:
 
 1. **Agent:** the absolute `repoRoot` in the install receipt `<user-profile>/.agents/.servicenow-fluent-agent-install.json`; report a missing/unusable receipt instead of guessing a checkout.
 2. **now-sdk:** only an already identified, absolute ServiceNow project root (`now.config.json` or `aiux.json`). No ancestor guessing or global-SDK substitution; omit this target if none is identified.
 3. **ServiceNowDocs:** the checkout from the lookup CLI's read-only `paths` command; preserve its current release branch and report a missing checkout without cloning or rebuilding it.
 
-Run the checks below once for each resolved component, without `--force`. A due stamp does not make every component due: per-component intervals and reminder/skip choices still apply.
+Run the checks below once for each resolved component, without `--force` (except an explicit "check now", see Reading results). A due stamp does not make every component due: per-component intervals and reminder/skip choices still apply.
 
 - A non-zero check exit means the check did not run or newly recorded a `lastCheckFailedAt`: report it.
 - `check`, `decision` and `state` refuse (non-zero, file untouched) on unreadable/malformed decision-state JSON or component map: report it and stop this pass without resetting it.
@@ -65,7 +66,7 @@ Show the recorded state (read-only; no receipt, Git or network access):
 sn-skill update state
 ```
 
-Due startup checks use each resolved component's `--only` filter; explicit requests check only the requested components. `--docs` requires a value.
+The hook uses each resolved component's `--only` filter; explicit requests check only the requested components. `--docs` requires a value.
 
 ## Reading results
 
