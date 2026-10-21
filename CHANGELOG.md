@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Update check as a VS Code SessionStart hook
+## 0.4.1 — Update check as a VS Code SessionStart hook
 
 The agent no longer spends its first tool call of every session on `sn-skill update session-start`. A VS Code chat `SessionStart` hook declared in the agent file runs the 48-hour gate and, when due, the quiet checks before the first reply. The agent hears about updates only when there is something to act on.
 
