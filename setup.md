@@ -5,7 +5,7 @@ permalink: /setup/
 # Agent-Assisted Installation
 
 ```text
-SETUP_PROTOCOL_VERSION=0.4.0
+SETUP_PROTOCOL_VERSION=0.4.1
 ```
 
 Give a new agent session this prompt to install this agent:
@@ -239,7 +239,7 @@ Download without executing; read the saved script with bounded file tools. A rev
 <!-- setup-block:sdk-download -->
 ```powershell
 $ErrorActionPreference = 'Stop'
-$ExpectedSdkSetupSha256 = '77B3F5916F93DC6FC428C9A4EEA66A0520C28DC937AAEA3EA6C29DF7AD4313E0'
+$ExpectedSdkSetupSha256 = '8EF5E6340A8A0CF3BA894C6520516563B1D0B8D221C6BD0C700B3615073F8F7F'
 # Restore the recorded absolute manifest path if the shell context changed.
 $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 if ($Manifest.sdkWorker.file -ne 'downloads/Invoke-SdkSetup.ps1' -or $Manifest.sdkWorker.sha256 -ne $ExpectedSdkSetupSha256) { throw 'SDK worker manifest/guide mismatch; stop.' }
@@ -354,7 +354,7 @@ For either evidence path, reject malformed/conflicting records. The expected glo
 | Path | Required evidence |
 | --- | --- |
 | Original durable result | `npm.exit-code.txt` exactly `0`; both install logs; valid `sdk.result.json`: `schemaVersion: 1`, `state: package-verified`, `npmExitCode: 0`, expected worker version, exact recorded `runDirectory`, expected `packagePath`. Current metadata name `@servicenow/sdk`, version equal to `packageVersion`, and `bin/index.js` exists. |
-| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.4.0`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
+| Completed read-only recovery | Attributable native exit 0 plus `SDK_PACKAGE_VERIFIED=true` from the expected worker (`SDK_WORKER_VERSION=0.4.1`) and exact run. Independently validate any existing `sdk.result.json` using the same identity/version/metadata checks above: the worker does not validate that file. Legacy result-less exit/log evidence is supported, including 0.3.4 logs; conflicting existing JSON is not ignored. |
 
 For both: scan **complete stderr** for `EBADENGINE`, not only the tail; engine warnings require compatibility review even with npm exit 0. Report deprecations/optional-add-on failures separately; they do not themselves prove npm failed or affected features work. Further diagnosis may use saved npm debug logs, not automatic build-tool installation or Node changes.
 
@@ -551,5 +551,5 @@ NEXT_STEP=
 ```
 
 ```text
-SETUP_GUIDE_END=0.4.0
+SETUP_GUIDE_END=0.4.1
 ```
