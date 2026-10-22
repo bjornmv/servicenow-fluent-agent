@@ -44,18 +44,23 @@ Classify every generated file before cleanup, using [Automation ownership](../sn
 
 Before fixing a record type, run `now-sdk explain <type>-api --format raw`; add the `-guide` only for net-new or complex composition (**sn-explain**).
 
-## Confirm before deleting flows, subflows, custom actions
-**Fluent install breaks transformed flows on every install** (resets to `draft / active:false`, can write invalid snapshot pointers). After every transform, find these and ask for explicit confirmation before deleting them:
+## Transformed flows, subflows, custom actions
+**Fluent install breaks transformed flows on every install** (resets to `draft / active:false`, can write invalid snapshot pointers). After every transform, find and report:
 - `src/fluent/**/sys_hub_flow_*.now.ts` (flows + subflows)
 - `src/fluent/**/sys_hub_action_type_definition_*.now.ts` (custom action types)
 - The script files they reference (follow each `Now.include`)
 - Matching `sys_hub_*` XML still under `metadata/` (build packages it, it wins over the `.now.ts`, and a later `transform --from metadata` re-converts it)
 
-A later whole-app sync regenerates deleted files, so repeat the scan. These records stay instance-only; edit them in Flow Designer. Only flows/actions hand-authored in Fluent (never round-tripped through `transform`) are safe to install.
+**Never delete these files to clean up.** Transform wrote their ids to `keys.ts`; a package project build marks every key without source `deleted: true` and ships a delete record, so the next install DELETES the flow and its children on the instance (`now-sdk explain fluent-overview`, Deleting Fluent Code). Explain this and let the user choose, with explicit approval:
+- **Keep it instance-only** (edit in Flow Designer): delete the files above, run `now-sdk build`, then remove from `keys.ts` exactly the entries `git diff -- src/fluent/generated/keys.ts` shows newly marked `deleted: true` (explicit and composite, children included). Rebuild and confirm `sn-skill deletes` (pre-install delete scan in **sn-build-install**) lists none of them. Commit source and `keys.ts` together.
+- **Delete it from the instance:** delete the files and keep the keys; the install deletes the records. Name each one: it is a live-record deletion.
+- **Keep it in source:** see below.
+
+Restoring deleted files and rebuilding reverts the flags (`deleted: false`). A later whole-app sync regenerates deleted files, so repeat the scan. Only flows/actions hand-authored in Fluent (never round-tripped through `transform`) are safe to install.
 
 If the user explicitly keeps a transformed flow, explain the risks in [the pre-install flow/action scan](../sn-build-install/SKILL.md#pre-install-flowaction-scan--required-before-command). `--skip-flow-activation` (Verify step 3) only stops the SDK publishing the transformed definition: the upload still rewrites the flow header and snapshot as draft, so the flow must be re-published in Flow Designer, and every other flow in the package stays unactivated.
 
 ## Verify
 1. `Transform completed successfully` (exit 0) is not proof: an empty `--from` directory or a `--table` filter matching nothing reports the same. Check the expected `<table>_<sys_id>.now.ts` files exist under `src/fluent/generated/`, read every WARN line, and look for XML newly copied into `metadata/`.
 2. Run `now-sdk build`. Treat `is defined N times in the project` warnings as a failed transform (XML and Fluent both define the record) even though the build exits 0.
-3. Before any install, hand off to **sn-build-install** and complete its pre-install flow/action scan. If transformed `sys_hub_flow_*` or `sys_hub_action_type_definition_*` source remains, do NOT run a plain install; either remove those records with explicit user confirmation, or, if the user explicitly keeps them for this install, run `now-sdk install --auth <alias> --skip-flow-activation`. Report build/install output and any rule violations you fixed.
+3. Before any install, hand off to **sn-build-install** and complete its pre-install flow/action scan. If transformed `sys_hub_flow_*` or `sys_hub_action_type_definition_*` source remains, do NOT run a plain install; either take them out of source as in [Transformed flows](#transformed-flows-subflows-custom-actions) with explicit user confirmation, or, if the user explicitly keeps them for this install, run `now-sdk install --auth <alias> --skip-flow-activation`. Report build/install output and any rule violations you fixed.

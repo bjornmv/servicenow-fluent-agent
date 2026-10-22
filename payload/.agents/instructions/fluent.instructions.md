@@ -23,6 +23,8 @@ These callbacks and SDK constructor/helper calls stay in `.now.ts`; do not move 
 
 For transformed/generated `Flow(...)`, `Subflow(...)`, and `Action(...)`, follow [Automation ownership](../skills/sn-build-install/SKILL.md#automation-ownership) before editing or deploying. That skill owns source/XML classification and the pre-install scan, so generated records are not mistaken for hand-authored DSL.
 
+Removing a record's Fluent code is a deletion, not a cleanup: in a package project its `keys.ts` entry stays, the build marks it `deleted: true`, and the next install DELETES the record on the instance (`now-sdk explain fluent-overview`, Deleting Fluent Code). Never remove record code or files, transformed ones included, without telling the user and obtaining approval; **sn-transform** covers keeping a record instance-only, and **sn-build-install** scans for pending deletes.
+
 ## SDK commands
 
 Use `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the `now-sdk` function on Linux) from the confirmed project directory (project `cwd`). Follow the [SDK command policy](../reference/sdk-commands.md) for host routing and the permitted missing-function fallback. Do not prepend a resolver to each command.

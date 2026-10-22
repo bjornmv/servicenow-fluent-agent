@@ -22,6 +22,7 @@ const COMMANDS = {
   update: { script: 'tools/sn-update-advisor.cjs', about: 'Agent update check, decisions and state (sn-update-advisor).' },
   'project-sdk': { script: 'skills/sn-update-advisor/scripts/update-project-sdk.cjs', about: 'Project-local SDK update preflight/apply/status (sn-update-advisor).' },
   zip: { script: 'tools/sn-zip.cjs', about: 'List or extract a zip archive, e.g. a now-sdk pack output (sn-zip).' },
+  deletes: { script: 'tools/sn-deletes.cjs', about: 'List records the last build will DELETE on install (sn-build-install).' },
 };
 
 function usage(stream) {

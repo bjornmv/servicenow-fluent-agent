@@ -1,6 +1,6 @@
 ---
 name: sn-build-install
-description: Builds a Fluent app and installs it to a dev or test instance. Use when building, deploying, or checking whether a failed, hung or unclear install landed; not compile errors (sn-fix-build).
+description: Builds a Fluent app and installs it to the developer's own dev instance or sandbox. Use when building, deploying, or checking whether a failed, hung or unclear install landed; not compile errors (sn-fix-build).
 argument-hint: '[optional: records/tables to verify]'
 compatibility: ServiceNow Fluent project; project-compatible now-sdk and Node; installation requires an authorized target and OAuth alias; sn-skill (else node "<user-profile>/.agents/tools/sn-skill.cjs").
 metadata:
@@ -8,7 +8,7 @@ metadata:
 ---
 Verified against: now-sdk 4.13.6; on another version confirm flags with `now-sdk build --help` / `now-sdk install --help` first.
 
-Build the current app and, only when deployment was requested, install it to the user-confirmed auth alias and instance (scope from `now.config.json`) and verify it. For a build-only request, stop after section 1 and report. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it.
+Build the current app and, only when deployment was requested, install it to the user-confirmed auth alias and development instance (scope from `now.config.json`) and verify it. For a build-only request, stop after section 1 and report. Run `now-sdk` directly in the VS Code terminal (PowerShell on Windows; bash with the now-sdk function on Linux) from the confirmed project directory (project `cwd`); see the [SDK command policy](../../reference/sdk-commands.md). Print each command before running it.
 
 ## Automation ownership
 
@@ -16,7 +16,7 @@ Classify every Flow/Subflow/Action before editing or installing it.
 - **Fluent-locked** (transformed, carries instance-managed state): source under `src/fluent/generated/automation/flow/` (SDK default; `now.config.json` can move it), source with matching `metadata/update/sys_hub_*.xml`, or any `Flow(...)`, `Subflow(...)` or `Action(...)` call with a `masterSnapshot` property. Make runtime edits to these in Flow Designer, not as hand-authored Fluent.
 - Hand-authored automation (none of the above) may be edited after checking its exact SDK API/guide.
 - Stop and ask if build output contains transformed automation not authored in the current session; it expands the deployment beyond the reviewed change.
-- Obtain explicit approval before deleting generated source or its matching XML.
+- Obtain explicit approval before deleting generated source or its matching XML. Deleting it does not leave the record instance-only: its `keys.ts` entry makes the next install DELETE it (see [Transformed flows](../sn-transform/SKILL.md#transformed-flows-subflows-custom-actions)).
 - Run the pre-install scan even when the change is not about automation; the archive may still contain it.
 
 ## 1. Build
@@ -35,14 +35,19 @@ The build passed only with native exit 0 AND the line `Build completed successfu
 
 ## 2. Install
 
+### Install target: development only
+
+`now-sdk install` deploys only to the developer's own development instance or Developer Sandbox (SDK SDLC guide, `now-sdk explain sdlc-guide`). Test, QA/UAT, staging and production instances install a published version from the Application Repository: `cicd publish` from the validated dev instance, then `cicd install` through ReleaseOps or a CI pipeline (**sn-cicd**). That path gives a versioned artifact, App Repo rollback and an audit trail; a direct install gives none of them.
+- Refuse a direct install to a test or production target, even when asked or approved; explain the App Repository path instead.
+- Confirm the target's role with the user. Treat an alias or host whose name contains test, qa, uat, stage or prod as a test/production target until the user confirms it is their development instance.
+
 Before installing:
 - A clean build of the current source. `now-sdk install` does not build; it packs and uploads the existing `dist/app`, so rebuild after any source edit.
-- The pre-install scan below.
-- State the project directory, scope, auth alias, instance host and the change being deployed; obtain explicit approval for that exact target.
+- The pre-install scans below (flow/action and delete).
+- State the project directory, scope, auth alias, instance host (confirmed as a development instance or sandbox) and the change being deployed; obtain explicit approval for that exact target.
 
 Rules:
 - Always pass `--auth <alias>`; without it the SDK uses its default alias.
-- Local install is for dev/test. Production promotion uses the App Repository workflow in **sn-cicd**, with target and version approvals.
 - Demo data installs by default; add `--demoData=false` when the user does not want it.
 - Do NOT use `--reinstall` (destructive) without confirming first.
 - Install is slow: let it finish; don't retry on a hang. Its errors are instance-side (auth, scope conflict, activation), not Fluent syntax. Stale auth: re-run **sn-auth** (on Linux a keyring failure is a host finding; see [bash notes](../../reference/sdk-commands.md#linux-and-vs-code-server-bash)).
@@ -70,6 +75,17 @@ If any are present:
 - If the user explicitly approves keeping transformed flows in source for this install, use the `--skip-flow-activation` pattern. Say beforehand that those flows may be left draft/inactive and must be checked and re-published in Flow Designer, and that no other flow in the package is activated either.
 
 No transformed flow/action records: use the normal pattern.
+
+### Pre-install delete scan — REQUIRED BEFORE COMMAND
+
+In a package project every `keys.ts` entry without matching source becomes a delete record (`deleted: true` in `src/fluent/generated/keys.ts`), and `Now.del()` adds more; the install DELETES those records on the instance, flows included. After the final build, run:
+```
+sn-skill deletes "<absolute-project-root>"
+```
+`exit=0` and `deletes=0`: none. `exit=1`: each `DELETE <table> <sys_id> key=<key>` line is a record the install deletes. `exit=2` or no exit line: not a clean result.
+- Compare with `git diff -- src/fluent/generated/keys.ts` (default path). A `deleted: true` line added in this change is a new deletion; one already committed shipped before and ships again.
+- New deletion: STOP. Name each record (table, sys_id, key) and obtain explicit approval to delete it from the instance.
+- Unintended (source deleted to "clean up", or `sys_hub_*` from removed transformed automation): do not install. Restore the source and rebuild (the flags revert), or follow [Transformed flows](../sn-transform/SKILL.md#transformed-flows-subflows-custom-actions) to keep the record instance-only; then rerun this scan.
 
 ### Run and capture
 
@@ -150,4 +166,4 @@ SC is outbound from the instance: it does not block or alter `now-sdk install`, 
 
 ## Report
 
-Terse, stages reached only: build pass evidence; install output AND exit code, completion and rollback lines, any flow-activation line; content-marker check per changed record type; runtime evidence if exercised; outstanding manual steps (Playbook Designer activation, flows left draft by `--skip-flow-activation`); the source-control reminder that applies (Git commit, or Studio commit if SC-bound).
+Terse, stages reached only: build pass evidence; delete-scan result and any approved deletions; install output AND exit code, completion and rollback lines, any flow-activation line; content-marker check per changed record type; runtime evidence if exercised; outstanding manual steps (Playbook Designer activation, flows left draft by `--skip-flow-activation`); the source-control reminder that applies (Git commit, or Studio commit if SC-bound).
