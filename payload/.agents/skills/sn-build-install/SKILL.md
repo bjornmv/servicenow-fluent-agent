@@ -39,7 +39,7 @@ The build passed only with native exit 0 AND the line `Build completed successfu
 
 `now-sdk install` deploys only to the developer's own development instance or Developer Sandbox (SDK SDLC guide, `now-sdk explain sdlc-guide`). Test, QA/UAT, staging and production instances install a published version from the Application Repository: `cicd publish` from the validated dev instance, then `cicd install` through ReleaseOps or a CI pipeline (**sn-cicd**). That path gives a versioned artifact, App Repo rollback and an audit trail; a direct install gives none of them.
 - Refuse a direct install to a test or production target, even when asked or approved; explain the App Repository path instead.
-- Confirm the target's role with the user. Treat an alias or host whose name contains test, qa, uat, stage or prod as a test/production target until the user confirms it is their development instance.
+- Confirm the target's role with the user. Treat an alias or host whose name contains test, qa, uat, stag (stage, staging) or prod as a test/production target until the user confirms it is their development instance.
 
 Before installing:
 - A clean build of the current source. `now-sdk install` does not build; it packs and uploads the existing `dist/app`, so rebuild after any source edit.
@@ -82,8 +82,9 @@ In a package project every `keys.ts` entry without matching source becomes a del
 ```
 sn-skill deletes "<absolute-project-root>"
 ```
-`exit=0` and `deletes=0`: none. `exit=1`: each `DELETE <table> <sys_id> key=<key>` line is a record the install deletes. `exit=2` or no exit line: not a clean result.
-- Compare with `git diff -- src/fluent/generated/keys.ts` (default path). A `deleted: true` line added in this change is a new deletion; one already committed shipped before and ships again.
+`exit=0` and `deletes=0`: none. `exit=1`: each `DELETE <table> <sys_id> key=<key>` line is a record the install deletes. `exit=2` or no exit line: not a clean result. The summary's `keys=<path>` is the keys file to diff.
+- Check the target, not Git history: a committed deletion may never have been installed (an earlier agent, a teammate's change, a commit made before install). Per table, one narrow **sn-rest** read with the confirmed alias and host, at most 20 ids each: `/api/now/table/<table>?sysparm_query=sys_idIN<id>,<id>&sysparm_fields=sys_id&sysparm_limit=20&sysparm_no_count=true`.
+- A row is already applied only when that read exited 0 without returning it AND its deletion is already committed (`git diff -- <keys path>`, or the source diff for `Now.del()`, shows no change to it); report their count. Every other row is a new deletion: the read returned it, the read was not clean (an error or 403 is UNKNOWN, not absent), the deletion was added in this change, or there is no usable diff (not a Git repository, keys file untracked, git error).
 - New deletion: STOP. Name each record (table, sys_id, key) and obtain explicit approval to delete it from the instance.
 - Unintended (source deleted to "clean up", or `sys_hub_*` from removed transformed automation): do not install. Restore the source and rebuild (the flags revert), or follow [Transformed flows](../sn-transform/SKILL.md#transformed-flows-subflows-custom-actions) to keep the record instance-only; then rerun this scan.
 

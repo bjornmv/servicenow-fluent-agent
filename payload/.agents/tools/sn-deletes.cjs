@@ -35,28 +35,36 @@ function readConfig(root) {
 
 // keys.ts sys_id -> { label, deleted }. Explicit entries are `<name>: { table id [deleted] }`,
 // composite ones `{ table id [deleted] key: {...} }`; the top-level `deleted` map holds bare ids.
+// Tracks block nesting, so nested `{ id, key }` references inside a composite key are not entries.
+// Quote style, semicolons and indentation follow the project's prettier config: accept both.
 function readKeys(file) {
   const keys = new Map();
   if (!fs.existsSync(file)) return keys;
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
-  const top = lines.find(l => /^\s*(?:explicit|composite): [{[]\s*$/.test(l))?.search(/\S/) ?? -1;
-  let mapIndent = -1;
-  lines.forEach((line, i) => {
-    const indent = line.search(/\S/);
-    if (indent === top && /^\s*deleted: \{/.test(line)) mapIndent = indent;
-    else if (mapIndent >= 0 && indent >= 0 && indent <= mapIndent && /^\s*\}/.test(line)) mapIndent = -1;
-    if (mapIndent >= 0) {
-      for (const [, id] of line.matchAll(/'([0-9a-f]{32})'/g)) keys.set(id, { label: 'tombstone', deleted: true });
-      return;
+  const stack = [];
+  let section = -1, kind = '';
+  for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^[}\]]/.test(line)) {
+      const block = stack.pop();
+      if (block?.id && !keys.has(block.id)) keys.set(block.id, { label: block.label, deleted: block.deleted });
+      if (stack.length <= section) section = -1;
+      continue;
     }
-    const id = line.match(/^\s*id: '([0-9a-f]{32})'/)?.[1];
-    if (!id) return;
-    const head = (lines[i - 2] || '').trim();
-    const name = head.match(/^(?:'([^']+)'|([\w$]+)): \{$/);
-    let deleted = false;
-    for (let j = i + 1; j < lines.length && lines[j].search(/\S/) >= indent; j++) if (/^\s*deleted: true\b/.test(lines[j])) deleted = true;
-    keys.set(id, { label: name ? name[1] || name[2] : 'composite', deleted });
-  });
+    const top = stack[stack.length - 1];
+    if (section >= 0 && kind === 'deleted') for (const [, id] of line.matchAll(/['"]([0-9a-f]{32})['"]/g)) if (!keys.has(id)) keys.set(id, { label: 'tombstone', deleted: true });
+    if (/[{[]$/.test(line)) {
+      const m = line.match(/^(?:'([^']*)'|"([^"]*)"|([^\s'":]+))\s*:/), name = m ? m[1] ?? m[2] ?? m[3] : '';
+      const block = { name };
+      stack.push(block);
+      if (section < 0 && /^(?:explicit|composite|deleted)$/.test(name)) { section = stack.length - 1; kind = name; }
+      else if (section >= 0 && kind !== 'deleted' && stack.length - 1 === section + 1) Object.assign(block, { entry: true, label: kind === 'explicit' ? name : 'composite', deleted: false });
+      continue;
+    }
+    if (!top?.entry) continue;
+    const id = line.match(/^id:\s*['"]([0-9a-f]{32})['"]/)?.[1];
+    if (id) top.id = id;
+    else if (/^deleted:\s*true\b/.test(line)) top.deleted = true;
+  }
   return keys;
 }
 
@@ -100,7 +108,9 @@ function main(argv, out = process.stdout, err = process.stderr) {
   try { result = scan(root); } catch (error) { err.write(`sn-deletes: ${error.message}. Nothing to review; this is not a clean result.\n`); return 2; }
   for (const r of result.rows) out.write(`DELETE ${r.table} ${r.id} key=${r.key}${r.keysDeleted ? ' (keys.ts deleted)' : ''}${r.children ? ` children=${r.children}` : ''} ${r.file}\n`);
   const automation = result.rows.filter(r => /^sys_hub_/.test(r.table)).length;
-  out.write(`deletes=${result.rows.length} automation=${automation} type=${result.type} output=${path.relative(root, result.outDir).replace(/\\/g, '/')}\n`);
+  const rel = file => path.relative(root, file).replace(/\\/g, '/');
+  // keys= is the path to diff (fluentDir/generatedDir may move it); `none` = no keys.ts found.
+  out.write(`deletes=${result.rows.length} automation=${automation} type=${result.type} output=${rel(result.outDir)} keys=${fs.existsSync(result.keysFile) ? rel(result.keysFile) : 'none'}\n`);
   return result.rows.length ? 1 : 0;
 }
 

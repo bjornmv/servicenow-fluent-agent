@@ -37,7 +37,7 @@ To inspect raw XML or refresh a whole project, use **sn-download**.
 
 ## Review and clean — generated Fluent is NOT trusted
 Classify every generated file before cleanup, using [Automation ownership](../sn-build-install/SKILL.md#automation-ownership):
-- `Flow(...)`, `Subflow(...)`, `Action(...)` under `src/fluent/generated/automation/flow/`: preserve SDK callback syntax; apply the deletion rules below.
+- `Flow(...)`, `Subflow(...)`, `Action(...)` under `src/fluent/generated/automation/flow/`: preserve SDK callback syntax; follow [Transformed flows](#transformed-flows-subflows-custom-actions) below.
 - `Test(...)`, `PlaybookDefinition(...)`, `wfa.playbook.*`: preserve callbacks and helper assignments documented by their SDK API/guide (DSL syntax, not record script bodies). A playbook that transforms to `Record(...)` instead of `PlaybookDefinition(...)` has activities Fluent cannot represent (Questionnaire or non-Core): do not hand-convert it; it is managed in Workflow Studio (`playbook-unsupported-features-guide`).
 - `GraphQLApi(...)`: resolver scripts may be a named imported server function (preferred), `Now.include(...)`, or a string; only an inline function expression is a build error.
 - Ordinary declarative records: apply every [Fluent rule](../../instructions/fluent.instructions.md); transform output commonly breaks them (inline script bodies, banned operators or concatenation, quoted booleans/numbers, missing `$id`, unused bindings).
@@ -52,7 +52,7 @@ Before fixing a record type, run `now-sdk explain <type>-api --format raw`; add 
 - Matching `sys_hub_*` XML still under `metadata/` (build packages it, it wins over the `.now.ts`, and a later `transform --from metadata` re-converts it)
 
 **Never delete these files to clean up.** Transform wrote their ids to `keys.ts`; a package project build marks every key without source `deleted: true` and ships a delete record, so the next install DELETES the flow and its children on the instance (`now-sdk explain fluent-overview`, Deleting Fluent Code). Explain this and let the user choose, with explicit approval:
-- **Keep it instance-only** (edit in Flow Designer): delete the files above, run `now-sdk build`, then remove from `keys.ts` exactly the entries `git diff -- src/fluent/generated/keys.ts` shows newly marked `deleted: true` (explicit and composite, children included). Rebuild and confirm `sn-skill deletes` (pre-install delete scan in **sn-build-install**) lists none of them. Commit source and `keys.ts` together.
+- **Keep it instance-only** (edit in Flow Designer): with `keys.ts` committed or copied as a backup, delete the files above, run `now-sdk build`, then remove from `keys.ts` exactly the entries newly marked `deleted: true` against that backup (`git diff -- <keys path>`; `sn-skill deletes` prints the path as `keys=`), explicit and composite, children included. Rebuild and confirm `sn-skill deletes` (pre-install delete scan in **sn-build-install**) lists none of them. Tell the user to commit source and `keys.ts` together.
 - **Delete it from the instance:** delete the files and keep the keys; the install deletes the records. Name each one: it is a live-record deletion.
 - **Keep it in source:** see below.
 

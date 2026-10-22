@@ -155,7 +155,7 @@ test('direct installs target only a development instance; test and production us
   assert.match(target, /deploys only to the developer's own development instance or Developer Sandbox/);
   assert.match(target, /`cicd publish` from the validated dev instance, then `cicd install` through ReleaseOps or a CI pipeline/);
   assert.match(target, /Refuse a direct install to a test or production target, even when asked or approved; explain the App Repository path/);
-  assert.match(target, /test, qa, uat, stage or prod as a test\/production target until the user confirms/);
+  assert.match(target, /test, qa, uat, stag \(stage, staging\) or prod as a test\/production target until the user confirms/);
   assert.ok(build.indexOf('### Install target') < build.indexOf('Before installing:'));
   assert.match(build, /instance host \(confirmed as a development instance or sandbox\)/);
   assert.match(cicd, /Test and production never take a direct `now-sdk install`/);
@@ -168,12 +168,22 @@ test('removing Fluent or transformed source is a live delete: keys.ts guidance a
   const build = skill('sn-build-install'), transform = skill('sn-transform');
   const fluent = read('payload/.agents/instructions/fluent.instructions.md');
   const flows = section(transform, 'Transformed flows, subflows, custom actions');
-  for (const term of ['Never delete these files to clean up', '`deleted: true`', 'DELETES the flow and its children on the instance', 'git diff -- src/fluent/generated/keys.ts', 'children included', '`sn-skill deletes`', 'Commit source and `keys.ts` together', 'live-record deletion', 'reverts the flags', 'explicit approval']) assert.ok(flows.includes(term), term);
-  assert.doesNotMatch(transform, /These records stay instance-only|ask for explicit confirmation before deleting them/);
+  for (const term of ['Never delete these files to clean up', '`deleted: true`', 'DELETES the flow and its children on the instance', 'git diff -- <keys path>', 'committed or copied as a backup', 'children included', '`sn-skill deletes`', 'Tell the user to commit source and `keys.ts` together', 'live-record deletion', 'reverts the flags', 'explicit approval']) assert.ok(flows.includes(term), term);
+  assert.doesNotMatch(transform, /These records stay instance-only|ask for explicit confirmation before deleting them|apply the deletion rules/);
+  assert.doesNotMatch(flows, /(?:^|\. )Commit /m); // the agent commits only when asked
+  assert.doesNotMatch(skill('sn-download'), /flow\/action confirmation rules/);
   assert.match(build, /Deleting it does not leave the record instance-only: its `keys\.ts` entry makes the next install DELETE it/);
   const scan = build.split('### Pre-install delete scan — REQUIRED BEFORE COMMAND\n')[1]?.split('\n### ')[0] || '';
   assert.match(scan, /^sn-skill deletes "<absolute-project-root>"$/m);
   assert.match(scan, /`exit=2` or no exit line: not a clean result/);
+  // Approval is decided by the target, not Git: a committed delete may never have been installed.
+  assert.match(scan, /Check the target, not Git history: a committed deletion may never have been installed/);
+  assert.match(scan, /sys_idIN<id>,<id>&sysparm_fields=sys_id/);
+  assert.match(scan, /already applied only when that read exited 0 without returning it AND its deletion is already committed/);
+  assert.match(scan, /an error or 403 is UNKNOWN, not absent/);
+  assert.match(scan, /no usable diff \(not a Git repository, keys file untracked, git error\)/);
+  assert.match(scan, /`keys=<path>` is the keys file to diff/);
+  assert.doesNotMatch(scan, /shipped before and ships again|git diff -- src\/fluent/);
   assert.match(scan, /New deletion: STOP\. Name each record \(table, sys_id, key\) and obtain explicit approval/);
   assert.match(scan, /Unintended .*: do not install\. Restore the source and rebuild/);
   assert.ok(build.indexOf('### Pre-install delete scan') < build.indexOf('### Run and capture'));

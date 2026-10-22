@@ -116,6 +116,71 @@ test('keys.ts parser maps explicit, composite and tombstone ids with their delet
   assert.deepEqual(keys.get(OLD), { label: 'tombstone', deleted: true });
 }));
 
+// prettier defaults (double quotes, semicolons, 2 spaces) when the project has its own config;
+// a nested `{ id, key }` reference inside a composite key must not shadow the referenced entry.
+const KEYS_DQ = `import "@servicenow/sdk/global";
+
+declare global {
+  namespace Now {
+    namespace Internal {
+      interface Keys extends KeysRegistry {
+        explicit: {
+          "flow-note-review": {
+            table: "sys_hub_flow";
+            id: "${FLOW}";
+            deleted: true;
+          };
+          "x_acme_app:odd": {
+            table: "sys_script";
+            id: "${BR}";
+          };
+        };
+        composite: [
+          {
+            table: "sys_user_role";
+            id: "${DOC}";
+            deleted: true;
+            key: {
+              name: "x_acme_app.viewer";
+            };
+          },
+          {
+            table: "sys_security_acl_role";
+            id: "${STEP}";
+            key: {
+              sys_user_role: {
+                id: "${DOC}";
+                key: {
+                  name: "x_acme_app.viewer";
+                };
+              };
+            };
+          },
+        ];
+        deleted: {
+          sys_script_include: ["${OLD}"];
+        };
+      }
+    }
+  }
+}
+`;
+
+test('keys.ts parser accepts prettier-default quoting and skips nested key references', () => withTemp(dir => {
+  const file = path.join(dir, 'keys.ts');
+  fs.writeFileSync(file, KEYS_DQ);
+  const keys = readKeys(file);
+  assert.equal(keys.size, 5);
+  assert.deepEqual(keys.get(FLOW), { label: 'flow-note-review', deleted: true });
+  assert.deepEqual(keys.get(BR), { label: 'x_acme_app:odd', deleted: false });
+  assert.deepEqual(keys.get(DOC), { label: 'composite', deleted: true });
+  assert.deepEqual(keys.get(STEP), { label: 'composite', deleted: false });
+  assert.deepEqual(keys.get(OLD), { label: 'tombstone', deleted: true });
+  // Tabs, and a keys file holding only the tombstone map.
+  fs.writeFileSync(file, `declare global {\n\tnamespace Now {\n\t\tinterface Keys extends KeysRegistry {\n\t\t\tdeleted: {\n\t\t\t\tsys_script: [\n\t\t\t\t\t'${BR}',\n\t\t\t\t]\n\t\t\t}\n\t\t}\n\t}\n}\n`);
+  assert.deepEqual([...readKeys(file)], [[BR, { label: 'tombstone', deleted: true }]]);
+}));
+
 test('removed transformed flow source is listed as DELETE records with keys and exit 1', () => withTemp(dir => {
   project(dir, { files: {
     [`author_elective_update/sys_hub_flow_${FLOW}.xml`]: deleteXml('sys_hub_flow', FLOW, flowChildren),
@@ -128,7 +193,7 @@ test('removed transformed flow source is listed as DELETE records with keys and 
   assert.deepEqual(lines, [
     `DELETE sys_hub_action_instance_v2 ${STEP} key=flow_log_done (keys.ts deleted) dist/app/author_elective_update/sys_hub_action_instance_v2_${STEP}.xml`,
     `DELETE sys_hub_flow ${FLOW} key=flow-note-review (keys.ts deleted) children=2 dist/app/author_elective_update/sys_hub_flow_${FLOW}.xml`,
-    'deletes=2 automation=2 type=package output=dist/app',
+    'deletes=2 automation=2 type=package output=dist/app keys=src/fluent/generated/keys.ts',
   ]);
 }));
 
@@ -136,7 +201,7 @@ test('a build without delete records exits 0; Now.del records without a key are 
   project(dir, { files: { [`update/sys_script_${BR}.xml`]: updateXml } });
   let result = run([dir]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout, 'deletes=0 automation=0 type=package output=dist/app\n');
+  assert.equal(result.stdout, 'deletes=0 automation=0 type=package output=dist/app keys=src/fluent/generated/keys.ts\n');
   const other = 'fedcba9876543210fedcba9876543210';
   fs.writeFileSync(path.join(dir, 'dist', 'app', 'update', `sys_ui_policy_${other}.xml`), deleteXml('sys_ui_policy', other));
   result = run([dir]);
@@ -149,7 +214,9 @@ test('appOutputDir and generatedDir from now.config.json are honored', () => wit
   const result = run([dir]);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /key=flow-note-review .*build\/out\/a\//);
-  assert.match(result.stdout, /output=build\/out\n$/);
+  assert.match(result.stdout, /output=build\/out keys=src\/fluent\/generated\/keys\.ts\n$/);
+  fs.rmSync(path.join(dir, 'src', 'fluent', 'generated', 'keys.ts'));
+  assert.match(run([dir]).stdout, /key=none .*\n.* keys=none\n$/);
   // generatedDir is relative to fluentDir unless it already starts with it, as in the SDK.
   fs.writeFileSync(path.join(dir, 'now.config.json'), JSON.stringify({ fluentDir: 'fl', generatedDir: 'gen' }));
   assert.equal(readConfig(dir).keysFile, path.join(dir, 'fl', 'gen', 'keys.ts'));
