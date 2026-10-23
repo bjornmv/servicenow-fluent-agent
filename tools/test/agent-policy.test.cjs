@@ -15,6 +15,7 @@ const body = text => text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
 const words = text => text.trim().split(/\s+/).length;
 const section = (text, name) => text.split(`## ${name}\n`)[1]?.split('\n## ')[0].trim() || '';
 const normalize = text => body(text).replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').toLowerCase().match(/[a-z0-9]+(?:[-'][a-z0-9]+)*/g) || [];
+const payloadMarkdown = () => require('../../lib/payload-files.cjs').payloadFiles(path.join(root, 'payload')).filter(f => f.endsWith('.md')).map(f => path.relative(root, f));
 const grams = (tokens, n) => new Set(tokens.slice(0, Math.max(0, tokens.length - n + 1)).map((_, i) => tokens.slice(i, i + n).join(' ')));
 
 test('runtime agent has one host declaration and explicit safety-first precedence', () => {
@@ -146,6 +147,58 @@ test('adoption chain keeps its verified SDK command shapes and stop rules', () =
   assert.match(build, /Installation completed\\\. Access the application at:/);
 });
 
+test('direct installs target only a development instance; test and production use the App Repository', () => {
+  const build = skill('sn-build-install'), cicd = skill('sn-cicd');
+  const sc = read('payload/.agents/reference/servicenow-source-control.md');
+  assert.match(build, /^description: .*installs it to the developer's own dev instance or sandbox\./m);
+  const target = build.split('### Install target: development only\n')[1]?.split('\n### ')[0] || '';
+  assert.match(target, /deploys only to the developer's own development instance or Developer Sandbox/);
+  assert.match(target, /`cicd publish` from the validated dev instance, then `cicd install` through ReleaseOps or a CI pipeline/);
+  assert.match(target, /Refuse a direct install to a test or production target, even when asked or approved; explain the App Repository path/);
+  assert.match(target, /test, qa, uat, stag \(stage, staging\) or prod as a test\/production target until the user confirms/);
+  assert.ok(build.indexOf('### Install target') < build.indexOf('Before installing:'));
+  assert.match(build, /instance host \(confirmed as a development instance or sandbox\)/);
+  assert.match(cicd, /Test and production never take a direct `now-sdk install`/);
+  assert.match(sc, /`now-sdk install` targets only the development instance or Developer Sandbox/);
+  // The old wording allowed a local install to a test instance.
+  for (const file of payloadMarkdown()) assert.doesNotMatch(read(file), /dev\/test|dev or test instance|Local install is for/, file);
+});
+
+test('removing Fluent or transformed source is a live delete: keys.ts guidance and pre-install delete scan', () => {
+  const build = skill('sn-build-install'), transform = skill('sn-transform');
+  const fluent = read('payload/.agents/instructions/fluent.instructions.md');
+  const flows = section(transform, 'Transformed flows, subflows, custom actions');
+  for (const term of ['Never delete these files to clean up', '`deleted: true`', 'DELETES the flow and its children on the instance', 'git diff -- <keys path>', 'committed or copied as a backup', 'children included', '`sn-skill deletes`', 'Tell the user to commit source and `keys.ts` together', 'live-record deletion', 'reverts the flags', 'explicit approval']) assert.ok(flows.includes(term), term);
+  assert.doesNotMatch(transform, /These records stay instance-only|ask for explicit confirmation before deleting them|apply the deletion rules/);
+  assert.doesNotMatch(flows, /(?:^|\. )Commit /m); // the agent commits only when asked
+  assert.doesNotMatch(skill('sn-download'), /flow\/action confirmation rules/);
+  assert.match(build, /Deleting it does not leave the record instance-only: its `keys\.ts` entry makes the next install DELETE it/);
+  const scan = build.split('### Pre-install delete scan — REQUIRED BEFORE COMMAND\n')[1]?.split('\n### ')[0] || '';
+  assert.match(scan, /^sn-skill deletes "<absolute-project-root>"$/m);
+  assert.match(scan, /`exit=2` or no exit line: not a clean result/);
+  // Approval is decided by the target, not Git: a committed delete may never have been installed.
+  assert.match(scan, /Check the target, not Git history: a committed deletion may never have been installed/);
+  assert.match(scan, /sys_idIN<id>,<id>&sysparm_fields=sys_id/);
+  assert.match(scan, /already applied only when that read exited 0 without returning it AND its deletion is already committed/);
+  assert.match(scan, /an error or 403 is UNKNOWN, not absent/);
+  assert.match(scan, /no usable diff \(not a Git repository, keys file untracked, git error\)/);
+  assert.match(scan, /`keys=<path>` is the keys file to diff/);
+  assert.doesNotMatch(scan, /shipped before and ships again|git diff -- src\/fluent/);
+  assert.match(scan, /New deletion: STOP\. Name each record \(table, sys_id, key\) and obtain explicit approval/);
+  assert.match(scan, /Unintended .*: do not install\. Restore the source and rebuild/);
+  assert.ok(build.indexOf('### Pre-install delete scan') < build.indexOf('### Run and capture'));
+  assert.match(build, /delete-scan result and any approved deletions/);
+  assert.match(fluent, /Removing a record's Fluent code is a deletion, not a cleanup/);
+  // Cross-skill anchors resolve to real headings (GitHub slug rules).
+  const slug = h => h.toLowerCase().replace(/[^\w\- ]/g, '').replace(/ /g, '-');
+  for (const [file, text] of [['sn-build-install', build], ['sn-transform', transform]]) {
+    for (const [, target, anchor] of text.matchAll(/\]\((\.\.\/[\w-]+\/SKILL\.md)?#([^)]+)\)/g)) {
+      const owner = target ? read(path.join('payload/.agents/skills', file, target)) : text;
+      assert.ok([...owner.matchAll(/^#{2,4} (.+)$/gm)].some(([, h]) => slug(h) === anchor), `${file}: #${anchor}`);
+    }
+  }
+});
+
 test('authentication and Vite guidance keep their verified failure rules', () => {
   const auth = skill('sn-auth'), vite = skill('sn-ui-page-vite');
   assert.match(auth, /`now-sdk auth --print` — NEVER run it/);
@@ -271,7 +324,7 @@ test('source control guidance recommends local Git and keeps Studio SC as legacy
   assert.match(sc, /## Recommended model: local Git is the source of truth/);
   assert.match(sc, /The agent commits only when the user explicitly asks it to, never on its own initiative/);
   assert.match(sc, /cannot push until a GitHub connection has been configured/);
-  assert.match(sc, /never through local install to production/);
+  assert.match(sc, /never through local install to test or production/);
   assert.match(sc, /## Legacy model: Studio Source Control \(instance-bound\)/);
   assert.doesNotMatch(sc, /Local project folder is NOT a git working tree/);
   const install = skill('sn-build-install');

@@ -6,7 +6,7 @@ ServiceNow's SDK SDLC guide (`now-sdk explain sdlc-guide`) makes Git the source 
 - Commit Fluent and module source, `src/fluent/generated/keys.ts` and `@types/servicenow`. Never commit credentials.
 - Other developers clone the project from Git instead of downloading and transforming it from the instance.
 - Changes made on the instance with platform builders come back through **sn-transform**, then get reviewed and committed like any other change.
-- `now-sdk install` targets the development instance. Test and production install from the Application Repository (`now-sdk cicd publish/install`, see **sn-cicd**), never through local install to production.
+- `now-sdk install` targets only the development instance or Developer Sandbox. Test and production install from the Application Repository (`now-sdk cicd publish/install`, see **sn-cicd**), never through local install to test or production.
 - Do not mix update sets and the Application Repository for the same app on the same instance (KB0715422).
 
 After a successful install in this model, remind the user that the source change still needs review and a commit in their Git repository; the install did not record it anywhere.

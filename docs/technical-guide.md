@@ -68,6 +68,7 @@ The supported operational baseline is Windows x64 with VS Code Copilot, Node **>
 | [lib/update-advisor.cjs](../lib/update-advisor.cjs) | Discovery, component timing, release identities and decisions. |
 | [payload/.agents/tools/sn-update-advisor.cjs](../payload/.agents/tools/sn-update-advisor.cjs) | Installed session gate and receipt-directed forwarding to the checkout CLI. |
 | [payload/.agents/tools/sn-zip.cjs](../payload/.agents/tools/sn-zip.cjs) | Dependency-free `sn-skill zip list/extract` (stored + deflate); refuses zip64, encryption, symlinks and unsafe paths before writing. |
+| [payload/.agents/tools/sn-deletes.cjs](../payload/.agents/tools/sn-deletes.cjs) | Read-only `sn-skill deletes "<project>"`: lists `action="DELETE"` records in the build output (keys.ts tombstones, `Now.del()`) with their `keys.ts` key; exit 1 when any exist. Pre-install delete scan in **sn-build-install**. |
 | [payload/.agents/tools/sn-table-viz.js](../payload/.agents/tools/sn-table-viz.js) | Optional Mermaid table diagrams using live metadata through the REST helper; requires a confirmed instance and alias. |
 | [tools/Invoke-SdkSetup.ps1](../tools/Invoke-SdkSetup.ps1) | Global SDK setup and recovery from saved run evidence. |
 | [tools/stage-setup-pages.cjs](../tools/stage-setup-pages.cjs) | Version/checksum validation and publication artifact generation. |

@@ -41,7 +41,7 @@ Without it, `transform` still exits 0 with `Transform completed successfully` bu
 now-sdk transform --from metadata
 now-sdk transform --from metadata/update/<file>.xml
 ```
-Records land in `src/fluent/generated/**/*.now.ts`; their XML is removed from `metadata/`. Do NOT use `now-sdk transform --auth <alias>` for this first conversion: records held as XML stay XML and it reports success anyway. Then apply **sn-transform**'s review, cleanup and flow/action confirmation rules; adopted flows, subflows and custom actions are Fluent-locked (see **sn-build-install** → Automation ownership).
+Records land in `src/fluent/generated/**/*.now.ts`; their XML is removed from `metadata/`. Do NOT use `now-sdk transform --auth <alias>` for this first conversion: records held as XML stay XML and it reports success anyway. Then apply **sn-transform**'s review, cleanup and Transformed flows rules; adopted flows, subflows and custom actions are Fluent-locked (see **sn-build-install** → Automation ownership).
 
 ## 4. Refresh an app you already have
 From the existing converted project, with dependencies installed:

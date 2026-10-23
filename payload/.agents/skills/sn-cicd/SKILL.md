@@ -17,7 +17,7 @@ Verified against: now-sdk 4.13.6 `cicd` help, CLI source and bundled `ci-integra
 3. List credential variable names only: `Get-ChildItem Env:SN_SDK_* | Select-Object -ExpandProperty Name` (PowerShell) / `compgen -e | grep '^SN_SDK_' || echo '(none)'` (bash). If `SN_SDK_NODE_ENV`, `SN_SDK_SESSION_TOKEN` or `SN_SDK_SESSION_BEARER_TOKEN` is listed, stop and report it without values: the SDK then ignores `--auth`, targets `SN_SDK_INSTANCE_URL`, and machine output (`--output json` or `--select`) says nothing about it.
 4. Confirm before running ATF on an instance, naming the alias and instance host: ATF steps can create/update/delete test data.
 5. Stop and obtain explicit approval before every `cicd publish`, `cicd install`, or `cicd rollback`. State the source/target alias and instance host, app sys_id or scope, the version currently on the target (read it first, see [Verify versions](#verify-versions); it is the expected rollback version), and the target version.
-6. Never use local `now-sdk install` as a production promotion path; production change management, approvals and rollback depend on App Repo installs. Build/install to dev/test with **sn-build-install**, validate, publish to App Repo, then `cicd install` downstream through normal approvals.
+6. Never use local `now-sdk install` as a production promotion path; production change management, approvals and rollback depend on App Repo installs. Test and production never take a direct `now-sdk install`. Build/install to the development instance or sandbox with **sn-build-install**, validate, publish to App Repo, then `cicd install` downstream through normal approvals.
 
 ## Run and read the result
 
