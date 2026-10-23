@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.2 — Install only to dev; delete scan before every install
+
+`now-sdk install` from the agent now targets only the developer's own development instance or Developer Sandbox, as the SDK SDLC guide (`now-sdk explain sdlc-guide`) prescribes; test and production get the app from the Application Repository. Every install is preceded by a required scan that names each record the build will DELETE on the instance, because in a package project removing a record's source does not leave it instance-only: its `keys.ts` entry turns into a delete on the next install.
+
+### Upgrade notes
+
+- **Re-run install after pulling.** The new `sn-skill deletes` helper and the updated skills exist only after install.
+- **Projects where transformed flows were deleted to clean up.** Earlier `sn-transform` guidance said to delete transformed flow, subflow and custom action files and that the records would "stay instance-only". In a package project the next install deletes those records instead. Before installing such a project, build and run `sn-skill deletes "<project-root>"`; `sys_hub_*` rows are the affected automation. Restore the source and rebuild (the flags revert), or follow **sn-transform** → Transformed flows.
+- Direct installs to a test, QA/UAT, staging or production instance are now refused. Promote with **sn-cicd** (`cicd publish` from dev, then `cicd install` through ReleaseOps or a CI pipeline).
+
+### Behavior changes
+
+- **Install target: development only** (**sn-build-install**): the agent refuses a direct `now-sdk install` to a test or production target even when asked or approved, and explains the Application Repository path (versioned artifact, App Repo rollback, audit trail). It confirms the target's role with the user and treats an alias or host whose name contains test, qa, uat, stag (stage, staging) or prod as a test/production target until the user confirms it is their development instance. The pre-install statement now names the instance as a confirmed development instance or sandbox. **sn-cicd** and the source-control reference say the same; the old "dev/test" install wording is gone.
+- **New `sn-skill deletes "<project-root>"`** (`payload/.agents/tools/sn-deletes.cjs`, read-only): lists every `action="DELETE"` record in the build output (keys.ts `deleted: true` entries and `Now.del()`) as `DELETE <table> <sys_id> key=<key>`, then a summary `deletes=<N> automation=<N> type=... output=... keys=<path>`. Exit 0 none, 1 listed, 2 cannot scan (no `now.config.json` or no build output; not a clean result). It honours `now.config.json` output and `fluentDir`/`generatedDir` settings and parses `keys.ts` by block nesting, so either quote style, semicolons, tabs, quoted names with colons and a tombstone-only keys file are read, and nested `{ id, key }` references inside composite keys are not mistaken for entries.
+- **Pre-install delete scan — required** (**sn-build-install**): after the final build the agent runs `sn-skill deletes` and decides approval by the target, not Git history. Each DELETE row is checked with one narrow **sn-rest** read per table (`sys_idIN`, at most 20 ids); a row counts as already applied only when that read cleanly returns nothing AND the deletion is already committed in the printed keys file (or the source diff for `Now.del()`). A row the read returns, a read error or 403, a deletion added in this change, and a project without a usable diff (no Git, untracked keys file, git error) are all new deletions: the agent stops, names each record (table, sys_id, key) and needs explicit approval. Unintended deletes (source removed to clean up, `sys_hub_*` from removed transformed automation) are not installed; restore the source or keep the record instance-only, then rescan. The install report includes the scan result and any approved deletions.
+- **sn-transform → Transformed flows, subflows, custom actions:** never delete these files to clean up. The agent explains the `keys.ts` consequence and offers three choices, each with explicit approval: **keep it instance-only** (back up or commit `keys.ts`, delete the files, build, remove exactly the newly flagged `keys.ts` entries against the backup, rebuild and confirm `sn-skill deletes` lists none of them; the user commits source and `keys.ts` together, the agent does not), **delete it from the instance** (keep the keys; each record is named as a live-record deletion), or **keep it in source** with `--skip-flow-activation`. Restoring deleted files and rebuilding reverts the flags.
+- **Fluent instructions:** removing any record's Fluent code is treated as a deletion, never a cleanup; the agent tells the user and obtains approval first. **sn-build-install** Automation ownership notes that deleting generated source does not leave the record instance-only.
+- **sn-lux-build:** the deploy step follows sn-build-install's "Install target: development only" and its pre-install delete scan unchanged, so a Lux app is never installed straight to test or production.
+- Docs: technical guide tool table lists `sn-deletes.cjs`; **sn-download** points to the renamed sn-transform section.
+
+### Tests
+
+- New `sn-deletes.test.cjs` (scan output and exit codes, prettier-default/nested/tombstone-only `keys.ts` fixtures, `keys=` summary), added to `test:skills` and `test:setup`. `agent-policy` contract tests cover the dev-only install rule, the required delete scan with target-first approval and the no-diff fallback, and the transformed-flow choices.
+- Release metadata, setup protocol markers, SDK worker version and its reviewed checksum aligned to 0.4.2 (worker logic unchanged).
+
 ## 0.4.1 — Update check as a VS Code SessionStart hook
 
 The agent no longer spends its first tool call of every session on `sn-skill update session-start`. A VS Code chat `SessionStart` hook declared in the agent file runs the 48-hour gate and, when due, the quiet checks before the first reply. The agent hears about updates only when there is something to act on.
