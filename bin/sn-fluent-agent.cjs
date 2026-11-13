@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { checkUpdates, recordDecision } = require('../lib/update-advisor.cjs');
 const { parseJsonc, setJsoncValue } = require('../lib/jsonc-settings.cjs');
-const { findGit, prepareTerminalSettings, writeTerminalSettings, terminalEnvKey } = require('../lib/vscode-terminal.cjs');
+const { findGit, prepareTerminalSettings, writeTerminalSettings, terminalEnvKey, windowsChatSettings, planLocalChatSettings } = require('../lib/vscode-terminal.cjs');
 const { configureWindowsGit, detectPathShadow } = require('../lib/windows-git-environment.cjs');
 const { payloadFiles } = require('../lib/payload-files.cjs');
 const { ensureShellFunction, removeShellFunction, ensureSkillShim, removeSkillShim, findGitBash } = require('../lib/posix-terminal.cjs');
@@ -59,6 +59,7 @@ const COMMAND_OPTIONS = {
   install: { flags: ['--dry-run', '--force', '--no-vscode-settings', '--no-shell-function'], values: ['--git-exe', '--settings-file'] },
   'configure-git': { flags: ['--dry-run'], values: ['--git-exe'] },
   'configure-terminal': { flags: ['--dry-run'], values: ['--git-exe', '--settings-file'] },
+  'configure-chat': { flags: ['--dry-run'], values: ['--settings-file'] },
   verify: { flags: ['--no-vscode-settings'], values: [] },
   status: { flags: [], values: [] },
   'check-updates': { flags: ['--force'], values: ['--only', '--project', '--docs', '--docs-branch'] },
@@ -359,8 +360,12 @@ function configureVsCodeSettings(summary) {
 
   setScalar('chat.promptFiles', true);
   setScalar('github.copilot.chat.codeGeneration.useInstructionFiles', true);
-  // Agent-host terminal tool; avoids Copilot terminal errors with the SDK profile.
+  // Retained for non-Windows agent hosts; this override is ignored on Windows.
   setScalar('chat.agentHost.customTerminalTool.enabled', true);
+  if (isWindows) {
+    for (const [key, value] of Object.entries(windowsChatSettings)) setScalar(key, value);
+    summary.windowsChatCompatibility = true;
+  }
   setMapValue('chat.agentFilesLocations', agentPath, true);
   setMapValue('chat.agentFilesLocations', TILDE_AGENTS, true);
   setMapValue('chat.instructionsFilesLocations', instructionsPath, true);
@@ -388,6 +393,7 @@ function requiredSettingsBlock() {
     'chat.promptFiles': true,
     'github.copilot.chat.codeGeneration.useInstructionFiles': true,
     'chat.agentHost.customTerminalTool.enabled': true,
+    ...(isWindows ? windowsChatSettings : {}),
     'chat.agentFilesLocations': { [agentPath]: true, [TILDE_AGENTS]: true },
     'chat.instructionsFilesLocations': { [instructionsPath]: true, [TILDE_INSTRUCTIONS]: true, '.github/instructions': true },
     'chat.agentSkillsLocations': { [TILDE_SKILLS]: true },
@@ -497,6 +503,27 @@ function printGitSelection(git, shadowedBy, warnings = []) {
   }
   for (const warning of warnings) console.log(`WARNING: ${warning}`);
   console.log('Verify bare git --version in a NEW VS Code terminal and in any other terminal host you use.');
+}
+
+function printLocalChatNotes() {
+  console.log('Windows chat compatibility: use a NEW Local chat in the normal VS Code window, then select ServiceNow Fluent. Existing SDK-backed chats are unchanged.');
+  console.log('These are user-wide preferences, not policy overrides. If Local is unavailable or managed policy requires Copilot, stop and ask your administrator; do not weaken security settings.');
+  console.log('Saved settings are not live acceptance. After all running operations finish, reload the window only if needed; test the new chat terminal before continuing.');
+  console.log('Guide: https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-powershell-chat.md');
+}
+
+function configureChat() {
+  if (!isWindows) throw new Error('configure-chat is Windows-only; non-Windows chat settings are unchanged.');
+  const file = settingsPath();
+  const original = readTextIfExists(file) ?? '{}\n';
+  const plan = { file, original, ...planLocalChatSettings(original) };
+  const result = writeTerminalSettings(plan, { dryRun });
+  console.log(`VS Code Local chat settings: ${result.status}`);
+  console.log(`VS Code settings file: ${toSlash(file)}`);
+  if (result.backup) console.log(`Settings backup${dryRun ? ' (planned)' : ''}: ${result.backup}`);
+  console.log(JSON.stringify(windowsChatSettings, null, 2));
+  console.log('Settings only: no Git, SDK, payload, terminal-profile or policy changes.');
+  printLocalChatNotes();
 }
 
 function configureTerminal() {
@@ -708,6 +735,7 @@ function printInstallSummary(summary, receiptCount) {
   }
 
   if (summary.vscodeSettingsFile) console.log(`VS Code settings file: ${summary.vscodeSettingsFile}`);
+  if (summary.windowsChatCompatibility) printLocalChatNotes();
 
   if (summary.posixNotes) {
     // Linux/macOS (set by install); printInstallSummary itself stays platform-free.
@@ -735,6 +763,7 @@ function help() {
   node bin/sn-fluent-agent.cjs install [--dry-run] [--force] [--no-vscode-settings] [--settings-file <path>] [--no-shell-function] [--git-exe <absolute path>]
   node bin/sn-fluent-agent.cjs configure-git [--git-exe <absolute path>] [--dry-run]
   node bin/sn-fluent-agent.cjs configure-terminal [--git-exe <absolute path>] [--dry-run]
+  node bin/sn-fluent-agent.cjs configure-chat [--settings-file <path>] [--dry-run]
   node bin/sn-fluent-agent.cjs verify
   node bin/sn-fluent-agent.cjs status
   node bin/sn-fluent-agent.cjs check-updates [--only <agent|sdk|docs>] [--project <path>] [--docs <path>] [--docs-branch <branch>] [--force]
@@ -745,6 +774,7 @@ Commands:
   install    Copy payload files into this user's profile and configure VS Code settings; on Linux/macOS also add the now-sdk shell function to ~/.bashrc and the sn-skill command to ~/.local/bin (Windows: ~/bin when Git Bash is installed).
   configure-git    (Windows only) Register the selected Git in user PATH, request native Windows environment propagation, select it for VS Code terminals/Source Control when another Git precedes it in Windows PATH, and remove known legacy profile workarounds. No Git/payload reinstall.
   configure-terminal    Windows: configure the SDK terminal profile (now-sdk and sn-skill functions, plus the git function when another Git shadows the selected one; not Git PATH). Linux/macOS: ensure the now-sdk function in ~/.bashrc and the sn-skill command.
+  configure-chat    (Windows only) Prefer the Local chat harness using three user-wide settings, with backup; no Git/SDK reinstall or policy override. Start a new chat afterwards.
   verify     Compare installed files with payload files.
   status     Show installed receipt details.
   check-updates    Quietly check due agent, project SDK, and docs updates; prints JSON only when an update is actionable.
@@ -767,6 +797,7 @@ async function main() {
   else if (command === 'install' || command === 'update') install();
   else if (command === 'configure-git') configureGit();
   else if (command === 'configure-terminal') configureTerminal();
+  else if (command === 'configure-chat') configureChat();
   else if (command === 'verify') verify();
   else if (command === 'status') status();
   else if (command === 'check-updates') await checkForUpdates();

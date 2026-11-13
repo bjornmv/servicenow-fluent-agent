@@ -18,6 +18,8 @@ Read https://bjornmv.github.io/servicenow-fluent-agent/setup/ and follow its ins
 
 **Target: Windows x64, VS Code, GitHub Copilot agent mode.** Another harness may perform supported steps 1–6; step 7 requires real VS Code terminal evidence.
 
+**Windows chat:** install/update sets user-wide Local preferences (`--no-vscode-settings` opts out). Missing Local or `$host.SetShouldExit` errors → [repair guide](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/fix-powershell-chat.md). Respect managed policy; never replay mutations on wrapper errors.
+
 Node.js must already be installed. Full setup authorizes the pinned per-user MinGit when no usable Git exists (absent, blocked, broken or older), global SDK package install/update, the two checkouts, agent configuration and missing-index creation. Existing-index replacement and corpus changes require separate approval. Authentication, deployment, other prerequisites and elevation are outside scope.
 
 Use these rules throughout:
@@ -27,11 +29,11 @@ Use these rules throughout:
 - Follow the host's actual sync/status/notification contract. No forced async, sleeps or polling where forbidden. A tool's `ok`, `mode: sync` or blank output is not native completion; missing exit evidence is **UNKNOWN**, not failure or permission to retry.
 - Keep potentially busy terminals untouched. Recovery needs independent file access or a confirmed separate idle execution context. Retire a terminal only through step 7.
 
-Work through the cards in order. Read the complete verified guide, including appendices; run appendix blocks only when a card selects them. On a blocker, use the [outcome contract](#outcome), not a bare “pending” message.
+Read the verified guide and appendices. Follow cards in order; execute only card-selected blocks. Report blockers using the [outcome contract](#outcome).
 
 ### 0. Confirm the guide before execution
 
-**Pre:** Use the canonical URL above. Incomplete web excerpts are insufficient; Git is not needed to fetch the guide.
+**Pre:** Use the canonical URL. Incomplete excerpts are insufficient; fetching needs no Git.
 
 **Run:** Download and verify the complete [setup.txt](https://bjornmv.github.io/servicenow-fluent-agent/setup.txt) and current manifest using [A1](#guide-download). Read the saved text through `SETUP_GUIDE_END`, including steps 1–7. For a local source, also compare `VERSION`.
 
@@ -159,7 +161,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Documentation lookup verification failed; stop
 
 ### 7. Open a fresh agent terminal and verify (final step)
 
-**Pre:** All operations complete and results saved. Confirm the agent owns an idle, disposable terminal and the effective profile is **PowerShell with now-sdk**, including workspace/Copilot overrides.
+**Pre:** All operations complete and results saved. In a new **Local** chat, preserve original evidence/paths; never restart setup. Confirm the agent owns an idle, disposable **PowerShell with now-sdk** terminal, including workspace/Copilot overrides.
 
 **Run:** The agent performs [E: terminal handoff and checks](#terminal-check) with supported terminal tools.
 
@@ -178,7 +180,7 @@ Use one heading, a short component summary (verified / missing / not checked), a
 | **Action needed** | A user decision or terminal action is required. Ask a concrete question with a recommended choice; do not end with “resume later.” |
 | **Could not complete** | A confirmed failure or host limitation prevents progress. Name the blocker, what succeeded, and the specific remedy/decision. UNKNOWN completion is not an npm failure. |
 
-Example: “SDK installed; the final VS Code check needs a new terminal. Please open **PowerShell with now-sdk** and return the [E](#terminal-check) check output.” Use supported automatic recovery first. Keep paths/technical evidence in a checkpoint rather than leading with a diagnostic-field dump. Authentication and instance connectivity are not tested here.
+Example: “SDK installed; open **PowerShell with now-sdk**; return [E](#terminal-check) output.” Use supported automatic recovery first; checkpoint evidence. Authentication and instance connectivity are not tested.
 
 After **Complete**, tell the user: “Log in to your PDI in your browser first. In VS Code, choose **Terminal -> New Terminal**, then run `now-sdk auth --add dev123456`, replacing `dev123456` with your own instance name. Follow the SDK prompts and choose OAuth. See the [PDI connection guide with screenshots](https://github.com/bjornmv/servicenow-fluent-agent/blob/main/docs/connect-pdi.md). Keep passwords and OAuth codes out of chat.” The user runs this command manually; do not start authentication for them.
 
@@ -459,7 +461,7 @@ Write-Output "AGENT_REPO=$AgentRepo"
 <a id="terminal-check"></a>
 ### E. Fresh-terminal lifecycle and checks
 
-Use supported integrated-terminal tools, not an extension, added task or simulated child shell. Require saved completion of every install/clone/index operation and no queued commands/jobs in the terminal being retired. Save Git path/version, SDK version and agent-repo path outside shell variables.
+Use Local's integrated-terminal tools, not an extension, added task or simulated child shell. Only SDK `powershell` available → **Action needed**: new Local chat. Require saved completion of every install/clone/index operation and no queued commands/jobs in the terminal being retired. Save Git path/version, SDK version and agent-repo path outside shell variables.
 
 Check effective default/profile overrides, including `chat.tools.terminal.terminalProfile.windows`; an incompatible override requires review rather than replacement. Settings are preconditions, not runtime proof. If ownership, idleness or profile selection is uncertain, ask instead of closing a user/shared terminal.
 
