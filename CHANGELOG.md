@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Windows Local chat compatibility
+
+- Windows install/update sets `chat.editor.localAgent.enabled=true`, `chat.editor.preferCopilotHarness=false` and `chat.defaultToCopilotHarness=false` through the existing JSONC backup/write path. These user-wide preferences replace conflicting values; `--no-vscode-settings` skips them. Linux/macOS behavior is unchanged and managed policy still wins.
+- New `configure-chat [--dry-run] [--settings-file <path>]` repairs only these three settings on Windows, with no Git, SDK, payload, profile, policy or live-session changes. Invalid JSONC, duplicate keys being edited and concurrent edits stop the write; repeated application is a no-op.
+- README, setup and [PowerShell chat repair](docs/fix-powershell-chat.md) explain the Copilot SDK `$host.SetShouldExit` / ConstrainedLanguage incompatibility, new Local chat activation, policy limits, harmless terminal verification and rollback. The existing custom-terminal override is not a Windows fix in VS Code 1.143.1. Local was user-confirmed to resolve the repeated errors on that version; other machines need live acceptance.
+- Regression coverage: exact setting scope, JSONC/comments/BOM/CRLF, backup/dry-run/idempotence/concurrency, installer/manual fallback, opt-out, Windows-only behavior and settings-only CLI with subprocesses forbidden.
+
 ## 0.4.2 — Install only to dev; delete scan before every install
 
 `now-sdk install` from the agent now targets only the developer's own development instance or Developer Sandbox, as the SDK SDLC guide (`now-sdk explain sdlc-guide`) prescribes; test and production get the app from the Application Repository. Every install is preceded by a required scan that names each record the build will DELETE on the instance, because in a package project removing a record's source does not leave it instance-only: its `keys.ts` entry turns into a delete on the next install.

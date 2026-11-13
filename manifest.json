@@ -11,6 +11,11 @@
     ".agents/skills",
     ".agents/tools"
   ],
+  "windowsVscodeSettings": {
+    "chat.editor.localAgent.enabled": true,
+    "chat.editor.preferCopilotHarness": false,
+    "chat.defaultToCopilotHarness": false
+  },
   "vscodeSettings": {
     "chat.promptFiles": true,
     "github.copilot.chat.codeGeneration.useInstructionFiles": true,

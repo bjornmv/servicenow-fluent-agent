@@ -217,6 +217,24 @@ It also attempts to add the required VS Code user settings:
 
 Before modifying VS Code settings, the installer creates a backup next to `settings.json`. On Windows it also configures the SDK profile separately from shell-independent Git user PATH registration, as described above. Edits are surgical rather than reformatting the entire JSONC document.
 
+### Windows chat compatibility: Local harness
+
+Team user guide: [read online](docs/powershell-error-user-guide.md), [PDF](docs/guides/powershell-error-fix.pdf), or [Word](docs/guides/powershell-error-fix.docx).
+
+Windows install/update also sets these **user-wide new-chat preferences** automatically (unless `--no-vscode-settings` is used):
+
+```json
+{
+  "chat.editor.localAgent.enabled": true,
+  "chat.editor.preferCopilotHarness": false,
+  "chat.defaultToCopilotHarness": false
+}
+```
+
+They replace conflicting user preferences so VS Code rollout defaults do not promote Local into the Copilot SDK harness. Start a **new Local chat**, then select **ServiceNow Fluent**; active conversations and terminals are left alone. Managed policy still wins. Linux/macOS preferences are unchanged. The `customTerminalTool` setting above is ignored on Windows in VS Code 1.143.1 and does not fix that SDK's PowerShell wrapper.
+
+Already installed and seeing **Cannot invoke method...** at `$host.SetShouldExit(...)`? From an updated checkout, run `node bin/sn-fluent-agent.cjs configure-chat --dry-run`, then `node bin/sn-fluent-agent.cjs configure-chat` in an idle terminal. This backs up and changes only the three preferences—no Git/SDK/payload reinstall. Use `--settings-file` for the actual User settings of a named profile or Insiders. See [PowerShell chat repair and verification](docs/fix-powershell-chat.md) for activation, policy limits, manual instructions and rollback. Saved settings are not proof of a working chat; Local was user-confirmed on VS Code 1.143.1, not every version or managed machine.
+
 ## Useful commands
 
 ```text
@@ -224,6 +242,8 @@ node bin/sn-fluent-agent.cjs install
 node bin/sn-fluent-agent.cjs install --dry-run
 node bin/sn-fluent-agent.cjs install --force
 node bin/sn-fluent-agent.cjs install --no-vscode-settings
+node bin/sn-fluent-agent.cjs configure-chat --dry-run
+node bin/sn-fluent-agent.cjs configure-chat
 node bin/sn-fluent-agent.cjs verify
 node bin/sn-fluent-agent.cjs status
 node bin/sn-fluent-agent.cjs uninstall
